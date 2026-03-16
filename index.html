@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Candidate Match Workbench</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg-ink: #142033;
+        --bg-night: #0f1726;
+        --panel: rgba(255, 252, 245, 0.86);
+        --panel-strong: rgba(255, 248, 236, 0.96);
+        --line: rgba(20, 32, 51, 0.12);
+        --line-strong: rgba(20, 32, 51, 0.22);
+        --accent: #c8643b;
+        --accent-deep: #93411f;
+        --accent-soft: rgba(200, 100, 59, 0.14);
+        --teal: #1f6f78;
+        --text: #172033;
+        --muted: #5d6777;
+        --shadow: 0 30px 90px rgba(15, 23, 38, 0.16);
+        font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(245, 194, 136, 0.42), transparent 30%),
+          radial-gradient(circle at top right, rgba(113, 185, 199, 0.32), transparent 34%),
+          linear-gradient(145deg, #f4efe6 0%, #e5eef6 48%, #e8f0ea 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(20, 32, 51, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(20, 32, 51, 0.04) 1px, transparent 1px);
+        background-size: 28px 28px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 88%);
+      }
+
+      .app-shell {
+        min-height: 100vh;
+        padding: 28px;
+      }
+
+      .frame {
+        max-width: 1520px;
+        margin: 0 auto;
+        padding: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.42);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(20px);
+      }
+
+      .masthead {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        align-items: flex-start;
+        margin-bottom: 24px;
+        padding: 28px;
+        border-radius: 24px;
+        color: #f8f4ed;
+        background:
+          linear-gradient(120deg, rgba(15, 23, 38, 0.95), rgba(29, 45, 68, 0.92)),
+          linear-gradient(90deg, rgba(200, 100, 59, 0.2), transparent);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .masthead::after {
+        content: "";
+        position: absolute;
+        inset: auto -8% -45% auto;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(200, 100, 59, 0.4), transparent 65%);
+      }
+
+      .masthead-copy {
+        max-width: 760px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+        padding: 7px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #7ce3da;
+        box-shadow: 0 0 12px rgba(124, 227, 218, 0.65);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        font-size: clamp(2.8rem, 4vw, 4.6rem);
+        line-height: 0.96;
+        letter-spacing: -0.05em;
+      }
+
+      .masthead-copy p {
+        margin: 0;
+        max-width: 640px;
+        color: rgba(248, 244, 237, 0.78);
+        font-size: 1.03rem;
+        line-height: 1.7;
+      }
+
+      .masthead-meta {
+        width: min(360px, 100%);
+        position: relative;
+        z-index: 1;
+      }
+
+      .metrics {
+        display: grid;
+        gap: 12px;
+      }
+
+      .metric-card {
+        padding: 16px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .metric-label {
+        margin: 0 0 4px;
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(248, 244, 237, 0.66);
+      }
+
+      .metric-value {
+        margin: 0;
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(340px, 420px) minmax(340px, 1fr) minmax(360px, 470px);
+        gap: 20px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 20px;
+        align-content: start;
+      }
+
+      .panel {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: 0 18px 40px rgba(15, 23, 38, 0.08);
+        backdrop-filter: blur(12px);
+      }
+
+      .panel-strong {
+        background: var(--panel-strong);
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+        margin-bottom: 16px;
+      }
+
+      .panel-kicker {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--accent-deep);
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .panel h2,
+      .panel h3 {
+        margin: 0;
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        font-size: 1.5rem;
+        letter-spacing: -0.03em;
+      }
+
+      .panel-subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .status-chip {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(31, 111, 120, 0.12);
+        color: var(--teal);
+        font-size: 0.8rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .source-card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .source-card + .source-card {
+        margin-top: 14px;
+      }
+
+      .source-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .source-title h3 {
+        font-size: 1.05rem;
+        font-family: inherit;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .source-badge {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent-deep);
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
+
+      .source-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .dropzone {
+        margin-top: 16px;
+        padding: 22px 18px;
+        border: 1.5px dashed rgba(31, 111, 120, 0.3);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(31, 111, 120, 0.08), rgba(31, 111, 120, 0.03));
+      }
+
+      .dropzone p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .meta-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 0.82rem;
+      }
+
+      .primary-actions {
+        display: grid;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 14px;
+        padding: 14px 16px;
+        font: inherit;
+        font-weight: 700;
+        cursor: default;
+      }
+
+      .btn-primary {
+        color: #fff9f3;
+        background: linear-gradient(135deg, #c8643b 0%, #a34922 100%);
+        box-shadow: 0 16px 28px rgba(163, 73, 34, 0.24);
+      }
+
+      .btn-secondary {
+        color: var(--text);
+        border: 1px solid var(--line-strong);
+        background: rgba(255, 255, 255, 0.84);
+      }
+
+      .btn-ghost {
+        color: var(--muted);
+        border: 1px dashed var(--line-strong);
+        background: transparent;
+      }
+
+      .preview-grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .preview-card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.74);
+      }
+
+      .preview-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .preview-header h3 {
+        font-size: 1rem;
+        font-family: inherit;
+        font-weight: 700;
+      }
+
+      .preview-text {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.94rem;
+        line-height: 1.75;
+      }
+
+      .summary-card {
+        display: grid;
+        gap: 16px;
+      }
+
+      .summary-toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .summary-body {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .summary-body h3 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+        font-family: inherit;
+        font-weight: 700;
+      }
+
+      .summary-section + .summary-section {
+        margin-top: 16px;
+      }
+
+      .summary-section-label {
+        margin: 0 0 8px;
+        color: var(--accent-deep);
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .summary-section p,
+      .summary-section li {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 12px;
+      }
+
+      .timeline-item {
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.75);
+      }
+
+      .timeline-item strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.95rem;
+      }
+
+      .timeline-item span {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.5;
+      }
+
+      .footer-note {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 1220px) {
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .masthead {
+          flex-direction: column;
+        }
+
+        .masthead-meta {
+          width: 100%;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .app-shell {
+          padding: 16px;
+        }
+
+        .frame {
+          padding: 16px;
+          border-radius: 22px;
+        }
+
+        .masthead,
+        .panel {
+          padding: 18px;
+        }
+
+        .source-actions,
+        .summary-toolbar {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="frame">
+        <section class="masthead">
+          <div class="masthead-copy">
+            <span class="eyebrow">Recruiter Review Workspace</span>
+            <h1>Candidate Match Workbench</h1>
+            <p>
+              Bring a CV and role brief into one controlled drafting surface,
+              review the extracted evidence, shape a recruiter-ready summary,
+              and prepare a hiring-manager handoff without leaving the desktop
+              workflow.
+            </p>
+          </div>
+          <aside class="masthead-meta">
+            <div class="metrics">
+              <div class="metric-card">
+                <p class="metric-label">Current Mode</p>
+                <p class="metric-value">Named Profile Draft</p>
+              </div>
+              <div class="metric-card">
+                <p class="metric-label">Review State</p>
+                <p class="metric-value">Ready for Input Intake</p>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="workspace">
+          <div class="stack">
+            <section class="panel panel-strong">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Input Intake</span>
+                  <h2>Source Documents</h2>
+                  <p class="panel-subtitle">
+                    Start with one candidate CV and one job description. Later
+                    tasks will wire file picking, validation, and drag-and-drop.
+                  </p>
+                </div>
+                <span class="status-chip">Layout Only</span>
+              </div>
+
+              <article class="source-card">
+                <div class="source-title">
+                  <h3>Candidate CV</h3>
+                  <span class="source-badge">Required</span>
+                </div>
+                <div class="meta-row">
+                  <span class="pill">No file selected</span>
+                  <span class="pill">Supported: PDF, DOCX, TXT</span>
+                </div>
+                <div class="source-actions">
+                  <button class="btn-secondary" type="button">Choose CV</button>
+                  <button class="btn-ghost" type="button">Assign as CV</button>
+                </div>
+              </article>
+
+              <article class="source-card">
+                <div class="source-title">
+                  <h3>Role Job Description</h3>
+                  <span class="source-badge">Required</span>
+                </div>
+                <div class="meta-row">
+                  <span class="pill">No file selected</span>
+                  <span class="pill">Target role not yet set</span>
+                </div>
+                <div class="source-actions">
+                  <button class="btn-secondary" type="button">Choose JD</button>
+                  <button class="btn-ghost" type="button">Assign as JD</button>
+                </div>
+              </article>
+
+              <div class="dropzone">
+                <p>
+                  Drag a CV and JD here to begin. The drop surface is part of
+                  this first layout, while drag-and-drop behavior will be added
+                  in a later task.
+                </p>
+              </div>
+
+              <div class="primary-actions">
+                <button class="btn-primary" type="button">Generate Summary</button>
+                <button class="btn-secondary" type="button">Reset Workspace</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Workflow</span>
+                  <h2>Recruiter Checkpoints</h2>
+                  <p class="panel-subtitle">
+                    The product keeps a visible, human-controlled path from raw
+                    documents to hiring-manager handoff.
+                  </p>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="timeline-item">
+                  <strong>1. Import CV and JD</strong>
+                  <span>Load both source documents from the local machine.</span>
+                </div>
+                <div class="timeline-item">
+                  <strong>2. Review Extracted Evidence</strong>
+                  <span>Check that parsing captured the right signals before generation.</span>
+                </div>
+                <div class="timeline-item">
+                  <strong>3. Refine Candidate Narrative</strong>
+                  <span>Edit the generated profile before it can be approved.</span>
+                </div>
+                <div class="timeline-item">
+                  <strong>4. Prepare Manager Handoff</strong>
+                  <span>Move the approved summary into the email workflow.</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">Evidence Review</span>
+                <h2>Extracted Text Preview</h2>
+                <p class="panel-subtitle">
+                  This middle workspace is reserved for the parsed document
+                  content the recruiter will inspect before drafting.
+                </p>
+              </div>
+              <span class="status-chip">Awaiting Extraction</span>
+            </div>
+
+            <div class="preview-grid">
+              <article class="preview-card">
+                <div class="preview-header">
+                  <h3>Candidate CV Preview</h3>
+                  <span class="pill">0 pages parsed</span>
+                </div>
+                <p class="preview-text">
+                  Imported CV text will appear here. The recruiter should be
+                  able to spot missing sections, noisy parsing, or evidence that
+                  matters for the role before generation begins.
+                </p>
+              </article>
+
+              <article class="preview-card">
+                <div class="preview-header">
+                  <h3>Job Description Preview</h3>
+                  <span class="pill">0 requirements mapped</span>
+                </div>
+                <p class="preview-text">
+                  Parsed JD content will appear here. This panel will help the
+                  recruiter confirm the role title, scope, and requirement
+                  signals that the summary should anchor against.
+                </p>
+              </article>
+            </div>
+
+            <p class="footer-note">
+              Later tasks will connect file extraction, validation, and role-to-candidate
+              matching logic to these preview panels.
+            </p>
+          </section>
+
+          <section class="panel panel-strong">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">Draft Output</span>
+                <h2>Candidate Summary Review</h2>
+                <p class="panel-subtitle">
+                  The right rail becomes the recruiter editing surface for the
+                  final hiring-manager narrative.
+                </p>
+              </div>
+              <span class="status-chip">Draft Not Generated</span>
+            </div>
+
+            <div class="summary-card">
+              <div class="summary-toolbar">
+                <button class="btn-secondary" type="button">Named Mode</button>
+                <button class="btn-ghost" type="button">Anonymous Mode</button>
+                <button class="btn-ghost" type="button">Approve Draft</button>
+              </div>
+
+              <div class="summary-body">
+                <h3>Candidate Profile Summary</h3>
+
+                <section class="summary-section">
+                  <p class="summary-section-label">Candidate</p>
+                  <p>Candidate name will appear here once a draft is generated.</p>
+                </section>
+
+                <section class="summary-section">
+                  <p class="summary-section-label">Target Role</p>
+                  <p>The selected role title and hiring context will appear here.</p>
+                </section>
+
+                <section class="summary-section">
+                  <p class="summary-section-label">Why This Candidate May Be a Fit</p>
+                  <p>
+                    A recruiter-ready summary will explain the candidate-role
+                    fit using evidence from the CV against the JD.
+                  </p>
+                </section>
+
+                <section class="summary-section">
+                  <p class="summary-section-label">Relevant Experience</p>
+                  <ul>
+                    <li>Key experience highlights will populate this area.</li>
+                    <li>Role-specific evidence will be grouped consistently.</li>
+                    <li>Recruiters will be able to refine language before approval.</li>
+                  </ul>
+                </section>
+
+                <section class="summary-section">
+                  <p class="summary-section-label">Potential Concerns / Gaps</p>
+                  <p>
+                    The future generated draft should surface uncertainties or
+                    missing evidence instead of overstating confidence.
+                  </p>
+                </section>
+              </div>
+
+              <div class="summary-toolbar">
+                <button class="btn-primary" type="button">Copy Summary</button>
+                <button class="btn-secondary" type="button">Share by Email</button>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -142,35 +142,14 @@
       }
 
       .masthead-meta {
-        width: min(360px, 100%);
+        width: auto;
         position: relative;
         z-index: 1;
       }
 
-      .metrics {
-        display: grid;
-        gap: 12px;
-      }
-
-      .metric-card {
-        padding: 16px 18px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.07);
-      }
-
-      .metric-label {
-        margin: 0 0 4px;
-        font-size: 0.82rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: rgba(248, 244, 237, 0.66);
-      }
-
-      .metric-value {
-        margin: 0;
-        font-size: 1.3rem;
-        font-weight: 700;
+      .masthead-tools {
+        display: flex;
+        justify-content: flex-end;
       }
 
       .workspace {
@@ -311,6 +290,12 @@
         font-size: 0.82rem;
       }
 
+      .pill-emphasis {
+        border-color: rgba(31, 111, 120, 0.28);
+        color: var(--teal);
+        background: rgba(31, 111, 120, 0.1);
+      }
+
       .primary-actions {
         display: grid;
         gap: 10px;
@@ -324,7 +309,11 @@
         padding: 14px 16px;
         font: inherit;
         font-weight: 700;
-        cursor: default;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.54;
       }
 
       .btn-primary {
@@ -343,6 +332,35 @@
         color: var(--muted);
         border: 1px dashed var(--line-strong);
         background: transparent;
+      }
+
+      .icon-button {
+        width: 54px;
+        height: 54px;
+        padding: 0;
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff9f3;
+      }
+
+      .icon-button svg {
+        width: 22px;
+        height: 22px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
 
       .preview-grid {
@@ -395,31 +413,27 @@
         background: rgba(255, 255, 255, 0.78);
       }
 
-      .summary-body h3 {
-        margin: 0 0 12px;
-        font-size: 1.1rem;
-        font-family: inherit;
-        font-weight: 700;
-      }
-
-      .summary-section + .summary-section {
-        margin-top: 16px;
-      }
-
-      .summary-section-label {
-        margin: 0 0 8px;
-        color: var(--accent-deep);
-        font-size: 0.8rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .summary-section p,
-      .summary-section li {
+      .summary-meta {
         margin: 0;
         color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+
+      .summary-editor {
+        width: 100%;
+        min-height: 430px;
+        border: 0;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 0.95rem;
         line-height: 1.7;
+        resize: vertical;
+      }
+
+      .summary-editor:focus {
+        outline: none;
       }
 
       ul {
@@ -458,6 +472,155 @@
         line-height: 1.6;
       }
 
+      .debug-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(15, 23, 38, 0.04);
+      }
+
+      .debug-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.9rem;
+      }
+
+      .debug-trace {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--text);
+        font: 0.82rem/1.6 "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      }
+
+      .field-note {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.5;
+      }
+
+      .settings-page {
+        display: grid;
+        gap: 20px;
+      }
+
+      .settings-layout {
+        display: grid;
+        grid-template-columns: minmax(220px, 260px) minmax(420px, 1fr);
+        gap: 20px;
+      }
+
+      .settings-nav {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: 0 18px 40px rgba(15, 23, 38, 0.08);
+        backdrop-filter: blur(12px);
+      }
+
+      .settings-nav-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .settings-nav-button {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        padding: 14px 16px;
+        border: 1px solid transparent;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--text);
+        text-align: left;
+      }
+
+      .settings-nav-button.is-active {
+        border-color: rgba(31, 111, 120, 0.24);
+        background: rgba(31, 111, 120, 0.1);
+        color: var(--teal);
+      }
+
+      .settings-content {
+        display: grid;
+        gap: 20px;
+      }
+
+      .form-panel {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: 0 18px 40px rgba(15, 23, 38, 0.08);
+        backdrop-filter: blur(12px);
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label {
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        width: 100%;
+        padding: 13px 14px;
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--text);
+        font: inherit;
+      }
+
+      .field textarea {
+        min-height: 150px;
+        resize: vertical;
+        line-height: 1.6;
+      }
+
+      .settings-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .settings-status {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+
+      .template-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .template-card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .is-hidden {
+        display: none !important;
+      }
+
       @media (max-width: 1220px) {
         .workspace {
           grid-template-columns: 1fr;
@@ -468,7 +631,11 @@
         }
 
         .masthead-meta {
-          width: 100%;
+          width: auto;
+        }
+
+        .settings-layout {
+          grid-template-columns: 1fr;
         }
       }
 
@@ -488,7 +655,8 @@
         }
 
         .source-actions,
-        .summary-toolbar {
+        .summary-toolbar,
+        .settings-actions {
           flex-direction: column;
         }
       }
@@ -509,20 +677,19 @@
             </p>
           </div>
           <aside class="masthead-meta">
-            <div class="metrics">
-              <div class="metric-card">
-                <p class="metric-label">Current Mode</p>
-                <p class="metric-value">Named Profile Draft</p>
-              </div>
-              <div class="metric-card">
-                <p class="metric-label">Review State</p>
-                <p class="metric-value">Ready for Input Intake</p>
-              </div>
+            <div class="masthead-tools">
+              <button class="icon-button" id="open-settings-view" type="button" aria-label="Open configuration">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3.5"></circle>
+                  <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.7-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.7 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .7.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6H20a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.7z"></path>
+                </svg>
+                <span class="sr-only">Open configuration</span>
+              </button>
             </div>
           </aside>
         </section>
 
-        <section class="workspace">
+        <section class="workspace" id="workbench-view">
           <div class="stack">
             <section class="panel panel-strong">
               <div class="panel-header">
@@ -534,50 +701,57 @@
                     tasks will wire file picking, validation, and drag-and-drop.
                   </p>
                 </div>
-                <span class="status-chip">Layout Only</span>
+                <span class="status-chip" id="source-panel-status">Awaiting Documents</span>
               </div>
 
-              <article class="source-card">
+              <article class="source-card" id="cv-card">
                 <div class="source-title">
                   <h3>Candidate CV</h3>
                   <span class="source-badge">Required</span>
                 </div>
                 <div class="meta-row">
-                  <span class="pill">No file selected</span>
-                  <span class="pill">Supported: PDF, DOCX, TXT</span>
+                  <span class="pill" id="cv-file-pill">No file selected</span>
+                  <span class="pill" id="cv-type-pill">File type pending</span>
+                  <span class="pill" id="cv-status-pill">Not imported</span>
                 </div>
                 <div class="source-actions">
-                  <button class="btn-secondary" type="button">Choose CV</button>
-                  <button class="btn-ghost" type="button">Assign as CV</button>
+                  <button class="btn-secondary" id="choose-cv-button" type="button">Choose CV</button>
+                  <button class="btn-ghost" id="assign-cv-button" type="button">Assign as JD</button>
                 </div>
+                <p class="field-note" id="cv-picker-note">
+                  Use the file picker or drag and drop to load a candidate resume from this machine.
+                </p>
               </article>
 
-              <article class="source-card">
+              <article class="source-card" id="jd-card">
                 <div class="source-title">
                   <h3>Role Job Description</h3>
                   <span class="source-badge">Required</span>
                 </div>
                 <div class="meta-row">
-                  <span class="pill">No file selected</span>
-                  <span class="pill">Target role not yet set</span>
+                  <span class="pill" id="jd-file-pill">No file selected</span>
+                  <span class="pill" id="jd-type-pill">File type pending</span>
+                  <span class="pill" id="jd-status-pill">Not imported</span>
                 </div>
                 <div class="source-actions">
-                  <button class="btn-secondary" type="button">Choose JD</button>
-                  <button class="btn-ghost" type="button">Assign as JD</button>
+                  <button class="btn-secondary" id="choose-jd-button" type="button">Choose JD</button>
+                  <button class="btn-ghost" id="assign-jd-button" type="button">Assign as CV</button>
                 </div>
+                <p class="field-note" id="jd-picker-note">
+                  Use the file picker or drag and drop to load a role description from this machine.
+                </p>
               </article>
 
-              <div class="dropzone">
+              <div class="dropzone" id="dropzone">
                 <p>
-                  Drag a CV and JD here to begin. The drop surface is part of
-                  this first layout, while drag-and-drop behavior will be added
-                  in a later task.
+                  Drag one file into a specific card to assign it directly, or
+                  drop both documents here to populate the CV and JD slots in sequence.
                 </p>
               </div>
 
               <div class="primary-actions">
-                <button class="btn-primary" type="button">Generate Summary</button>
-                <button class="btn-secondary" type="button">Reset Workspace</button>
+                <button class="btn-primary" id="generate-summary-button" type="button">Generate Summary</button>
+                <button class="btn-secondary" id="reset-workspace-button" type="button">Reset Workspace</button>
               </div>
             </section>
 
@@ -615,25 +789,25 @@
           </div>
 
           <section class="panel">
-            <div class="panel-header">
-              <div>
-                <span class="panel-kicker">Evidence Review</span>
-                <h2>Extracted Text Preview</h2>
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Evidence Review</span>
+                  <h2>Extracted Text Preview</h2>
                 <p class="panel-subtitle">
                   This middle workspace is reserved for the parsed document
                   content the recruiter will inspect before drafting.
                 </p>
               </div>
-              <span class="status-chip">Awaiting Extraction</span>
+              <span class="status-chip">Extraction Workspace</span>
             </div>
 
             <div class="preview-grid">
               <article class="preview-card">
                 <div class="preview-header">
                   <h3>Candidate CV Preview</h3>
-                  <span class="pill">0 pages parsed</span>
+                  <span class="pill" id="cv-preview-status">Awaiting Extraction</span>
                 </div>
-                <p class="preview-text">
+                <p class="preview-text" id="cv-preview-text">
                   Imported CV text will appear here. The recruiter should be
                   able to spot missing sections, noisy parsing, or evidence that
                   matters for the role before generation begins.
@@ -643,9 +817,9 @@
               <article class="preview-card">
                 <div class="preview-header">
                   <h3>Job Description Preview</h3>
-                  <span class="pill">0 requirements mapped</span>
+                  <span class="pill" id="jd-preview-status">Awaiting Extraction</span>
                 </div>
-                <p class="preview-text">
+                <p class="preview-text" id="jd-preview-text">
                   Parsed JD content will appear here. This panel will help the
                   recruiter confirm the role title, scope, and requirement
                   signals that the summary should anchor against.
@@ -660,72 +834,182 @@
           </section>
 
           <section class="panel panel-strong">
-            <div class="panel-header">
-              <div>
-                <span class="panel-kicker">Draft Output</span>
-                <h2>Candidate Summary Review</h2>
-                <p class="panel-subtitle">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-kicker">Draft Output</span>
+                  <h2>Candidate Summary Review</h2>
+                  <p class="panel-subtitle">
                   The right rail becomes the recruiter editing surface for the
                   final hiring-manager narrative.
-                </p>
-              </div>
-              <span class="status-chip">Draft Not Generated</span>
+                  </p>
+                </div>
+              <span class="status-chip" id="summary-status">Draft Not Generated</span>
             </div>
 
             <div class="summary-card">
               <div class="summary-toolbar">
-                <button class="btn-secondary" type="button">Named Mode</button>
-                <button class="btn-ghost" type="button">Anonymous Mode</button>
-                <button class="btn-ghost" type="button">Approve Draft</button>
+                <button class="btn-secondary" type="button" disabled>Named Draft</button>
+                <button class="btn-ghost" id="template-label" type="button" disabled>Default Recruiter Profile Template</button>
               </div>
 
               <div class="summary-body">
-                <h3>Candidate Profile Summary</h3>
-
-                <section class="summary-section">
-                  <p class="summary-section-label">Candidate</p>
-                  <p>Candidate name will appear here once a draft is generated.</p>
-                </section>
-
-                <section class="summary-section">
-                  <p class="summary-section-label">Target Role</p>
-                  <p>The selected role title and hiring context will appear here.</p>
-                </section>
-
-                <section class="summary-section">
-                  <p class="summary-section-label">Why This Candidate May Be a Fit</p>
-                  <p>
-                    A recruiter-ready summary will explain the candidate-role
-                    fit using evidence from the CV against the JD.
-                  </p>
-                </section>
-
-                <section class="summary-section">
-                  <p class="summary-section-label">Relevant Experience</p>
-                  <ul>
-                    <li>Key experience highlights will populate this area.</li>
-                    <li>Role-specific evidence will be grouped consistently.</li>
-                    <li>Recruiters will be able to refine language before approval.</li>
-                  </ul>
-                </section>
-
-                <section class="summary-section">
-                  <p class="summary-section-label">Potential Concerns / Gaps</p>
-                  <p>
-                    The future generated draft should surface uncertainties or
-                    missing evidence instead of overstating confidence.
-                  </p>
-                </section>
+                <p class="summary-meta" id="summary-message">
+                  Generate a summary after both documents are imported.
+                </p>
+                <textarea
+                  class="summary-editor"
+                  id="summary-editor"
+                  placeholder="The generated candidate summary will appear here and stay editable for recruiter review."
+                ></textarea>
               </div>
 
               <div class="summary-toolbar">
-                <button class="btn-primary" type="button">Copy Summary</button>
-                <button class="btn-secondary" type="button">Share by Email</button>
+                <button class="btn-primary" id="copy-summary-button" type="button" disabled>Copy Summary</button>
+                <button class="btn-secondary" id="export-word-draft-button" type="button" disabled>Save Word Draft</button>
+                <button class="btn-ghost" id="reveal-word-draft-button" type="button" disabled>Reveal Saved Draft</button>
+              </div>
+
+              <p class="footer-note" id="draft-meta">
+                The default recruiter profile template will be used when both documents are ready.
+              </p>
+
+              <div class="debug-card">
+                <strong>Export Debug Trace</strong>
+                <pre class="debug-trace" id="debug-trace">No export debug trace yet.</pre>
               </div>
             </div>
           </section>
         </section>
+
+        <section class="settings-page is-hidden" id="settings-view">
+          <section class="panel panel-strong">
+            <div class="panel-header">
+              <div>
+                <span class="panel-kicker">Configuration</span>
+                <h2>Workspace Settings</h2>
+                <p class="panel-subtitle">
+                  Manage model access and hiring-manager output template preferences from one place.
+                </p>
+              </div>
+              <div class="settings-actions">
+                <span class="status-chip" id="settings-status-chip">Settings Required</span>
+                <button class="btn-secondary" id="return-to-workbench-button" type="button">Back to Workbench</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="settings-layout">
+            <aside class="settings-nav">
+              <div class="settings-nav-list">
+                <button class="settings-nav-button" id="open-llm-settings-tab" type="button">LLM Model Configuration</button>
+                <button class="settings-nav-button" id="open-template-settings-tab" type="button">Candidate Summary Template</button>
+              </div>
+            </aside>
+
+            <div class="settings-content">
+              <section class="form-panel" id="llm-settings-panel">
+                <div class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Provider</span>
+                    <h2>LLM Model Configuration</h2>
+                    <p class="panel-subtitle">
+                      DeepSeek is the first preset. The client layer remains provider-agnostic for future vendors.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="provider-select">Provider</label>
+                    <select id="provider-select"></select>
+                  </div>
+                  <div class="field">
+                    <label for="base-url-input">Base URL</label>
+                    <input id="base-url-input" type="url" placeholder="https://api.deepseek.com" />
+                  </div>
+                  <div class="field">
+                    <label for="model-input">Model</label>
+                    <input id="model-input" type="text" placeholder="deepseek-chat" />
+                  </div>
+                  <div class="field">
+                    <label for="api-key-input">API Key</label>
+                    <input id="api-key-input" type="password" placeholder="sk-..." />
+                  </div>
+                  <div class="field">
+                    <label for="temperature-input">Temperature</label>
+                    <input id="temperature-input" type="number" min="0" max="2" step="0.1" />
+                  </div>
+                  <div class="field">
+                    <label for="max-tokens-input">Max Tokens</label>
+                    <input id="max-tokens-input" type="number" min="128" max="8192" step="1" />
+                  </div>
+                  <div class="field">
+                    <label for="system-prompt-input">System Prompt</label>
+                    <textarea id="system-prompt-input"></textarea>
+                  </div>
+                  <p class="settings-status" id="provider-help-text">
+                    DeepSeek uses an OpenAI-compatible chat completions API.
+                  </p>
+                </div>
+              </section>
+
+              <section class="form-panel is-hidden" id="template-settings-panel">
+                <div class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Output Template</span>
+                    <h2>Candidate Summary Template</h2>
+                    <p class="panel-subtitle">
+                      The in-app review remains a structured text summary. The configured Word `.docx` or `.dotx` template is used when saving the hiring-manager draft.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="form-grid">
+                  <div class="template-card">
+                    <strong id="word-template-name">No Word template selected</strong>
+                    <p class="settings-status" id="word-template-path">
+                      Choose a Word `.docx` or `.dotx` template and save settings to copy it into the application template library.
+                    </p>
+                  </div>
+                  <div class="settings-actions">
+                    <button class="btn-primary" id="choose-word-template-button" type="button">Choose Word Template</button>
+                    <button class="btn-secondary" id="clear-word-template-button" type="button">Clear Template</button>
+                  </div>
+                  <div class="template-card">
+                    <strong>Supported Placeholders</strong>
+                    <p class="settings-status">
+                      Add these plain text tags to the Word template where content should be inserted:
+                      <code>{{candidate_name}}</code>,
+                      <code>{{role_title}}</code>,
+                      <code>{{fit_summary}}</code>,
+                      <code>{{relevant_experience}}</code>,
+                      <code>{{match_requirements}}</code>,
+                      <code>{{potential_concerns}}</code>,
+                      <code>{{recommended_next_step}}</code>,
+                      <code>{{candidate_summary}}</code>,
+                      <code>{{generation_date}}</code>,
+                      <code>{{generation_timestamp}}</code>.
+                    </p>
+                  </div>
+                  <p class="settings-status" id="template-config-note">
+                    The recruiter workbench continues to show the default text summary template for review and editing. The Word template is stored in the application template library after you save settings.
+                  </p>
+                </div>
+              </section>
+
+              <section class="form-panel">
+                <div class="settings-actions">
+                  <button class="btn-primary" id="save-settings-button" type="button">Save Settings</button>
+                </div>
+                <p class="settings-status" id="settings-status-message">
+                  Save a valid provider configuration before generating summaries.
+                </p>
+              </section>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
+    <script src="renderer.js"></script>
   </body>
 </html>

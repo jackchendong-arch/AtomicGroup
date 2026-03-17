@@ -1,13 +1,18 @@
 # TODO
 
-Check a box only when the work is:
+Use release-level status markers only:
+- `[ ]` not started
+- `[-]` in progress
+- `[x]` completed after user confirms `works`
+
+Mark a release complete only when the work is:
 - implemented
 - manually tested
 - still working with the existing shipped workflow
 
 ## Release 1: Single Candidate Draft MVP
-- [ ] Release 1 shipped, completed, and tested.
-- x Create the initial Electron app layout for the recruiter workflow: source inputs, extracted text preview, generated summary, and primary actions.
+- [-] Release 1 shipped, completed, and tested.
+- Create the initial Electron app layout for the recruiter workflow: source inputs, extracted text preview, generated summary, and primary actions.
 - Add a CV file picker that lets the recruiter select one local CV file.
 - Add a JD file picker that lets the recruiter select one local job description file.
 - Add drag-and-drop support for one CV file and one JD file.
@@ -23,7 +28,30 @@ Check a box only when the work is:
 - Warn when extracted content appears empty or too low quality for generation.
 - Add a built-in default candidate summary template.
 - Implement prompt assembly using CV content, JD content, and the default summary template.
-- Generate a named candidate summary using the fixed template structure.
+- Add an LLM configuration page where the user can set provider, base URL, model, API key, and related generation settings.
+- Refine the app chrome so the workbench header does not expose model/status text and uses a compact configuration icon instead of a visible settings button.
+- Redesign the configuration page with a left-side navigation panel and separate sections for LLM settings and candidate summary template settings.
+- Persist the LLM configuration locally so the user does not need to re-enter it on each launch.
+- Implement an LLM-agnostic provider interface so summary generation is not hard-wired to a single vendor.
+- Add DeepSeek as the first supported provider preset.
+- Validate that the configured provider settings are sufficient before allowing LLM-backed generation.
+- Allow the headhunter to configure and persist a Word-based candidate summary template for hiring-manager output.
+- Support both `.docx` and `.dotx` as configurable Word template formats for hiring-manager output.
+- Store the configured Word-based candidate summary template under the application's local template folder instead of relying on the original external file path.
+- Keep the in-app recruiter review summary on the default text structure while making the Word template the configured output format for future hiring-manager sharing.
+- Generate a hiring-manager Word document from the configured template using the recruiter-reviewed summary content.
+- Make Word draft export populate template placeholders reliably from the recruiter-reviewed summary even when the summary headings are edited or lose markdown markers.
+- Add a local save/export action so the recruiter can generate the hiring-manager Word draft from the workbench.
+- Reveal the saved Word draft location clearly after export so the recruiter can confirm where the file was written.
+- Keep the last saved Word draft path visible in the workbench and provide a manual reveal action if automatic Finder reveal is missed.
+- Show a visible debug trace for the Word draft export flow so save-dialog selection, output path resolution, render, and file-write verification can be inspected during Release 1 validation.
+- Resolve folder-like save targets correctly so choosing the Documents folder still writes the draft inside that folder with the suggested filename.
+- Persist the Word draft export debug trace to a local log file so failed or ambiguous save attempts can be inspected after the fact.
+- Normalize `.dotx` template packages into valid `.docx` output packages and verify the saved Word draft is structurally valid before reporting success.
+- Validate the configured Word template contains supported placeholders and surface a useful error or preview when the template structure cannot consume the generated candidate summary data.
+- Provide a conversion path for static Word templates like `AtomicGroupCV_Template.dotx` by inserting supported placeholders while preserving the original report layout.
+- Support AtomicGroup-specific placeholder names in the exporter so the existing `AtomicGroupCV_Template.dotx` layout can populate candidate summary content without manual template rebuilding.
+- Generate a named candidate summary using the fixed template structure through the configured LLM provider.
 - Include evidence-based match content in the summary instead of unsupported generic claims.
 - Include a strengths section and a concerns or gaps section in the summary.
 - Show the generated summary in an editable in-app review area.
@@ -96,7 +124,7 @@ Check a box only when the work is:
 - Run regression testing across all previously shipped workflows.
 
 ## Cross-Cutting Product Decisions
-- Decide the AI model/provider abstraction for the first production implementation.
+- Extend the provider abstraction cleanly when additional LLM vendors are added after DeepSeek.
 - Decide whether Release 1 must support image-only scanned PDFs or only text-based documents.
 - Decide whether anonymous mode should also remove employer names, school names, and location references.
 - Decide whether email draft output should support plain text only or both plain text and HTML.

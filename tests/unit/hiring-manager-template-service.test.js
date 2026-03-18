@@ -210,3 +210,85 @@ test('employment history parses real PDF-style role blocks with company-plus-dat
     ]
   });
 });
+
+test('employment history parses date-first company groups with multiple dated roles and shared responsibilities', () => {
+  const employmentHistory = buildEmploymentHistory([
+    'Shawn Cong',
+    'Shanghai',
+    '',
+    'PROFESSIONAL EXPERIENCE',
+    '2018.03 - Present Hays Specialist Recruitment',
+    '2021.07 - Present Team Manager, Corporate & Digital IT & Cyber Security',
+    '2018.11 - 2021.06 Senior Consultant',
+    '2018.03 - 2018.11 Consultant',
+    'Responsibilities:',
+    'Talent Acquisition:',
+    '• Delivered end-to-end recruitment for IT and Digital leadership and specialist roles.',
+    '• Built long-term partnerships with enterprise clients across Healthcare and Financial Services.',
+    'Team Leadership & Development:',
+    '• Led, trained, and developed 3 consultants.',
+    '2016.05 - 2018.01 Robert Walters China',
+    '2016.05 - 2018.01 Consultant',
+    'Responsibilities:',
+    '• Conducted 360-degree recruitment for front and middle office roles.',
+    '2015.01 - 2016.01 Allegis Group China',
+    '2015.01 - 2016.01 Associate Consultant',
+    'Responsibilities:',
+    '• Focused on sourcing and recruiting software engineering talent.'
+  ].join('\n'));
+
+  assert.equal(employmentHistory.length, 5);
+  assert.deepEqual(employmentHistory[0], {
+    job_title: 'Team Manager, Corporate & Digital IT & Cyber Security',
+    company_name: 'Hays Specialist Recruitment',
+    start_date: '2021',
+    end_date: 'Present',
+    responsibilities: [
+      {
+        responsibility: 'Delivered end-to-end recruitment for IT and Digital leadership and specialist roles.'
+      },
+      {
+        responsibility: 'Built long-term partnerships with enterprise clients across Healthcare and Financial Services.'
+      },
+      {
+        responsibility: 'Led, trained, and developed 3 consultants.'
+      }
+    ]
+  });
+  assert.deepEqual(employmentHistory[1], {
+    job_title: 'Senior Consultant',
+    company_name: 'Hays Specialist Recruitment',
+    start_date: '2018',
+    end_date: '2021',
+    responsibilities: []
+  });
+  assert.deepEqual(employmentHistory[2], {
+    job_title: 'Consultant',
+    company_name: 'Hays Specialist Recruitment',
+    start_date: '2018',
+    end_date: '2018',
+    responsibilities: []
+  });
+  assert.deepEqual(employmentHistory[3], {
+    job_title: 'Consultant',
+    company_name: 'Robert Walters China',
+    start_date: '2016',
+    end_date: '2018',
+    responsibilities: [
+      {
+        responsibility: 'Conducted 360-degree recruitment for front and middle office roles.'
+      }
+    ]
+  });
+  assert.deepEqual(employmentHistory[4], {
+    job_title: 'Associate Consultant',
+    company_name: 'Allegis Group China',
+    start_date: '2015',
+    end_date: '2016',
+    responsibilities: [
+      {
+        responsibility: 'Focused on sourcing and recruiting software engineering talent.'
+      }
+    ]
+  });
+});

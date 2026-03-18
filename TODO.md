@@ -24,6 +24,7 @@ Mark a release complete only when the work is:
 - Add and maintain a Playwright smoke test harness for Electron so key UI flows can be validated continuously during Release 1 work.
 - Cover the primary Release 1 UI surfaces with Playwright smoke tests, starting with launch, settings navigation, and the summary/CV/JD review tabs.
 - Add and maintain fast isolated unit/service tests for document extraction, summary parsing, and Word export logic so data-path fixes do not require full Electron e2e runs.
+- Add file-backed regression tests for representative external CV/JD pairs so Word export can be validated against real recruiter documents without relying on the UI.
 - Extract raw text from TXT files.
 - Extract raw text from PDF files.
 - Extract raw text from DOCX files.
@@ -35,6 +36,7 @@ Mark a release complete only when the work is:
 - Implement prompt assembly using CV content, JD content, and the default summary template.
 - Add an LLM configuration page where the user can set provider, base URL, model, API key, and related generation settings.
 - Refine the app chrome so the workbench header does not expose model/status text and uses a compact configuration icon instead of a visible settings button.
+- Refresh persisted configuration when the settings view is opened so the displayed active Word template cannot drift from the saved runtime configuration.
 - Redesign the main recruiter workbench to use left-side navigation with one primary content panel for intake, CV review, JD review, and summary review so the app stays readable without heavy scrolling.
 - Reduce visual clutter in the workbench by replacing the multi-column box layout with clearer document-focused reading views.
 - Make the recruiter summary the default primary work surface, with candidate CV and JD available as supporting tabs in the main panel instead of competing layouts.
@@ -75,6 +77,7 @@ Mark a release complete only when the work is:
 - Fall back to a full-CV employment-history scan when the named experience section is too weak, so later roles are not lost because of PDF extraction or broken section boundaries.
 - Surface raw CV employment-source windows in the export debug trace so extraction-loss issues can be distinguished from parser or template issues.
 - Parse real PDF CV role blocks where company and date share one line and responsibilities are wrapped under en-dash bullets, so employment history matches the extracted source format used in testing.
+- Parse alternate real-world CV layouts where role sections are introduced by labels like `Responsibilities:` or different heading structures, so employment history does not collapse into a single fake role during Word export.
 - Add a local save/export action so the recruiter can generate the hiring-manager Word draft from the workbench.
 - Reveal the saved Word draft location clearly after export so the recruiter can confirm where the file was written.
 - Keep the last saved Word draft path visible in the workbench and provide a manual reveal action if automatic Finder reveal is missed.

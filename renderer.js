@@ -643,7 +643,7 @@ function getTemplateDisplayPath() {
     return 'Choose a Word .docx or .dotx template and save settings to copy it into the application template library.';
   }
 
-  return `Stored in app template library: ${state.settings.outputTemplatePath}`;
+  return `Active runtime template path: ${state.settings.outputTemplatePath}`;
 }
 
 function setView(view) {
@@ -883,13 +883,13 @@ function applyProviderPreset(providerId) {
   };
 }
 
-async function loadConfiguration() {
+async function loadConfiguration({ forceSettingsView = false } = {}) {
   state.providers = await window.recruitmentApi.getLlmProviders();
   const result = await window.recruitmentApi.loadLlmSettings();
   state.settings = result.settings;
   state.settingsValidation = result.validation;
 
-  if (!result.validation.isValid) {
+  if (forceSettingsView || !result.validation.isValid) {
     state.view = 'settings';
   }
 
@@ -1240,9 +1240,10 @@ function bindDropTarget(element, preferredSlot) {
 window.addEventListener('dragover', preventBrowserFileDrop);
 window.addEventListener('drop', preventBrowserFileDrop);
 
-elements.openSettingsView.addEventListener('click', () => {
+elements.openSettingsView.addEventListener('click', async () => {
   state.view = 'settings';
   render();
+  await loadConfiguration({ forceSettingsView: true });
 });
 
 elements.returnToWorkbenchButton.addEventListener('click', () => {

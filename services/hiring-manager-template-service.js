@@ -94,12 +94,14 @@ const YEAR_RANGE_PATTERN =
   /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–-]\s*(Present|Current|Now|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?)/i;
 const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b/i;
 const COMPANY_HINT_PATTERN =
-  /\b(group|company|corp|corporation|inc|inc\.|ltd|limited|llc|plc|pte|partners|solutions|technologies|technology|systems|bank|capital|consulting|advisors|advisory|university|college|school)\b/i;
+  /\b(group|company|corp|corporation|inc|inc\.|ltd|limited|llc|plc|pte|partners|solutions|technologies|technology|systems|bank|capital|consulting|advisors|advisory|recruitment|staffing|search|university|college|school)\b/i;
 const ROLE_TITLE_PATTERN =
   /\b(head|director|manager|lead|principal|engineer|developer|architect|consultant|analyst|specialist|officer|president|vice president|vp|associate|recruiter|coordinator|administrator|designer|product owner|product manager|program manager|project manager)\b/i;
 const ORGANIZATION_ACRONYM_PATTERN = /^(?:[A-Z][A-Z0-9&.-]{1,}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})$/;
 const PDF_PAGE_ARTIFACT_PATTERN = /^(?:[-–—=\s]*)?(?:page\s+)?\d+\s+of\s+\d+(?:\s*[-–—=\s]*)?$/i;
 const DECORATION_LINE_PATTERN = /^[-–—=\s]+$/;
+const EXPERIENCE_SUBHEADING_PATTERN =
+  /^(?:responsibilities|talent acquisition|team leadership(?:\s*&\s*development)?|system expert\/trainer|campaign(?:\s*&\s*initiatives)?|key achievement|key achievements|core expertise)\s*:?\s*$/i;
 const KNOWN_LOCATION_LINE_SET = new Set([
   'australia',
   'beijing',
@@ -234,29 +236,34 @@ function isResponsibilityBulletLine(value) {
 
 function isLikelySectionSubheading(value) {
   const normalized = normalizeTextBlock(value);
+  const candidate = normalized.replace(/:\s*$/, '');
 
-  if (!normalized) {
+  if (!candidate) {
     return false;
   }
 
+  if (EXPERIENCE_SUBHEADING_PATTERN.test(candidate)) {
+    return true;
+  }
+
   if (
-    isKnownCvSectionHeading(normalized) ||
-    isPdfArtifactLine(normalized) ||
-    looksLikeLocationLine(normalized) ||
-    isResponsibilityBulletLine(normalized) ||
-    YEAR_RANGE_PATTERN.test(normalized)
+    isKnownCvSectionHeading(candidate) ||
+    isPdfArtifactLine(candidate) ||
+    looksLikeLocationLine(candidate) ||
+    isResponsibilityBulletLine(candidate) ||
+    YEAR_RANGE_PATTERN.test(candidate)
   ) {
     return false;
   }
 
-  if (looksLikeRoleTitleLine(normalized) || looksLikeCompanyLine(normalized)) {
+  if (looksLikeRoleTitleLine(candidate) || looksLikeCompanyLine(candidate)) {
     return false;
   }
 
   return (
-    normalized.length <= 64 &&
-    /^[A-Z][A-Za-z0-9/&(),'\- ]+$/.test(normalized) &&
-    !/[.?!]$/.test(normalized)
+    candidate.length <= 64 &&
+    /^[A-Z][A-Za-z0-9/&(),'\- ]+$/.test(candidate) &&
+    !/[.?!]$/.test(candidate)
   );
 }
 
@@ -407,11 +414,19 @@ function splitRoleCompanyLine(value) {
 function looksLikeCompanyLine(value) {
   const normalized = normalizeTextBlock(value);
 
-  if (!normalized || looksLikeRoleTitleLine(normalized)) {
+  if (!normalized) {
     return false;
   }
 
-  return COMPANY_HINT_PATTERN.test(normalized) || ORGANIZATION_ACRONYM_PATTERN.test(normalized);
+  if (COMPANY_HINT_PATTERN.test(normalized)) {
+    return true;
+  }
+
+  if (looksLikeRoleTitleLine(normalized)) {
+    return false;
+  }
+
+  return ORGANIZATION_ACRONYM_PATTERN.test(normalized);
 }
 
 function looksLikeExperienceEntryLine(value) {
@@ -448,6 +463,28 @@ function splitCompanyDateLine(value) {
     companyName: companyPrefix && !looksLikeLocationLine(companyPrefix) ? companyPrefix : '',
     startDate,
     endDate
+  };
+}
+
+function splitLeadingDateLine(value) {
+  const normalized = normalizeTextBlock(value);
+  const match = normalized.match(YEAR_RANGE_PATTERN);
+
+  if (!match || typeof match.index !== 'number' || match.index !== 0) {
+    return null;
+  }
+
+  const matchedRange = match[0].trim();
+  const remainder = normalized
+    .slice(match[0].length)
+    .replace(/^[|,/-]\s*/, '')
+    .trim();
+  const { startDate, endDate } = extractDateRange(matchedRange);
+
+  return {
+    startDate,
+    endDate,
+    remainder
   };
 }
 
@@ -557,6 +594,133 @@ function detectExperienceEntry(lines, index) {
   return null;
 }
 
+function detectDatedRoleLine(value) {
+  const datedLine = splitLeadingDateLine(value);
+
+  if (!datedLine || !datedLine.remainder || !looksLikeRoleTitleLine(datedLine.remainder)) {
+    return null;
+  }
+
+  return datedLine;
+}
+
+function detectDatedCompanyRoleGroupStart(lines, index) {
+  const companyLine = splitLeadingDateLine(lines[index]);
+  const nextRoleLine = detectDatedRoleLine(lines[index + 1] || '');
+
+  if (!companyLine || !companyLine.remainder || !looksLikeCompanyLine(companyLine.remainder) || !nextRoleLine) {
+    return null;
+  }
+
+  return companyLine;
+}
+
+function collectExperienceResponsibilities(lines, startIndex) {
+  const responsibilities = [];
+  let cursor = startIndex;
+  let activeResponsibilityIndex = -1;
+
+  while (cursor < lines.length) {
+    const currentLine = lines[cursor];
+
+    if (isPdfArtifactLine(currentLine)) {
+      cursor += 1;
+      continue;
+    }
+
+    if (
+      detectDatedCompanyRoleGroupStart(lines, cursor) ||
+      detectExperienceEntry(lines, cursor) ||
+      detectDatedRoleLine(lines[cursor])
+    ) {
+      break;
+    }
+
+    if (splitCompanyDateLine(currentLine) && activeResponsibilityIndex >= 0) {
+      break;
+    }
+
+    if (isLikelySectionSubheading(currentLine)) {
+      cursor += 1;
+      continue;
+    }
+
+    if (isResponsibilityBulletLine(currentLine)) {
+      const cleanedResponsibility = cleanBulletPrefix(currentLine);
+
+      if (!isPdfArtifactLine(cleanedResponsibility)) {
+        responsibilities.push(cleanedResponsibility);
+        activeResponsibilityIndex = responsibilities.length - 1;
+      }
+
+      cursor += 1;
+      continue;
+    }
+
+    if (
+      activeResponsibilityIndex >= 0 &&
+      !looksLikeLocationLine(currentLine) &&
+      !isKnownCvSectionHeading(currentLine)
+    ) {
+      responsibilities[activeResponsibilityIndex] = `${responsibilities[activeResponsibilityIndex]} ${currentLine}`.trim();
+      cursor += 1;
+      continue;
+    }
+
+    if (!looksLikeLocationLine(currentLine) && !isKnownCvSectionHeading(currentLine)) {
+      responsibilities.push(currentLine);
+      activeResponsibilityIndex = responsibilities.length - 1;
+    }
+
+    cursor += 1;
+  }
+
+  return {
+    responsibilities,
+    cursor
+  };
+}
+
+function detectDatedCompanyRoleGroup(lines, index) {
+  const companyLine = detectDatedCompanyRoleGroupStart(lines, index);
+
+  if (!companyLine) {
+    return null;
+  }
+
+  const entries = [];
+  let cursor = index + 1;
+
+  while (cursor < lines.length) {
+    const roleLine = detectDatedRoleLine(lines[cursor]);
+
+    if (!roleLine) {
+      break;
+    }
+
+    entries.push({
+      jobTitle: roleLine.remainder,
+      companyName: companyLine.remainder,
+      startDate: roleLine.startDate,
+      endDate: roleLine.endDate,
+      responsibilities: []
+    });
+    cursor += 1;
+  }
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const collectedResponsibilities = collectExperienceResponsibilities(lines, cursor);
+  entries[0].responsibilities = collectedResponsibilities.responsibilities;
+
+  return {
+    entries,
+    cursor: collectedResponsibilities.cursor
+  };
+}
+
 function extractExperienceHistory(sectionLines = []) {
   const lines = sectionLines.map(normalizeTextBlock).filter(Boolean);
   const entries = [];
@@ -567,6 +731,14 @@ function extractExperienceHistory(sectionLines = []) {
 
     if (!line || isResponsibilityBulletLine(line) || isPdfArtifactLine(line)) {
       index += 1;
+      continue;
+    }
+
+    const groupedDateEntries = detectDatedCompanyRoleGroup(lines, index);
+
+    if (groupedDateEntries) {
+      entries.push(...groupedDateEntries.entries);
+      index = groupedDateEntries.cursor;
       continue;
     }
 
@@ -583,69 +755,16 @@ function extractExperienceHistory(sectionLines = []) {
       startDate,
       endDate
     } = detectedEntry;
-    let cursor = detectedEntry.cursor;
-    const responsibilities = [];
-    let activeResponsibilityIndex = -1;
-
-    while (cursor < lines.length) {
-      const currentLine = lines[cursor];
-
-      if (isPdfArtifactLine(currentLine)) {
-        cursor += 1;
-        continue;
-      }
-
-      if (detectExperienceEntry(lines, cursor)) {
-        break;
-      }
-
-      if (splitCompanyDateLine(currentLine) && activeResponsibilityIndex >= 0) {
-        break;
-      }
-
-      if (isLikelySectionSubheading(currentLine)) {
-        cursor += 1;
-        continue;
-      }
-
-      if (isResponsibilityBulletLine(currentLine)) {
-        const cleanedResponsibility = cleanBulletPrefix(currentLine);
-
-        if (!isPdfArtifactLine(cleanedResponsibility)) {
-          responsibilities.push(cleanedResponsibility);
-          activeResponsibilityIndex = responsibilities.length - 1;
-        }
-
-        cursor += 1;
-        continue;
-      }
-
-      if (
-        activeResponsibilityIndex >= 0 &&
-        !looksLikeLocationLine(currentLine) &&
-        !isKnownCvSectionHeading(currentLine)
-      ) {
-        responsibilities[activeResponsibilityIndex] = `${responsibilities[activeResponsibilityIndex]} ${currentLine}`.trim();
-        cursor += 1;
-        continue;
-      }
-
-      if (!looksLikeLocationLine(currentLine) && !isKnownCvSectionHeading(currentLine)) {
-        responsibilities.push(currentLine);
-        activeResponsibilityIndex = responsibilities.length - 1;
-      }
-
-      cursor += 1;
-    }
+    const collectedResponsibilities = collectExperienceResponsibilities(lines, detectedEntry.cursor);
 
     entries.push({
       jobTitle,
       companyName,
       startDate,
       endDate,
-      responsibilities
+      responsibilities: collectedResponsibilities.responsibilities
     });
-    index = cursor;
+    index = collectedResponsibilities.cursor;
   }
 
   if (entries.length > 0) {
@@ -749,7 +868,8 @@ function extractExperienceDetails(sectionLines = []) {
       return line &&
         !isResponsibilityBulletLine(line) &&
         !YEAR_RANGE_PATTERN.test(line) &&
-        !DEGREE_LINE_PATTERN.test(line);
+        !DEGREE_LINE_PATTERN.test(line) &&
+        !isLikelySectionSubheading(line);
     }) || '';
   }
 

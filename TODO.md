@@ -11,7 +11,7 @@ Mark a release complete only when the work is:
 - still working with the existing shipped workflow
 
 ## Release 1: Single Candidate Draft MVP
-- [-] Release 1 shipped, completed, and tested.
+- [x] Release 1 shipped, completed, and tested.
 - Create the initial Electron app layout for the recruiter workflow: source inputs, extracted text preview, generated summary, and primary actions.
 - Add a CV file picker that lets the recruiter select one local CV file.
 - Add a JD file picker that lets the recruiter select one local job description file.
@@ -97,8 +97,27 @@ Mark a release complete only when the work is:
 - Keep the app usable after a failed generation attempt so the recruiter can retry without re-importing files.
 - Test the complete Release 1 flow end to end with at least one CV and one JD.
 
-## Release 2: Approval Gate and Anonymous Mode
+## Release 2: Structured Briefing and Template-Guided Output
 - [ ] Release 2 shipped, completed, and tested.
+- Add support for selecting a local reference template file.
+- Add support for selecting a local template folder for future multi-template workflows.
+- Persist the recruiter's last selected template reference as a local preference.
+- Retrieve the relevant template content and include it in generation context.
+- Define a canonical structured candidate briefing schema that becomes the shared source of truth for both the recruiter summary and the hiring-manager Word document.
+- Use the LLM to extract grounded candidate facts, employment history, and role-fit content from the CV and JD into that structured briefing schema instead of relying only on heuristic field extraction.
+- Require source-grounding or evidence references for material candidate facts and fit claims so recruiter review can distinguish supported content from inferred content.
+- Enforce a structured output schema for the generated summary.
+- Detect malformed model output that does not match the expected summary structure.
+- Repair malformed output automatically when safe to do so.
+- Reject malformed output and show a useful error when repair is not safe.
+- Validate the LLM-produced briefing schema before rendering so missing required fields, inconsistent dates, and unsupported claims are caught before summary or Word export.
+- Derive both the recruiter review summary and the hiring-manager Word briefing from the same validated structured briefing object so the two outputs cannot drift.
+- Keep Word document rendering deterministic through the configured template engine rather than asking the LLM to generate `.docx` content or layout directly.
+- Let the recruiter switch between the built-in default template and a local reference template.
+- Test output consistency across at least two different template references.
+
+## Release 3: Approval Gate and Anonymous Mode
+- [ ] Release 3 shipped, completed, and tested.
 - Add a recruiter control to choose named mode or anonymous mode before generation.
 - Implement masking for candidate full name in anonymous mode.
 - Implement masking for email address in anonymous mode.
@@ -111,19 +130,6 @@ Mark a release complete only when the work is:
 - Require explicit recruiter approval before any sharing action is enabled.
 - Prevent accidental sharing of an unapproved draft.
 - Test both named and anonymous generation flows end to end.
-
-## Release 3: Template-Guided Consistency with Reference Inputs
-- [ ] Release 3 shipped, completed, and tested.
-- Add support for selecting a local reference template file.
-- Add support for selecting a local template folder for future multi-template workflows.
-- Persist the recruiter's last selected template reference as a local preference.
-- Retrieve the relevant template content and include it in generation context.
-- Enforce a structured output schema for the generated summary.
-- Detect malformed model output that does not match the expected summary structure.
-- Repair malformed output automatically when safe to do so.
-- Reject malformed output and show a useful error when repair is not safe.
-- Let the recruiter switch between the built-in default template and a local reference template.
-- Test output consistency across at least two different template references.
 
 ## Release 4: Email Draft Handoff
 - [ ] Release 4 shipped, completed, and tested.

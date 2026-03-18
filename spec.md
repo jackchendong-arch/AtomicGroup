@@ -3,7 +3,7 @@
 ## Document Status
 - Owner: Product / Founding Team
 - Status: Draft v0.1
-- Last updated: 2026-03-17
+- Last updated: 2026-03-18
 - Product surface: Desktop app (Electron)
 
 ## Product Summary
@@ -196,6 +196,134 @@ This is the initial output structure to standardize against before a more flexib
 [Suggested recruiter action]
 ```
 
+## Current Implemented Design
+The current implementation uses a hybrid flow:
+
+1. The app extracts raw text from the CV and JD locally.
+2. The LLM generates the recruiter-facing candidate summary from CV text, JD text, and the default summary template.
+3. The hiring-manager Word document is populated separately through deterministic field extraction and Word-template rendering.
+
+In practice, this means:
+- The recruiter summary is LLM-generated.
+- The Word briefing layout is controlled by the configured Word template.
+- Structured candidate facts used for Word export are currently derived mostly through local parsing and rule-based extraction.
+
+Strengths of the current design:
+- Word output layout is stable and controlled by the template.
+- The final `.docx` rendering is deterministic and testable.
+- Failures in template population are easier to debug than free-form generated documents.
+
+Limitations of the current design:
+- CV parsing is brittle when document layouts vary.
+- Recruiter summary content and Word-briefing content can drift because they are not generated from the same structured source of truth.
+- Employment history and profile fields depend on heuristics that are harder to generalize across real-world CV formats.
+
+## Target Architecture Direction: Grounded Structured Briefing Model
+The preferred future design is not to ask the LLM to generate a Word document directly. Instead, the app should use the LLM to produce a grounded structured briefing model, then render both the recruiter summary and the hiring-manager Word document from that same validated model.
+
+### Core Principle
+- The LLM should generate structured content, not final Word document layout.
+- The Word template should remain responsible for document format, visual design, and layout consistency.
+
+### Proposed End-to-End Flow
+1. Extract raw text from CV and JD locally.
+2. Normalize and segment the source text into stable input blocks for prompting and validation.
+3. Ask the LLM to produce a strict structured briefing object from CV + JD + template guidance.
+4. Require evidence or source-grounding for material facts and fit claims.
+5. Validate the structured output before any rendering step.
+6. Render the recruiter summary from the validated structured object.
+7. Render the hiring-manager Word briefing from that same structured object through the configured Word template.
+8. Keep recruiter review and approval as a mandatory human step before sharing.
+
+### Recommended Structured Briefing Schema
+The exact field set can evolve, but the data model should be explicit and stable. A representative structure is:
+
+```json
+{
+  "candidate": {
+    "name": "",
+    "location": "",
+    "nationality": "",
+    "languages": [],
+    "notice_period": "",
+    "education": []
+  },
+  "role": {
+    "title": "",
+    "company": ""
+  },
+  "fit_summary": "",
+  "relevant_experience": "",
+  "match_requirements": [],
+  "potential_concerns": [],
+  "recommended_next_step": "",
+  "employment_history": [
+    {
+      "job_title": "",
+      "company_name": "",
+      "start_date": "",
+      "end_date": "",
+      "responsibilities": [],
+      "evidence_refs": []
+    }
+  ],
+  "evidence_refs": []
+}
+```
+
+### Validation Expectations
+Before the app renders either the recruiter summary or the Word briefing, it should validate:
+- required fields are present
+- dates are internally consistent
+- employers, titles, and profile facts are grounded in the source documents
+- fit claims are evidence-based rather than invented
+- output can be mapped fully into the chosen summary template and Word template
+
+### Why the LLM Should Not Generate the Word Document Directly
+Direct LLM generation of the final Word document would weaken the parts of the system that need to stay deterministic.
+
+Risks of direct LLM-to-Word generation:
+- layout fidelity becomes unreliable
+- template conformity becomes hard to enforce
+- formatting regressions are harder to debug
+- recruiter trust drops when the visual output is inconsistent
+- automated testing becomes weaker because content and layout are entangled
+
+The preferred model is:
+- LLM for interpretation and structured extraction
+- deterministic template engine for final Word rendering
+
+## Design Comparison
+### Current Implemented Approach
+- LLM generates the recruiter summary.
+- Local heuristics extract most structured fields for Word export.
+- Word template rendering is deterministic.
+
+Tradeoffs:
+- strong template fidelity
+- simpler debugging
+- weaker handling of diverse CV layouts
+- higher risk that the recruiter summary and Word briefing diverge
+
+### Target Structured-Briefing Approach
+- LLM extracts a grounded structured candidate briefing model from CV and JD.
+- Both recruiter summary and Word briefing are rendered from the same validated data object.
+- Word layout remains deterministic through the template engine.
+
+Tradeoffs:
+- stronger handling of messy real-world CVs and nuanced role-fit interpretation
+- better consistency between recruiter summary and hiring-manager briefing
+- better basis for evidence tracing and future QA checks
+- higher implementation complexity
+- higher need for schema validation and hallucination safeguards
+
+## Recommended Direction
+The recommended next architecture step is:
+- keep the existing Word-template rendering engine
+- replace brittle rule-based profile extraction with LLM-assisted structured extraction
+- make the recruiter summary and hiring-manager Word briefing two renderings of the same validated structured briefing object
+- preserve deterministic Word templating instead of allowing the LLM to control final document layout
+
 ## Incremental Delivery Plan
 The goal is to ship only slices that are already useful to a headhunter. Each release should be deployable without breaking the existing workflow.
 
@@ -224,7 +352,26 @@ Acceptance criteria:
 - User can edit the summary and copy it for manual use.
 - The app remains usable if generation fails once.
 
-### Release 2: Approval Gate and Anonymous Mode
+### Release 2: Structured Briefing and Template-Guided Output
+Value:
+- The output becomes closer to how a real search firm wants profiles formatted, and the hiring-manager Word briefing becomes grounded in the same structured model as the recruiter summary.
+
+Scope:
+- User can select a reference template file or template folder
+- Retrieval of relevant template content to guide generation
+- Canonical structured candidate briefing schema shared by summary and Word output
+- LLM-assisted extraction of grounded candidate facts, employment history, and fit content into that schema
+- Output schema validation and repair
+- Template selection persisted as a user preference
+
+Acceptance criteria:
+- User can choose a template reference from local storage.
+- Both recruiter summary and hiring-manager Word output derive from the same validated structured briefing object.
+- Material candidate facts and fit claims can be traced back to source evidence.
+- Output follows the chosen structure with consistent section ordering.
+- Broken or incomplete model output is detected and repaired or rejected.
+
+### Release 3: Approval Gate and Anonymous Mode
 Value:
 - The workflow becomes safe enough for client-facing use cases where recruiter review and anonymization matter.
 
@@ -240,21 +387,6 @@ Acceptance criteria:
 - Anonymous mode masks the defined core PII set.
 - User must explicitly approve a draft before share actions are available.
 - User can still edit the output after generation and before approval.
-
-### Release 3: Template-Guided Consistency with Reference Inputs
-Value:
-- The output becomes closer to how a real search firm wants profiles formatted.
-
-Scope:
-- User can select a reference template file or template folder
-- Retrieval of relevant template content to guide generation
-- Output schema validation and repair
-- Template selection persisted as a user preference
-
-Acceptance criteria:
-- User can choose a template reference from local storage.
-- Output follows the chosen structure with consistent section ordering.
-- Broken or incomplete model output is detected and repaired or rejected.
 
 ### Release 4: Email Draft Handoff
 Value:
@@ -383,8 +515,8 @@ This separation reduces rework when the model provider, template system, or emai
 
 ## Recommended Build Order
 1. Release 1: Single Candidate Draft MVP
-2. Release 2: Approval Gate and Anonymous Mode
-3. Release 3: Template-Guided Consistency with Reference Inputs
+2. Release 2: Structured Briefing and Template-Guided Output
+3. Release 3: Approval Gate and Anonymous Mode
 4. Release 4: Email Draft Handoff
 5. Release 5: Local Folder Intake and Job Workspace
 6. Release 6: Production Hardening

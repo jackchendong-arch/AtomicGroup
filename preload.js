@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('recruitmentApi', {
   pickDocument(payload) {
@@ -30,5 +30,8 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   },
   writeClipboard(value) {
     return ipcRenderer.invoke('clipboard:write-text', value);
+  },
+  getPathForDroppedFile(file) {
+    return file?.path || webUtils.getPathForFile(file) || '';
   }
 });

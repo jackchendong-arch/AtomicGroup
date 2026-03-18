@@ -13,12 +13,46 @@ const STOP_WORDS = new Set([
   'were', 'will', 'with', 'you', 'your'
 ]);
 
+const GENERIC_CANDIDATE_FILE_NAMES = new Set([
+  'candidate',
+  'candidates',
+  'candidate cv',
+  'candidate resume',
+  'candidate profile',
+  'cv',
+  'profile',
+  'resume',
+  'resumes',
+  'curriculum vitae'
+]);
+
+const GENERIC_ROLE_HEADINGS = new Set([
+  'about the job',
+  'about this job',
+  'job description',
+  'job summary',
+  'overview',
+  'responsibilities',
+  'responsibility',
+  'requirements',
+  'about the role',
+  'about us',
+  'about company',
+  'about the company'
+]);
+
 function cleanLine(value) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
 function fillTemplate(template, replacements) {
   return template.replace(/\{\{([a-z_]+)\}\}/g, (_match, key) => replacements[key] ?? '');
+}
+
+function stripMarkdownEmphasis(text) {
+  return String(text || '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1');
 }
 
 function splitLines(text) {
@@ -47,6 +81,10 @@ function uniqueTokens(text) {
   return [...new Set(tokenize(text))];
 }
 
+function normalizeLooseKey(value) {
+  return cleanLine(String(value || '').toLowerCase().replace(/[_-]+/g, ' '));
+}
+
 function extractCandidateName(cvText, fileName) {
   const lines = splitLines(cvText);
 
@@ -62,8 +100,9 @@ function extractCandidateName(cvText, fileName) {
 
   const baseName = fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
   const words = baseName.split(/\s+/).filter(Boolean);
+  const normalizedBaseName = normalizeLooseKey(baseName);
 
-  if (words.length > 0) {
+  if (words.length > 0 && !GENERIC_CANDIDATE_FILE_NAMES.has(normalizedBaseName)) {
     return words
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
@@ -77,16 +116,31 @@ function extractRoleTitle(jdText, fileName) {
   const labeled = lines.find((line) => /^(job title|role|position)\s*:/i.test(line));
 
   if (labeled) {
-    return labeled.split(':').slice(1).join(':').trim();
+    const labeledValue = labeled.split(':').slice(1).join(':').trim();
+
+    if (labeledValue && !GENERIC_ROLE_HEADINGS.has(normalizeLooseKey(labeledValue))) {
+      return labeledValue;
+    }
   }
 
-  const firstLongLine = lines.find((line) => line.length >= 8 && line.length <= 90);
+  const firstLongLine = lines.find((line) => {
+    const normalizedLine = normalizeLooseKey(line);
+
+    return (
+      line.length >= 5 &&
+      line.length <= 120 &&
+      !GENERIC_ROLE_HEADINGS.has(normalizedLine) &&
+      !/^(company|organization|client|employer|hiring manager)\s*:/i.test(line) &&
+      !/^[-*•]\s+/.test(line)
+    );
+  });
 
   if (firstLongLine) {
     return firstLongLine;
   }
 
-  return fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+  const fallbackName = fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+  return GENERIC_ROLE_HEADINGS.has(normalizeLooseKey(fallbackName)) ? 'Role' : fallbackName;
 }
 
 function extractRequirements(jdText) {
@@ -264,6 +318,9 @@ function buildSummaryPrompt({ candidateName, roleTitle, cvText, jdText }) {
     'Use only evidence supported by the CV against the JD.',
     'Call out strengths, likely fit, and gaps without overstating certainty.',
     'Return only the completed template and keep the section order unchanged.',
+    'Keep `Candidate` and `Target Role` as single-line label/value entries.',
+    'Use plain bullets beginning with `- ` where the template expects lists.',
+    'Do not add a report title, markdown bold, italics, tables, or decorative formatting.',
     '',
     'Template:',
     DEFAULT_TEMPLATE,
@@ -318,6 +375,64 @@ function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt }) {
   };
 }
 
+function normalizeGeneratedSummary(summary) {
+  const sourceLines = String(summary || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n');
+  const normalizedLines = [];
+
+  for (let index = 0; index < sourceLines.length; index += 1) {
+    const line = cleanLine(stripMarkdownEmphasis(sourceLines[index]));
+    const heading = line.replace(/^#+\s*/, '').trim();
+
+    if (!line) {
+      if (normalizedLines[normalizedLines.length - 1] !== '') {
+        normalizedLines.push('');
+      }
+      continue;
+    }
+
+    if (/^candidate profile summary$/i.test(heading)) {
+      continue;
+    }
+
+    if (/^candidate$/i.test(heading) || /^target role$/i.test(heading)) {
+      let value = '';
+
+      while (index + 1 < sourceLines.length) {
+        const nextLine = cleanLine(stripMarkdownEmphasis(sourceLines[index + 1]));
+        index += 1;
+
+        if (!nextLine) {
+          continue;
+        }
+
+        value = nextLine;
+        break;
+      }
+
+      if (value) {
+        normalizedLines.push(`${/^candidate$/i.test(heading) ? 'Candidate' : 'Target Role'}: ${value}`);
+      }
+
+      continue;
+    }
+
+    if (/^why this candidate may be a fit$/i.test(heading)) {
+      normalizedLines.push('## Fit Summary');
+      continue;
+    }
+
+    normalizedLines.push(line);
+  }
+
+  return normalizedLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function generateSummaryDraft({ cvDocument, jdDocument }) {
   const candidateName = extractCandidateName(cvDocument.text, cvDocument.file.name);
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
@@ -347,7 +462,7 @@ function generateSummaryDraft({ cvDocument, jdDocument }) {
     ? experienceLines.map((line) => `- ${line}`)
     : ['- Relevant experience could not be confidently extracted from the current CV text.'];
 
-  const summary = fillTemplate(DEFAULT_TEMPLATE, {
+  const summary = normalizeGeneratedSummary(fillTemplate(DEFAULT_TEMPLATE, {
     candidate_name: candidateName,
     role_title: roleTitle,
     fit_summary: fitSummary,
@@ -355,7 +470,7 @@ function generateSummaryDraft({ cvDocument, jdDocument }) {
     match_requirements: matchLines.join('\n'),
     potential_concerns: concernLines.join('\n'),
     recommended_next_step: recommendedNextStep
-  });
+  }));
 
   return {
     templateLabel: DEFAULT_TEMPLATE_LABEL,
@@ -374,5 +489,6 @@ module.exports = {
   buildSummaryPrompt,
   extractCandidateName,
   extractRoleTitle,
-  generateSummaryDraft
+  generateSummaryDraft,
+  normalizeGeneratedSummary
 };

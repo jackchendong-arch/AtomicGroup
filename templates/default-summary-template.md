@@ -1,13 +1,8 @@
-# Candidate Profile Summary
+Candidate: {{candidate_name}}
+Target Role: {{role_title}}
 
-## Candidate
-{{candidate_name}}
-
-## Target Role
-{{role_title}}
-
-## Why This Candidate May Be a Fit
-{{fit_summary}}
+## Fit Summary
+ d v{{fit_summary}}
 
 ## Relevant Experience
 {{relevant_experience}}

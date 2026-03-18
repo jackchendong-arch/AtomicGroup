@@ -29,3 +29,15 @@
   - `[x]` completed after user confirmation
 - Do not mark individual task bullets with status markers unless the user explicitly asks for that.
 - For future changes, add or revise TODO items as needed before implementing the change so the backlog stays authoritative.
+
+## Testing Rule
+- Prefer fast isolated unit/service tests first for parser, extraction, templating, and Word export logic.
+- Use Playwright primarily for visible Electron UI behavior, navigation, and end-to-end workflow regression coverage.
+- When a fix is in backend or document-processing code, avoid relying only on e2e runs if a direct service-level test or smoke script can validate it faster.
+- Prefer Playwright for automated UI and workflow validation as the app evolves.
+- For work that changes navigation, import flows, summary review, or other visible Electron behavior, add or maintain Playwright coverage where practical.
+- Keep the Playwright smoke suite runnable during active development so UI regressions are caught early.
+
+## UI Rule
+- Prefer UI choices that are neat, clean, and useful over decorative or repetitive chrome.
+- Remove or collapse metadata, helper copy, and controls that do not materially help the recruiter complete the current task.

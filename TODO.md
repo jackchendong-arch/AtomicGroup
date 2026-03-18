@@ -16,9 +16,14 @@ Mark a release complete only when the work is:
 - Add a CV file picker that lets the recruiter select one local CV file.
 - Add a JD file picker that lets the recruiter select one local job description file.
 - Add drag-and-drop support for one CV file and one JD file.
+- Keep drag-and-drop intake working after UI refactors and Electron upgrades by resolving dropped file paths through the preload bridge instead of relying on deprecated renderer-only file path access.
+- Harden drag-and-drop source intake against Finder/macOS drop quirks by supporting multiple dropped-file path resolution strategies and preventing parent handlers from swallowing valid drop events.
 - Add file type validation for PDF, DOCX, and TXT inputs.
 - Show imported file metadata for each input: file name, file type, and import status.
 - Let the recruiter explicitly assign or correct whether an uploaded file is the CV or the JD.
+- Add and maintain a Playwright smoke test harness for Electron so key UI flows can be validated continuously during Release 1 work.
+- Cover the primary Release 1 UI surfaces with Playwright smoke tests, starting with launch, settings navigation, and the summary/CV/JD review tabs.
+- Add and maintain fast isolated unit/service tests for document extraction, summary parsing, and Word export logic so data-path fixes do not require full Electron e2e runs.
 - Extract raw text from TXT files.
 - Extract raw text from PDF files.
 - Extract raw text from DOCX files.
@@ -30,6 +35,26 @@ Mark a release complete only when the work is:
 - Implement prompt assembly using CV content, JD content, and the default summary template.
 - Add an LLM configuration page where the user can set provider, base URL, model, API key, and related generation settings.
 - Refine the app chrome so the workbench header does not expose model/status text and uses a compact configuration icon instead of a visible settings button.
+- Redesign the main recruiter workbench to use left-side navigation with one primary content panel for intake, CV review, JD review, and summary review so the app stays readable without heavy scrolling.
+- Reduce visual clutter in the workbench by replacing the multi-column box layout with clearer document-focused reading views.
+- Make the recruiter summary the default primary work surface, with candidate CV and JD available as supporting tabs in the main panel instead of competing layouts.
+- Enlarge the drag-and-drop intake area and place it above the manual document selection controls so source loading is clearer and faster for recruiters.
+- Polish the active Release 1 workbench so button placement, spacing, and copy density feel aligned instead of scattered or cramped.
+- Reorganize the left intake rail so `Choose CV` and `Choose JD` sit directly below the drag-and-drop area as the primary import actions, with the remaining source information presented as aligned read-only status blocks.
+- Compress the top window chrome into a slimmer app bar so more vertical space is available for the recruiter workbench.
+- Move the `AI Recruitment Intelligence` label to the right side of the title bar so the left side stays cleaner for the workbench shell.
+- Compress the left intake rail header so the source-loading area gives more room to the primary import controls and status content.
+- Simplify the left intake rail metadata so each source shows a cleaner file label and one compact status line instead of multiple low-value metadata pills.
+- Simplify the left intake rail further so the source cards focus on the selected file name and only surface helper or error text when it is actually useful.
+- Remove redundant file/type/import metadata rows from the CV and JD review panels so those tabs stay focused on the readable document content.
+- Replace the generic CV pane heading heuristics with a CV-specific formatter so role history, dates, and bullets render cleanly without falsely bolding ordinary lines as position titles.
+- Compress the primary summary panel chrome so the editable content area gets more of the panel height and less space is lost to helper text and duplicated controls.
+- Restyle the primary output navigation as compact browser-like tabs so `Candidate Summary`, `Candidate CV`, and `Job Description` feel like content tabs instead of oversized action buttons.
+- Remove redundant workbench panel kickers and title labels that do not add meaning so the UI stays neat, clean, and focused on the actual task content.
+- Render the primary CV, JD, and candidate summary panes as formatted rich-text documents so headings, spacing, and emphasis are easier to read than raw text blocks.
+- Tighten the default candidate summary template so the recruiter draft uses cleaner label-value fields and plain bullets instead of redundant titles and markdown-heavy emphasis.
+- Keep the summary, CV, and JD panes scrollable within their own panels so the recruiter does not need to scroll the full window to read long content.
+- Show visible generation progress feedback while the LLM summary request is running so the recruiter can tell the draft is actively being produced.
 - Redesign the configuration page with a left-side navigation panel and separate sections for LLM settings and candidate summary template settings.
 - Persist the LLM configuration locally so the user does not need to re-enter it on each launch.
 - Implement an LLM-agnostic provider interface so summary generation is not hard-wired to a single vendor.
@@ -41,6 +66,15 @@ Mark a release complete only when the work is:
 - Keep the in-app recruiter review summary on the default text structure while making the Word template the configured output format for future hiring-manager sharing.
 - Generate a hiring-manager Word document from the configured template using the recruiter-reviewed summary content.
 - Make Word draft export populate template placeholders reliably from the recruiter-reviewed summary even when the summary headings are edited or lose markdown markers.
+- Improve hiring-manager Word draft field derivation so candidate name, role title, and other mapped template values prefer strong summary/CV/JD evidence over weak filename or generic-heading fallbacks.
+- Surface which configured Word template fields were left blank during export so missing population can be diagnosed from the in-app debug trace.
+- Support full employment-history population in the hiring-manager Word draft by extending both the exporter data model and the AtomicGroup source template instead of limiting export to a single extracted role block.
+- Harden employment-history extraction for Word export so location lines are not mistaken for company names and PDF/page artifact lines are not emitted as role responsibilities.
+- Add focused regression coverage for employment-history parsing so location-only lines and PDF/page artifacts do not reappear in Word export.
+- Surface derived employment-history entries in the Word export debug trace so template-population gaps can be diagnosed from the actual parsed CV data.
+- Fall back to a full-CV employment-history scan when the named experience section is too weak, so later roles are not lost because of PDF extraction or broken section boundaries.
+- Surface raw CV employment-source windows in the export debug trace so extraction-loss issues can be distinguished from parser or template issues.
+- Parse real PDF CV role blocks where company and date share one line and responsibilities are wrapped under en-dash bullets, so employment history matches the extracted source format used in testing.
 - Add a local save/export action so the recruiter can generate the hiring-manager Word draft from the workbench.
 - Reveal the saved Word draft location clearly after export so the recruiter can confirm where the file was written.
 - Keep the last saved Word draft path visible in the workbench and provide a manual reveal action if automatic Finder reveal is missed.

@@ -6,11 +6,12 @@ const { importDocument, SUPPORTED_EXTENSIONS } = require('./services/document-se
 const {
   buildSuggestedOutputFilename,
   buildTemplateData,
+  describeEmploymentExtraction,
   renderHiringManagerWordDocument
 } = require('./services/hiring-manager-template-service');
 const { generateWithConfiguredProvider, getProviderOptions } = require('./services/llm-service');
 const { LlmSettingsStore, validateSettings } = require('./services/llm-settings-service');
-const { buildSummaryRequest } = require('./services/summary-service');
+const { buildSummaryRequest, normalizeGeneratedSummary } = require('./services/summary-service');
 
 let settingsStore;
 const EXPORT_DEBUG_LOG_PATH = path.join(__dirname, 'debug', 'word-draft-export.log');
@@ -77,8 +78,13 @@ async function appendExportDebugLog(lines) {
 
 function getSettingsStore() {
   if (!settingsStore) {
+    const userDataPath = process.env.ELECTRON_USER_DATA_PATH &&
+      process.env.ELECTRON_USER_DATA_PATH.trim()
+      ? path.resolve(process.env.ELECTRON_USER_DATA_PATH)
+      : app.getPath('userData');
+
     settingsStore = new LlmSettingsStore({
-      userDataPath: app.getPath('userData'),
+      userDataPath,
       safeStorage
     });
   }
@@ -92,6 +98,8 @@ function createWindow() {
     height: 960,
     minWidth: 1180,
     minHeight: 760,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    backgroundColor: '#eef2f3',
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
@@ -210,10 +218,37 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument
   });
+  const employmentDebug = describeEmploymentExtraction(payload.cvDocument);
   appendDebug(`Configured template: ${settings.outputTemplatePath}`);
   appendDebug(`Template extension: ${settings.outputTemplateExtension}`);
+  appendDebug(`CV source file: ${employmentDebug.cvFileName || '(unknown)'}`);
+  appendDebug(`CV line count: ${employmentDebug.cvLineCount}`);
+  appendDebug(`Experience section line count: ${employmentDebug.experienceSectionLineCount}`);
+
+  if (employmentDebug.experienceSectionPreview.length > 0) {
+    appendDebug(`Experience section preview: ${employmentDebug.experienceSectionPreview.join(' || ')}`);
+  }
+
+  employmentDebug.dateWindows.forEach((window, index) => {
+    appendDebug(`CV date window ${index + 1}: ${window}`);
+  });
+
   appendDebug(`Derived candidate name: ${templateData.candidate_name}`);
   appendDebug(`Derived role title: ${templateData.role_title}`);
+  appendDebug(`Derived employment history count: ${templateData.employment_history.length}`);
+
+  templateData.employment_history.forEach((entry, index) => {
+    appendDebug(
+      `Employment entry ${index + 1}: title="${entry.job_title || ''}" company="${entry.company_name || ''}" dates="${[entry.start_date, entry.end_date].filter(Boolean).join(' - ')}" responsibilities=${entry.responsibilities.length}`
+    );
+
+    entry.responsibilities.forEach((responsibility, responsibilityIndex) => {
+      appendDebug(
+        `Employment entry ${index + 1} responsibility ${responsibilityIndex + 1}: ${responsibility.responsibility || ''}`
+      );
+    });
+  });
+
   appendDebug(`Summary length: ${payload.summary.trim().length} characters`);
   const suggestedName = buildSuggestedOutputFilename(templateData);
   appendDebug(`Suggested output filename: ${suggestedName}`);
@@ -242,12 +277,17 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   appendDebug(`Resolved output path: ${outputPath}`);
 
   try {
-    await renderHiringManagerWordDocument({
+    const renderResult = await renderHiringManagerWordDocument({
       templatePath: settings.outputTemplatePath,
       outputPath,
       templateData
     });
     appendDebug('Word template rendered successfully.');
+    appendDebug(`Template placeholders populated: ${renderResult.populatedTemplateTags.map((tag) => `{{${tag}}}`).join(', ') || '(none)'}`);
+
+    if (renderResult.blankTemplateTags.length > 0) {
+      appendDebug(`Template placeholders left blank: ${renderResult.blankTemplateTags.map((tag) => `{{${tag}}}`).join(', ')}`);
+    }
 
     await fs.access(outputPath);
     const stat = await fs.stat(outputPath);
@@ -296,7 +336,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 
   return {
     templateLabel: request.templateLabel,
-    summary: result.text,
+    summary: normalizeGeneratedSummary(result.text),
     prompt: request.prompt,
     providerLabel: settings.providerLabel,
     model: settings.model

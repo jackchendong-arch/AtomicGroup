@@ -4,10 +4,15 @@
   "description": "Minimal Hello World Electron app",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "devDependencies": {
-    "electron": "^37.2.0"
+    "@playwright/test": "^1.58.2",
+    "electron": "^37.2.0",
+    "playwright": "^1.58.2"
   },
   "dependencies": {
     "docxtemplater": "^3.68.3",

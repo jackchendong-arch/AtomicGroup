@@ -289,18 +289,20 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 8px 12px;
+        padding: 6px 10px;
         border-radius: 999px;
-        background: var(--teal-soft);
+        border: 1px solid rgba(30, 108, 114, 0.1);
+        background: rgba(30, 108, 114, 0.08);
         color: var(--teal);
-        font-size: 0.8rem;
+        font-size: 0.74rem;
         font-weight: 700;
+        letter-spacing: 0.01em;
         white-space: nowrap;
       }
 
       .dropzone {
         margin: 18px 0 16px;
-        padding: 26px 20px;
+        padding: 22px 18px;
         border: 1.5px dashed rgba(23, 32, 51, 0.2);
         border-radius: 24px;
         background:
@@ -311,14 +313,15 @@
 
       .dropzone strong {
         display: block;
-        margin-bottom: 10px;
-        font-size: 1.05rem;
+        margin-bottom: 6px;
+        font-size: 1rem;
       }
 
       .dropzone p {
         margin: 0;
         color: var(--muted);
-        line-height: 1.7;
+        font-size: 0.88rem;
+        line-height: 1.45;
       }
 
       .source-stack {
@@ -329,38 +332,24 @@
 
       .source-card,
       .template-card {
-        padding: 16px;
+        padding: 14px 15px;
         border: 1px solid var(--line);
         border-radius: 20px;
         background: rgba(255, 255, 255, 0.74);
       }
 
       .source-title {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 10px;
-        align-items: start;
-        margin-bottom: 8px;
+        display: block;
+        margin-bottom: 6px;
       }
 
       .source-title-block {
-        display: grid;
-        gap: 4px;
+        display: block;
       }
 
       .source-title h3 {
         margin: 0;
-        font-size: 1rem;
-      }
-
-      .source-badge {
-        width: fit-content;
-        padding: 4px 9px;
-        border-radius: 999px;
-        background: var(--accent-soft);
-        color: var(--accent-deep);
-        font-size: 0.76rem;
-        font-weight: 700;
+        font-size: 0.96rem;
       }
 
       .summary-toolbar,
@@ -370,7 +359,7 @@
       .source-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 8px;
         align-items: center;
       }
 
@@ -405,6 +394,13 @@
         width: 100%;
       }
 
+      .source-management {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
       .pill {
         display: inline-flex;
         align-items: center;
@@ -425,6 +421,8 @@
       .field-note {
         word-break: break-word;
         min-height: 0;
+        font-size: 0.85rem;
+        line-height: 1.45;
       }
 
       .field-note:empty {
@@ -433,8 +431,8 @@
 
       .intake-actions {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
         margin-top: 14px;
       }
 
@@ -552,7 +550,8 @@
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        align-items: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
       }
 
       .document-reader {
@@ -584,7 +583,7 @@
 
       .summary-message {
         margin: 0;
-        font-size: 0.86rem;
+        font-size: 0.82rem;
         line-height: 1.45;
       }
 
@@ -638,7 +637,7 @@
 
       .summary-note {
         margin: 0;
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         line-height: 1.35;
       }
 
@@ -787,18 +786,18 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 11px 14px;
-        border-radius: 14px;
+        padding: 9px 12px;
+        border-radius: 12px;
         font: inherit;
-        font-size: 0.92rem;
+        font-size: 0.84rem;
         font-weight: 700;
         cursor: pointer;
         transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
       }
 
       .btn-inline {
-        padding: 8px 12px;
-        font-size: 0.82rem;
+        padding: 7px 10px;
+        font-size: 0.78rem;
         border-radius: 999px;
       }
 
@@ -806,19 +805,14 @@
         justify-content: flex-end;
       }
 
-      .intake-actions .btn-primary,
-      .intake-actions .btn-secondary,
-      .summary-actions .btn-primary,
-      .summary-actions .btn-secondary,
-      .summary-actions .btn-ghost {
+      .intake-actions .btn-primary {
         width: 100%;
       }
 
       .summary-actions {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
-        margin-left: auto;
       }
 
       .btn-primary {
@@ -1046,6 +1040,13 @@
           </div>
           <div class="app-bar-actions">
             <span class="app-tag">AI Recruitment Intelligence</span>
+            <button class="icon-button" id="reset-workspace-button" type="button" aria-label="Reset workspace" title="Reset workspace">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7" />
+                <path d="M3 4v5h5" />
+              </svg>
+              <span class="sr-only">Reset workspace</span>
+            </button>
             <button class="icon-button" id="open-settings-view" type="button" aria-label="Open configuration">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="3.5"></circle>
@@ -1063,12 +1064,12 @@
                 <div class="intake-heading">
                   <h2>Load Sources</h2>
                 </div>
-                <span class="status-chip" id="source-panel-status">Awaiting Documents</span>
+                <span class="status-chip" id="source-panel-status">0 / 2 Loaded</span>
               </div>
 
               <div class="dropzone" id="dropzone">
-                <strong>Drop CV and JD here</strong>
-                <p>Drop onto a source card to assign directly, or drop two files here to load both.</p>
+                <strong>Drop CV + JD</strong>
+                <p>Drop two files here, or drop one file onto a card.</p>
               </div>
 
               <div class="primary-import-actions">
@@ -1081,38 +1082,37 @@
                   <div class="source-title">
                     <div class="source-title-block">
                       <h3>Candidate CV</h3>
-                      <span class="source-badge">Required</span>
                     </div>
-                    <button class="btn-ghost btn-inline" id="assign-cv-button" type="button">Assign as JD</button>
                   </div>
                   <div class="source-file-row">
                     <div class="source-file-name is-empty" id="cv-file-pill">No file selected</div>
                   </div>
                   <p class="field-note" id="cv-picker-note">
-                    Drag in a CV or choose a file.
+                    Drop or choose a file.
                   </p>
                 </article>
 
                 <article class="source-card" id="jd-card">
                   <div class="source-title">
                     <div class="source-title-block">
-                      <h3>Role Job Description</h3>
-                      <span class="source-badge">Required</span>
+                      <h3>Job Description</h3>
                     </div>
-                    <button class="btn-ghost btn-inline" id="assign-jd-button" type="button">Assign as CV</button>
                   </div>
                   <div class="source-file-row">
                     <div class="source-file-name is-empty" id="jd-file-pill">No file selected</div>
                   </div>
                   <p class="field-note" id="jd-picker-note">
-                    Drag in a JD or choose a file.
+                    Drop or choose a file.
                   </p>
                 </article>
               </div>
 
+              <div class="source-management">
+                <button class="btn-ghost btn-inline" id="swap-source-button" type="button">Swap CV / JD</button>
+              </div>
+
               <div class="intake-actions">
                 <button class="btn-primary" id="generate-summary-button" type="button">Generate Summary</button>
-                <button class="btn-secondary" id="reset-workspace-button" type="button">Reset Workspace</button>
               </div>
             </section>
           </aside>
@@ -1121,19 +1121,19 @@
             <div class="tab-strip">
               <button class="tab-button is-active" id="open-summary-tab" type="button">
                 Candidate Summary
-                <span id="summary-nav-status">Draft Not Generated</span>
+                <span id="summary-nav-status">No Draft</span>
               </button>
               <button class="tab-button" id="open-briefing-tab" type="button">
                 Hiring Manager Briefing
-                <span id="briefing-nav-status">Awaiting Briefing</span>
+                <span id="briefing-nav-status">No Briefing</span>
               </button>
               <button class="tab-button" id="open-cv-tab" type="button">
                 Candidate CV
-                <span id="cv-nav-status">Awaiting Extraction</span>
+                <span id="cv-nav-status">Not Loaded</span>
               </button>
               <button class="tab-button" id="open-jd-tab" type="button">
                 Job Description
-                <span id="jd-nav-status">Awaiting Extraction</span>
+                <span id="jd-nav-status">Not Loaded</span>
               </button>
             </div>
 
@@ -1141,9 +1141,9 @@
               <div class="stage-header">
                 <div>
                   <h2>Candidate Summary Review</h2>
-                  <p class="stage-subtitle">Review and edit the recruiter-facing assessment.</p>
+                  <p class="stage-subtitle">Review and edit the recruiter draft.</p>
                 </div>
-                <span class="status-chip" id="summary-status">Draft Not Generated</span>
+                <span class="status-chip" id="summary-status">No Draft</span>
               </div>
 
               <div class="summary-shell">
@@ -1159,7 +1159,7 @@
                   </div>
                 </div>
 
-                <p class="summary-message" id="summary-message">Import the CV and JD, then generate the recruiter summary.</p>
+                <p class="summary-message" id="summary-message">Load the CV and JD, then generate the recruiter summary.</p>
 
                 <div class="generation-progress is-hidden" id="generation-progress">
                   <p class="generation-progress-label" id="generation-progress-label">Generating summary with the configured model...</p>
@@ -1177,7 +1177,7 @@
                 ></div>
 
                 <div class="summary-meta-row">
-                  <p class="summary-note" id="draft-meta">The default recruiter profile template will be used when both documents are ready.</p>
+                  <p class="summary-note" id="draft-meta">The built-in recruiter template is used unless a Markdown reference template is selected.</p>
                   <button class="text-link-button is-hidden" id="open-word-draft-button" type="button">Open Word Draft</button>
                 </div>
 
@@ -1192,9 +1192,9 @@
               <div class="stage-header">
                 <div>
                   <h2>Hiring Manager Briefing Review</h2>
-                  <p class="stage-subtitle">Review the client-facing briefing. Save Word Draft uses this same content for the Word attachment.</p>
+                  <p class="stage-subtitle">Review the client-facing briefing before export.</p>
                 </div>
-                <span class="status-chip" id="briefing-status">Awaiting Briefing</span>
+                <span class="status-chip" id="briefing-status">No Briefing</span>
               </div>
 
               <div class="reader-stage">
@@ -1206,9 +1206,9 @@
               <div class="stage-header">
                 <div>
                   <h2>Candidate CV Review</h2>
-                  <p class="stage-subtitle">Review extracted CV text.</p>
+                  <p class="stage-subtitle">Review extracted source text.</p>
                 </div>
-                <span class="status-chip" id="cv-preview-status">Awaiting Extraction</span>
+                <span class="status-chip" id="cv-preview-status">Not Loaded</span>
               </div>
 
               <div class="reader-stage">
@@ -1220,9 +1220,9 @@
               <div class="stage-header">
                 <div>
                   <h2>Job Description Review</h2>
-                  <p class="stage-subtitle">Review extracted JD text.</p>
+                  <p class="stage-subtitle">Review extracted source text.</p>
                 </div>
-                <span class="status-chip" id="jd-preview-status">Awaiting Extraction</span>
+                <span class="status-chip" id="jd-preview-status">Not Loaded</span>
               </div>
 
               <div class="reader-stage">

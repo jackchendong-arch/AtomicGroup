@@ -29,7 +29,6 @@ const {
 } = require('./services/summary-service');
 
 let settingsStore;
-const EXPORT_DEBUG_LOG_PATH = path.join(__dirname, 'debug', 'word-draft-export.log');
 
 function expandHomeDirectory(filePath) {
   if (typeof filePath !== 'string') {
@@ -45,6 +44,17 @@ function expandHomeDirectory(filePath) {
   }
 
   return filePath;
+}
+
+function getUserDataPath() {
+  return process.env.ELECTRON_USER_DATA_PATH &&
+    process.env.ELECTRON_USER_DATA_PATH.trim()
+    ? path.resolve(process.env.ELECTRON_USER_DATA_PATH)
+    : app.getPath('userData');
+}
+
+function getExportDebugLogPath() {
+  return path.join(getUserDataPath(), 'debug', 'word-draft-export.log');
 }
 
 async function pathPointsToDirectory(filePath) {
@@ -81,25 +91,21 @@ async function resolveWordDraftOutputPath(filePath, suggestedName) {
 }
 
 async function appendExportDebugLog(lines) {
+  const exportDebugLogPath = getExportDebugLogPath();
   const content = [
     `=== ${new Date().toISOString()} ===`,
     ...lines,
     ''
   ].join('\n');
 
-  await fs.mkdir(path.dirname(EXPORT_DEBUG_LOG_PATH), { recursive: true });
-  await fs.appendFile(EXPORT_DEBUG_LOG_PATH, `${content}\n`, 'utf8');
+  await fs.mkdir(path.dirname(exportDebugLogPath), { recursive: true });
+  await fs.appendFile(exportDebugLogPath, `${content}\n`, 'utf8');
 }
 
 function getSettingsStore() {
   if (!settingsStore) {
-    const userDataPath = process.env.ELECTRON_USER_DATA_PATH &&
-      process.env.ELECTRON_USER_DATA_PATH.trim()
-      ? path.resolve(process.env.ELECTRON_USER_DATA_PATH)
-      : app.getPath('userData');
-
     settingsStore = new LlmSettingsStore({
-      userDataPath,
+      userDataPath: getUserDataPath(),
       safeStorage
     });
   }

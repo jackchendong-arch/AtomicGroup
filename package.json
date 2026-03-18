@@ -1,17 +1,59 @@
 {
   "name": "atomicgroup-electron-hello-world",
   "version": "1.0.0",
-  "description": "Minimal Hello World Electron app",
+  "description": "AI-enabled recruitment intelligence workbench",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never",
+    "release": "electron-builder --win nsis --publish always",
     "test:unit": "node --test tests/unit/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },
+  "build": {
+    "appId": "com.atomicgroup.recruitmentintelligence",
+    "productName": "AtomicGroup Recruitment Intelligence",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "services/**/*",
+      "templates/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jackchendong-arch",
+        "repo": "AtomicGroup"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "AtomicGroup-Recruitment-Intelligence-${version}-Setup-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "electron": "^37.2.0",
+    "electron-builder": "^26.8.1",
     "playwright": "^1.58.2"
   },
   "dependencies": {

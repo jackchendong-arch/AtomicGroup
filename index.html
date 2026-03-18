@@ -185,9 +185,7 @@
 
       .sidebar-panel,
       .stage-panel,
-      .form-panel,
-      .settings-topbar,
-      .settings-nav-list {
+      .form-panel {
         border: 1px solid var(--line);
         border-radius: 24px;
         background: var(--panel);
@@ -201,9 +199,7 @@
 
       .sidebar-panel,
       .stage-panel,
-      .form-panel,
-      .settings-topbar,
-      .settings-nav-list {
+      .form-panel {
         padding: 18px;
       }
 
@@ -234,8 +230,7 @@
 
       .sidebar-panel h2,
       .stage-panel h2,
-      .form-panel h2,
-      .settings-topbar h2 {
+      .form-panel h2 {
         margin: 0;
         font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
         letter-spacing: -0.03em;
@@ -496,36 +491,34 @@
         overflow: hidden;
       }
 
-      .settings-nav-button {
-        width: 100%;
-        padding: 12px 14px;
+      .settings-tab-button {
+        appearance: none;
         border: 1px solid transparent;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.66);
-        color: var(--ink);
+        border-radius: 14px 14px 0 0;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.6);
+        color: var(--muted);
         font: inherit;
         font-weight: 700;
-        text-align: left;
+        white-space: nowrap;
         cursor: pointer;
-        transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+        transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease;
       }
 
-      .settings-nav-button span {
-        display: block;
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 0.76rem;
-        font-weight: 600;
-      }
-
-      .settings-nav-button:hover {
+      .settings-tab-button:hover {
         transform: translateY(-1px);
-        border-color: rgba(23, 32, 51, 0.12);
+        color: var(--ink);
+        border-color: rgba(23, 32, 51, 0.1);
       }
 
-      .settings-nav-button.is-active {
-        border-color: rgba(187, 91, 52, 0.22);
-        background: linear-gradient(135deg, rgba(187, 91, 52, 0.12), rgba(255, 255, 255, 0.9));
+      .settings-tab-button.is-active {
+        color: var(--ink);
+        border-color: rgba(23, 32, 51, 0.14);
+        border-bottom-color: rgba(255, 252, 247, 0.98);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 252, 247, 0.98));
+        box-shadow: none;
+        position: relative;
+        z-index: 1;
       }
 
       .reader-stage,
@@ -848,43 +841,112 @@
       }
 
       .settings-page {
-        display: grid;
-        gap: 20px;
+        display: flex;
+        flex-direction: column;
         flex: 1;
         min-height: 0;
         overflow: hidden;
       }
 
-      .settings-layout {
+      .settings-shell {
         display: grid;
-        grid-template-columns: minmax(240px, 270px) minmax(0, 1fr);
-        gap: 20px;
-        align-items: start;
+        gap: 8px;
+        min-height: 0;
       }
 
-      .settings-nav {
-        position: sticky;
-        top: 24px;
+      .settings-header {
+        display: grid;
+        gap: 12px;
+        padding: 0 4px;
       }
 
-      .settings-nav-list {
-        display: grid;
-        gap: 10px;
+      .settings-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .settings-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .settings-title h2 {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+
+      .settings-header-bottom {
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-start;
+        gap: 0;
+        min-width: 0;
+      }
+
+      .settings-tabs {
+        display: flex;
+        gap: 6px;
+        align-items: flex-end;
+        padding: 0;
+        overflow-x: auto;
+        min-width: 0;
       }
 
       .settings-content {
+        border: 1px solid var(--line);
+        border-radius: 24px;
         min-width: 0;
+        min-height: 0;
         overflow: auto;
+        background: var(--panel);
+        box-shadow: 0 18px 40px rgba(15, 23, 38, 0.08);
+        backdrop-filter: blur(14px);
+        padding: 16px 20px 20px;
       }
 
-      .form-panel + .form-panel {
-        margin-top: 18px;
+      .settings-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .settings-panel.is-hidden {
+        display: none !important;
+      }
+
+      .settings-panel-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin-top: 20px;
+        padding-top: 18px;
+        border-top: 1px solid rgba(23, 32, 51, 0.08);
+      }
+
+      .settings-section-head {
+        display: grid;
+        gap: 4px;
+      }
+
+      .settings-section-head h3 {
+        margin: 0;
+        font-size: 1rem;
+        letter-spacing: -0.02em;
+      }
+
+      .settings-section-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.88rem;
       }
 
       .form-grid {
         display: grid;
         gap: 16px;
-        margin-top: 20px;
       }
 
       .field {
@@ -949,10 +1011,6 @@
 
       @media (max-width: 1120px) {
         .workbench-layout,
-        .settings-layout {
-          grid-template-columns: 1fr;
-        }
-
         .tab-strip {
           padding: 0 6px;
         }
@@ -973,8 +1031,7 @@
         .sidebar-panel,
         .stage-panel,
         .form-panel,
-        .settings-topbar,
-        .settings-nav-list {
+        .settings-content {
           padding: 16px;
         }
 
@@ -984,6 +1041,7 @@
         .panel-header,
         .stage-header,
         .intake-header,
+        .settings-header-top,
         .settings-actions,
         .summary-toolbar,
         .summary-actions,
@@ -1002,17 +1060,23 @@
           grid-template-columns: 1fr;
         }
 
-        .tab-strip {
+        .tab-strip,
+        .settings-tabs {
           display: flex;
           gap: 4px;
           padding: 0;
           overflow-x: auto;
         }
 
-        .tab-button {
+        .tab-button,
+        .settings-tab-button {
           width: auto;
           min-width: fit-content;
           white-space: nowrap;
+        }
+
+        .settings-header-bottom {
+          width: 100%;
         }
 
         .stage-panel,
@@ -1024,6 +1088,11 @@
         .document-reader,
         .summary-editor {
           min-height: 360px;
+        }
+
+        .settings-panel-footer {
+          flex-direction: column;
+          align-items: flex-start;
         }
       }
     </style>
@@ -1233,46 +1302,32 @@
         </section>
 
         <section class="settings-page is-hidden" id="settings-view">
-          <section class="settings-topbar">
-            <div class="panel-header">
-              <div>
-                <span class="panel-kicker">Configuration</span>
-                <h2>Workspace Settings</h2>
-                <p class="panel-subtitle">Manage model access, recruiter summary guidance, and hiring-manager Word output.</p>
+          <div class="settings-shell">
+            <section class="settings-header">
+              <div class="settings-header-top">
+                <div class="settings-title">
+                  <h2>Settings</h2>
+                </div>
+                <div class="settings-actions">
+                  <span class="status-chip" id="settings-status-chip">Settings Required</span>
+                  <button class="btn-secondary" id="return-to-workbench-button" type="button">Back to Workbench</button>
+                </div>
               </div>
-              <div class="settings-actions">
-                <span class="status-chip" id="settings-status-chip">Settings Required</span>
-                <button class="btn-secondary" id="return-to-workbench-button" type="button">Back to Workbench</button>
-              </div>
-            </div>
-          </section>
 
-          <div class="settings-layout">
-            <aside class="settings-nav">
-              <div class="settings-nav-list">
-                <button class="settings-nav-button is-active" id="open-llm-settings-tab" type="button">
-                  LLM Model Configuration
-                  <span>Provider, endpoint, model, API key, and generation defaults.</span>
-                </button>
-                <button class="settings-nav-button" id="open-summary-guidance-settings-tab" type="button">
-                  Candidate Summary Guidance
-                  <span>Built-in vs local reference guidance for recruiter summary generation.</span>
-                </button>
-                <button class="settings-nav-button" id="open-word-template-settings-tab" type="button">
-                  Hiring Manager Briefing Template
-                  <span>Word document template used for hiring-manager draft export.</span>
-                </button>
+              <div class="settings-header-bottom">
+                <div class="settings-tabs">
+                  <button class="settings-tab-button is-active" id="open-llm-settings-tab" type="button">LLM Model Configuration</button>
+                  <button class="settings-tab-button" id="open-summary-guidance-settings-tab" type="button">Candidate Summary Guidance</button>
+                  <button class="settings-tab-button" id="open-word-template-settings-tab" type="button">Hiring Manager Briefing Template</button>
+                </div>
               </div>
-            </aside>
+            </section>
 
             <div class="settings-content">
-              <section class="form-panel" id="llm-settings-panel">
-                <div class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Provider</span>
-                    <h2>LLM Model Configuration</h2>
-                    <p class="panel-subtitle">DeepSeek is the first preset.</p>
-                  </div>
+              <section class="settings-panel" id="llm-settings-panel">
+                <div class="settings-section-head">
+                  <h3>Model Access</h3>
+                  <p>Provider, endpoint, model, and generation defaults.</p>
                 </div>
 
                 <div class="form-grid">
@@ -1311,13 +1366,10 @@
                 </div>
               </section>
 
-              <section class="form-panel is-hidden" id="summary-guidance-settings-panel">
-                <div class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Recruiter Summary</span>
-                    <h2>Candidate Summary Guidance</h2>
-                    <p class="panel-subtitle">Choose how the recruiter-facing summary should be guided during generation.</p>
-                  </div>
+              <section class="settings-panel is-hidden" id="summary-guidance-settings-panel">
+                <div class="settings-section-head">
+                  <h3>Candidate Summary Guidance</h3>
+                  <p>Choose the template guidance used for recruiter summary generation.</p>
                 </div>
 
                 <div class="form-grid">
@@ -1345,13 +1397,10 @@
                 </div>
               </section>
 
-              <section class="form-panel is-hidden" id="word-template-settings-panel">
-                <div class="panel-header">
-                  <div>
-                    <span class="panel-kicker">Hiring Manager Output</span>
-                    <h2>Hiring Manager Briefing Word Template</h2>
-                    <p class="panel-subtitle">Configure the Word document template used when the consultant exports the hiring-manager briefing.</p>
-                  </div>
+              <section class="settings-panel is-hidden" id="word-template-settings-panel">
+                <div class="settings-section-head">
+                  <h3>Hiring Manager Briefing Word Template</h3>
+                  <p>Used when the consultant exports the hiring-manager briefing.</p>
                 </div>
 
                 <div class="form-grid">
@@ -1385,7 +1434,7 @@
                 </div>
               </section>
 
-              <section class="form-panel">
+              <section class="settings-panel-footer">
                 <div class="settings-actions">
                   <button class="btn-primary" id="save-settings-button" type="button">Save Settings</button>
                 </div>

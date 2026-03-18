@@ -124,6 +124,11 @@ Mark a release complete only when the work is:
 - Keep LLM credentials local-only by default, with empty API-key defaults, gitignored local config, and tests guarding against committed default keys.
 - Let the recruiter switch between the built-in default template and a local reference template.
 - Separate recruiter summary guidance settings from hiring-manager Word template settings so each template purpose is configured in its own settings tab.
+- Restyle the configuration screen with a compact top tab bar and remove duplicated settings titles so the settings workspace feels cleaner and uses less vertical space.
+- Flatten the configuration screen into one shared settings surface so tabs do not appear inside inconsistent nested boxes.
+- Tighten the spacing between the settings title row, tab strip, and content surface so the configuration layout reads as one compact panel.
+- Merge the settings title and tab navigation into one shared header row so the configuration tabs do not feel detached or unevenly spaced.
+- Keep the settings title visually distinct from the tab row while restoring clear, user-facing tab labels for each configuration purpose.
 - Simplify the left source-intake rail so actions are visually distinct from status, wording is reduced, and CV/JD reassignment is handled through one clear swap action instead of scattered buttons and badges.
 - Tighten workbench-wide status chips, button sizing, and panel chrome so the summary, briefing, CV, and JD panels share one professional, compact interaction style.
 - Move reset-workspace into the top-right application title bar beside configuration so it reads as a global workspace control instead of a stage or source-intake action.

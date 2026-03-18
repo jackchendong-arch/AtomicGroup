@@ -27,7 +27,7 @@ test.describe('Candidate Match Workbench', () => {
         baseUrl: 'https://api.deepseek.com',
         model: 'deepseek-chat',
         apiKeyMode: 'plain',
-        apiKey: 'playwright-test-key',
+        apiKey: 'test-only-placeholder',
         temperature: 0.2,
         maxTokens: 1200,
         systemPrompt: defaultSystemPrompt,

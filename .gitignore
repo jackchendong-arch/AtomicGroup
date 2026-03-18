@@ -6,3 +6,8 @@ debug/
 test-results/
 playwright-report/
 ~$*.docx
+.env
+.env.*
+*.local.json
+*.secrets.json
+llm-settings.json

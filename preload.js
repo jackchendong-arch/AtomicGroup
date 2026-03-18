@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   exportHiringManagerWordDraft(payload) {
     return ipcRenderer.invoke('hiring-manager:export-word-draft', payload);
   },
+  renderBriefingReview(payload) {
+    return ipcRenderer.invoke('briefing:render-review', payload);
+  },
+  openPath(filePath) {
+    return ipcRenderer.invoke('shell:open-path', filePath);
+  },
   revealInFolder(filePath) {
     return ipcRenderer.invoke('shell:reveal-in-folder', filePath);
   },

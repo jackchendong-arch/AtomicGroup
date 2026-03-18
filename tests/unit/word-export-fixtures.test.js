@@ -8,9 +8,13 @@ const PizZip = require('pizzip');
 
 const { importDocument } = require('../../services/document-service');
 const {
-  buildTemplateData,
   renderHiringManagerWordDocument
 } = require('../../services/hiring-manager-template-service');
+const {
+  buildFallbackBriefing,
+  prepareHiringManagerBriefingOutput,
+  renderSummaryFromBriefing
+} = require('../../services/briefing-service');
 
 const FIXTURE_ROOT = '/Users/jack/Dev/Test/AtomicGroup';
 const TEMPLATE_PATH = path.resolve(__dirname, '../../templates/AtomicGroupCV_Template.dotx');
@@ -102,16 +106,23 @@ for (const fixtureCase of fixtureCases) {
       assert.equal(cvDocument.error, null);
       assert.equal(jdDocument.error, null);
 
-      const templateData = buildTemplateData({
-        summary: buildSummary(),
+      const fallbackBriefing = buildFallbackBriefing({
         cvDocument,
         jdDocument
       });
+      const recruiterSummary = buildSummary();
+      const output = prepareHiringManagerBriefingOutput({
+        briefing: fallbackBriefing,
+        recruiterSummary
+      });
+      const templateData = output.templateData;
+      const renderedSummary = renderSummaryFromBriefing(output.briefing);
 
       assert.ok(
         templateData.employment_history.length >= fixtureCase.minEmploymentHistory,
         `${fixtureCase.name} should produce at least ${fixtureCase.minEmploymentHistory} employment entries`
       );
+      assert.match(renderedSummary, /## Fit Summary/);
 
       const outputPath = path.join(DEBUG_OUTPUT_DIR, fixtureCase.outputFileName);
       await renderHiringManagerWordDocument({

@@ -642,6 +642,30 @@
         line-height: 1.35;
       }
 
+      .summary-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .text-link-button {
+        padding: 0;
+        border: 0;
+        color: var(--accent-deep);
+        background: transparent;
+        font: inherit;
+        font-size: 0.84rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .text-link-button:hover {
+        color: var(--accent);
+        text-decoration: underline;
+      }
+
       .summary-editor:focus {
         outline: 2px solid rgba(187, 91, 52, 0.2);
         border-color: rgba(187, 91, 52, 0.28);
@@ -1099,6 +1123,10 @@
                 Candidate Summary
                 <span id="summary-nav-status">Draft Not Generated</span>
               </button>
+              <button class="tab-button" id="open-briefing-tab" type="button">
+                Hiring Manager Briefing
+                <span id="briefing-nav-status">Awaiting Briefing</span>
+              </button>
               <button class="tab-button" id="open-cv-tab" type="button">
                 Candidate CV
                 <span id="cv-nav-status">Awaiting Extraction</span>
@@ -1113,7 +1141,7 @@
               <div class="stage-header">
                 <div>
                   <h2>Candidate Summary Review</h2>
-                  <p class="stage-subtitle">Edit, copy, or export the draft.</p>
+                  <p class="stage-subtitle">Review and edit the recruiter-facing assessment.</p>
                 </div>
                 <span class="status-chip" id="summary-status">Draft Not Generated</span>
               </div>
@@ -1148,12 +1176,29 @@
                   data-placeholder="The generated candidate summary will appear here and stay editable for recruiter review."
                 ></div>
 
-                <p class="summary-note" id="draft-meta">The default recruiter profile template will be used when both documents are ready.</p>
+                <div class="summary-meta-row">
+                  <p class="summary-note" id="draft-meta">The default recruiter profile template will be used when both documents are ready.</p>
+                  <button class="text-link-button is-hidden" id="open-word-draft-button" type="button">Open Word Draft</button>
+                </div>
 
                 <details class="debug-details">
                   <summary>Export Debug Trace</summary>
                   <pre class="debug-trace" id="debug-trace">No export debug trace yet.</pre>
                 </details>
+              </div>
+            </section>
+
+            <section class="stage-panel is-hidden" id="briefing-panel">
+              <div class="stage-header">
+                <div>
+                  <h2>Hiring Manager Briefing Review</h2>
+                  <p class="stage-subtitle">Review the client-facing briefing. Save Word Draft uses this same content for the Word attachment.</p>
+                </div>
+                <span class="status-chip" id="briefing-status">Awaiting Briefing</span>
+              </div>
+
+              <div class="reader-stage">
+                <div class="document-reader rich-document" id="briefing-preview"></div>
               </div>
             </section>
 

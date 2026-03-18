@@ -5,13 +5,23 @@ const path = require('path');
 const { importDocument, SUPPORTED_EXTENSIONS } = require('./services/document-service');
 const {
   buildSuggestedOutputFilename,
-  buildTemplateData,
   describeEmploymentExtraction,
   renderHiringManagerWordDocument
 } = require('./services/hiring-manager-template-service');
+const {
+  buildBriefingRequest,
+  buildFallbackBriefing,
+  mergeBriefingWithFallback,
+  parseBriefingResponse,
+  prepareHiringManagerBriefingOutput,
+  validateBriefing
+} = require('./services/briefing-service');
 const { generateWithConfiguredProvider, getProviderOptions } = require('./services/llm-service');
 const { LlmSettingsStore, validateSettings } = require('./services/llm-settings-service');
-const { buildSummaryRequest, normalizeGeneratedSummary } = require('./services/summary-service');
+const {
+  buildSummaryRequest,
+  normalizeGeneratedSummary
+} = require('./services/summary-service');
 
 let settingsStore;
 const EXPORT_DEBUG_LOG_PATH = path.join(__dirname, 'debug', 'word-draft-export.log');
@@ -90,6 +100,114 @@ function getSettingsStore() {
   }
 
   return settingsStore;
+}
+
+async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
+  const validation = validateSettings(settings);
+
+  if (!validation.isValid) {
+    debugTrace.push(`Settings validation failed: ${validation.errors.join(' | ')}`);
+    throw new Error(validation.errors.join(' '));
+  }
+
+  if (!settings.outputTemplatePath) {
+    debugTrace.push('No configured Word template path was available.');
+    throw new Error('Configure a Word .docx or .dotx template before exporting the hiring-manager draft.');
+  }
+
+  if (!['.docx', '.dotx'].includes(settings.outputTemplateExtension)) {
+    debugTrace.push(`Unsupported template extension: ${settings.outputTemplateExtension}`);
+    throw new Error('Only .docx and .dotx hiring-manager templates are supported for automated output.');
+  }
+
+  if (!payload.summary || !payload.summary.trim()) {
+    debugTrace.push('Summary payload was empty at export time.');
+    throw new Error('Generate and review the recruiter summary before exporting the hiring-manager draft.');
+  }
+
+  const fallbackBriefing = buildFallbackBriefing({
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const requestedBriefing = payload.briefing
+    ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
+    : fallbackBriefing;
+  let composedOutput;
+
+  try {
+    composedOutput = prepareHiringManagerBriefingOutput({
+      briefing: requestedBriefing,
+      recruiterSummary: payload.summary
+    });
+  } catch (error) {
+    debugTrace.push(`Structured briefing validation failed: ${error instanceof Error ? error.message : 'Unknown validation failure.'}`);
+    throw error;
+  }
+
+  const templateData = composedOutput.templateData;
+  const employmentDebug = describeEmploymentExtraction(payload.cvDocument);
+  debugTrace.push(`Configured template: ${settings.outputTemplatePath}`);
+  debugTrace.push(`Template extension: ${settings.outputTemplateExtension}`);
+  debugTrace.push(`CV source file: ${employmentDebug.cvFileName || '(unknown)'}`);
+  debugTrace.push(`CV line count: ${employmentDebug.cvLineCount}`);
+  debugTrace.push(`Experience section line count: ${employmentDebug.experienceSectionLineCount}`);
+
+  if (employmentDebug.experienceSectionPreview.length > 0) {
+    debugTrace.push(`Experience section preview: ${employmentDebug.experienceSectionPreview.join(' || ')}`);
+  }
+
+  employmentDebug.dateWindows.forEach((window, index) => {
+    debugTrace.push(`CV date window ${index + 1}: ${window}`);
+  });
+
+  debugTrace.push(`Derived candidate name: ${templateData.candidate_name}`);
+  debugTrace.push(`Derived role title: ${templateData.role_title}`);
+  debugTrace.push(`Derived employment history count: ${templateData.employment_history.length}`);
+
+  templateData.employment_history.forEach((entry, index) => {
+    debugTrace.push(
+      `Employment entry ${index + 1}: title="${entry.job_title || ''}" company="${entry.company_name || ''}" dates="${[entry.start_date, entry.end_date].filter(Boolean).join(' - ')}" responsibilities=${entry.responsibilities.length}`
+    );
+
+    entry.responsibilities.forEach((responsibility, responsibilityIndex) => {
+      debugTrace.push(
+        `Employment entry ${index + 1} responsibility ${responsibilityIndex + 1}: ${responsibility.responsibility || ''}`
+      );
+    });
+  });
+
+  debugTrace.push(`Summary length: ${payload.summary.trim().length} characters`);
+
+  return {
+    templateData,
+    suggestedName: buildSuggestedOutputFilename(templateData)
+  };
+}
+
+async function writeWordDraftToPath({ settings, outputPath, templateData, debugTrace }) {
+  const renderResult = await renderHiringManagerWordDocument({
+    templatePath: settings.outputTemplatePath,
+    outputPath,
+    templateData
+  });
+
+  debugTrace.push('Word template rendered successfully.');
+  debugTrace.push(`Template placeholders populated: ${renderResult.populatedTemplateTags.map((tag) => `{{${tag}}}`).join(', ') || '(none)'}`);
+
+  if (renderResult.blankTemplateTags.length > 0) {
+    debugTrace.push(`Template placeholders left blank: ${renderResult.blankTemplateTags.map((tag) => `{{${tag}}}`).join(', ')}`);
+  }
+
+  await fs.access(outputPath);
+  const stat = await fs.stat(outputPath);
+  debugTrace.push(`File write verified: yes (${stat.size} bytes)`);
+
+  return {
+    filePath: outputPath,
+    templateName: settings.outputTemplateName,
+    debugLogPath: EXPORT_DEBUG_LOG_PATH,
+    debugTrace
+  };
 }
 
 function createWindow() {
@@ -182,76 +300,22 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     `Export started at ${new Date().toISOString()}`
   ];
 
-  function appendDebug(message) {
-    debugTrace.push(message);
-  }
-
   const settings = await getSettingsStore().load();
-  const validation = validateSettings(settings);
+  let templateData;
+  let suggestedName;
 
-  if (!validation.isValid) {
-    appendDebug(`Settings validation failed: ${validation.errors.join(' | ')}`);
+  try {
+    ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
+      payload,
+      settings,
+      debugTrace
+    }));
+  } catch (error) {
     await appendExportDebugLog(debugTrace);
-    throw new Error(`${validation.errors.join(' ')}\nDebug trace:\n- ${debugTrace.join('\n- ')}`);
+    throw new Error(`${error instanceof Error ? error.message : 'Unable to prepare the hiring-manager draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`);
   }
 
-  if (!settings.outputTemplatePath) {
-    appendDebug('No configured Word template path was available.');
-    await appendExportDebugLog(debugTrace);
-    throw new Error('Configure a Word .docx or .dotx template before exporting the hiring-manager draft.\nDebug trace:\n- ' + debugTrace.join('\n- '));
-  }
-
-  if (!['.docx', '.dotx'].includes(settings.outputTemplateExtension)) {
-    appendDebug(`Unsupported template extension: ${settings.outputTemplateExtension}`);
-    await appendExportDebugLog(debugTrace);
-    throw new Error('Only .docx and .dotx hiring-manager templates are supported for automated output.\nDebug trace:\n- ' + debugTrace.join('\n- '));
-  }
-
-  if (!payload.summary || !payload.summary.trim()) {
-    appendDebug('Summary payload was empty at export time.');
-    await appendExportDebugLog(debugTrace);
-    throw new Error('Generate and review the recruiter summary before exporting the hiring-manager draft.\nDebug trace:\n- ' + debugTrace.join('\n- '));
-  }
-
-  const templateData = buildTemplateData({
-    summary: payload.summary,
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
-  });
-  const employmentDebug = describeEmploymentExtraction(payload.cvDocument);
-  appendDebug(`Configured template: ${settings.outputTemplatePath}`);
-  appendDebug(`Template extension: ${settings.outputTemplateExtension}`);
-  appendDebug(`CV source file: ${employmentDebug.cvFileName || '(unknown)'}`);
-  appendDebug(`CV line count: ${employmentDebug.cvLineCount}`);
-  appendDebug(`Experience section line count: ${employmentDebug.experienceSectionLineCount}`);
-
-  if (employmentDebug.experienceSectionPreview.length > 0) {
-    appendDebug(`Experience section preview: ${employmentDebug.experienceSectionPreview.join(' || ')}`);
-  }
-
-  employmentDebug.dateWindows.forEach((window, index) => {
-    appendDebug(`CV date window ${index + 1}: ${window}`);
-  });
-
-  appendDebug(`Derived candidate name: ${templateData.candidate_name}`);
-  appendDebug(`Derived role title: ${templateData.role_title}`);
-  appendDebug(`Derived employment history count: ${templateData.employment_history.length}`);
-
-  templateData.employment_history.forEach((entry, index) => {
-    appendDebug(
-      `Employment entry ${index + 1}: title="${entry.job_title || ''}" company="${entry.company_name || ''}" dates="${[entry.start_date, entry.end_date].filter(Boolean).join(' - ')}" responsibilities=${entry.responsibilities.length}`
-    );
-
-    entry.responsibilities.forEach((responsibility, responsibilityIndex) => {
-      appendDebug(
-        `Employment entry ${index + 1} responsibility ${responsibilityIndex + 1}: ${responsibility.responsibility || ''}`
-      );
-    });
-  });
-
-  appendDebug(`Summary length: ${payload.summary.trim().length} characters`);
-  const suggestedName = buildSuggestedOutputFilename(templateData);
-  appendDebug(`Suggested output filename: ${suggestedName}`);
+  debugTrace.push(`Suggested output filename: ${suggestedName}`);
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'Save hiring-manager Word draft',
     defaultPath: path.join(app.getPath('documents'), suggestedName),
@@ -262,8 +326,8 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
       }
     ]
   });
-  appendDebug(`Save dialog canceled: ${canceled ? 'yes' : 'no'}`);
-  appendDebug(`Save dialog returned path: ${filePath || '(none)'}`);
+  debugTrace.push(`Save dialog canceled: ${canceled ? 'yes' : 'no'}`);
+  debugTrace.push(`Save dialog returned path: ${filePath || '(none)'}`);
 
   if (canceled || !filePath) {
     await appendExportDebugLog(debugTrace);
@@ -274,40 +338,27 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   }
 
   const outputPath = await resolveWordDraftOutputPath(filePath, suggestedName);
-  appendDebug(`Resolved output path: ${outputPath}`);
+  debugTrace.push(`Resolved output path: ${outputPath}`);
 
   try {
-    const renderResult = await renderHiringManagerWordDocument({
-      templatePath: settings.outputTemplatePath,
+    const result = await writeWordDraftToPath({
+      settings,
       outputPath,
-      templateData
+      templateData,
+      debugTrace
     });
-    appendDebug('Word template rendered successfully.');
-    appendDebug(`Template placeholders populated: ${renderResult.populatedTemplateTags.map((tag) => `{{${tag}}}`).join(', ') || '(none)'}`);
-
-    if (renderResult.blankTemplateTags.length > 0) {
-      appendDebug(`Template placeholders left blank: ${renderResult.blankTemplateTags.map((tag) => `{{${tag}}}`).join(', ')}`);
-    }
-
-    await fs.access(outputPath);
-    const stat = await fs.stat(outputPath);
-    appendDebug(`File write verified: yes (${stat.size} bytes)`);
-
     shell.showItemInFolder(outputPath);
-    appendDebug('Finder reveal requested.');
-    appendDebug(`Debug log path: ${EXPORT_DEBUG_LOG_PATH}`);
+    debugTrace.push('Finder reveal requested.');
+    debugTrace.push(`Debug log path: ${EXPORT_DEBUG_LOG_PATH}`);
     await appendExportDebugLog(debugTrace);
 
     return {
       canceled: false,
-      filePath: outputPath,
-      templateName: settings.outputTemplateName,
-      debugLogPath: EXPORT_DEBUG_LOG_PATH,
-      debugTrace
+      ...result
     };
   } catch (error) {
-    appendDebug(`Export failed: ${error instanceof Error ? error.message : 'Unknown export failure.'}`);
-    appendDebug(`Debug log path: ${EXPORT_DEBUG_LOG_PATH}`);
+    debugTrace.push(`Export failed: ${error instanceof Error ? error.message : 'Unknown export failure.'}`);
+    debugTrace.push(`Debug log path: ${EXPORT_DEBUG_LOG_PATH}`);
     await appendExportDebugLog(debugTrace);
     throw new Error(
       `${error instanceof Error ? error.message : 'Unable to export the hiring-manager Word draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`
@@ -323,23 +374,81 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     throw new Error(validation.errors.join(' '));
   }
 
-  const request = buildSummaryRequest({
+  const summaryRequest = buildSummaryRequest({
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
     systemPrompt: settings.systemPrompt
   });
-  const result = await generateWithConfiguredProvider({
-    settings,
-    messages: request.messages,
-    fetchImpl: (...args) => net.fetch(...args)
+  const briefingRequest = buildBriefingRequest({
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument,
+    systemPrompt: settings.systemPrompt
+  });
+  const [summaryResult, structuredBriefingResult] = await Promise.all([
+    generateWithConfiguredProvider({
+      settings,
+      messages: summaryRequest.messages,
+      fetchImpl: (...args) => net.fetch(...args)
+    }),
+    generateWithConfiguredProvider({
+      settings,
+      messages: briefingRequest.messages,
+      fetchImpl: (...args) => net.fetch(...args)
+    })
+  ]);
+  const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
+
+  const fallbackBriefing = buildFallbackBriefing({
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  let briefing;
+
+  try {
+    briefing = mergeBriefingWithFallback(parseBriefingResponse(structuredBriefingResult.text), fallbackBriefing);
+  } catch (_error) {
+    briefing = fallbackBriefing;
+  }
+
+  const briefingValidation = validateBriefing(briefing);
+
+  if (!briefingValidation.isValid) {
+    throw new Error(briefingValidation.errors.join(' '));
+  }
+
+  const validatedBriefing = briefingValidation.briefing;
+  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
+    briefing: validatedBriefing,
+    recruiterSummary
   });
 
   return {
-    templateLabel: request.templateLabel,
-    summary: normalizeGeneratedSummary(result.text),
-    prompt: request.prompt,
+    templateLabel: summaryRequest.templateLabel,
+    summary: recruiterSummary,
+    hiringManagerBriefingReview: hiringManagerBriefing.review,
+    prompt: summaryRequest.prompt,
     providerLabel: settings.providerLabel,
-    model: settings.model
+    model: settings.model,
+    briefing: validatedBriefing
+  };
+});
+
+ipcMain.handle('briefing:render-review', async (_event, payload) => {
+  const fallbackBriefing = buildFallbackBriefing({
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const requestedBriefing = payload.briefing
+    ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
+    : fallbackBriefing;
+  const composed = prepareHiringManagerBriefingOutput({
+    briefing: requestedBriefing,
+    recruiterSummary: payload.summary
+  });
+
+  return {
+    briefing: composed.briefing,
+    hiringManagerBriefingReview: composed.review
   };
 });
 
@@ -355,6 +464,21 @@ ipcMain.handle('shell:reveal-in-folder', async (_event, filePath) => {
 
   await fs.access(filePath);
   shell.showItemInFolder(filePath);
+  return true;
+});
+
+ipcMain.handle('shell:open-path', async (_event, filePath) => {
+  if (!filePath) {
+    throw new Error('A file path is required to open the generated briefing.');
+  }
+
+  await fs.access(filePath);
+  const shellResult = await shell.openPath(filePath);
+
+  if (shellResult) {
+    throw new Error(shellResult);
+  }
+
   return true;
 });
 

@@ -2,7 +2,7 @@ Candidate: {{candidate_name}}
 Target Role: {{role_title}}
 
 ## Fit Summary
- d v{{fit_summary}}
+{{fit_summary}}
 
 ## Relevant Experience
 {{relevant_experience}}

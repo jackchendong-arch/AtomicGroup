@@ -98,7 +98,7 @@ Mark a release complete only when the work is:
 - Test the complete Release 1 flow end to end with at least one CV and one JD.
 
 ## Release 2: Structured Briefing and Template-Guided Output
-- [ ] Release 2 shipped, completed, and tested.
+- [-] Release 2 shipped, completed, and tested.
 - Add support for selecting a local reference template file.
 - Add support for selecting a local template folder for future multi-template workflows.
 - Persist the recruiter's last selected template reference as a local preference.
@@ -111,8 +111,15 @@ Mark a release complete only when the work is:
 - Repair malformed output automatically when safe to do so.
 - Reject malformed output and show a useful error when repair is not safe.
 - Validate the LLM-produced briefing schema before rendering so missing required fields, inconsistent dates, and unsupported claims are caught before summary or Word export.
-- Derive both the recruiter review summary and the hiring-manager Word briefing from the same validated structured briefing object so the two outputs cannot drift.
+- Keep `Candidate Summary Review` as the recruiter-facing LLM-completed assessment surface.
+- Build the in-app `Hiring Manager Briefing` from the recruiter-reviewed key summary plus the grounded structured briefing model so recruiter assessment and hiring-manager output stay aligned without becoming the same surface.
 - Keep Word document rendering deterministic through the configured template engine rather than asking the LLM to generate `.docx` content or layout directly.
+- Generate an in-app hiring-manager briefing review from the same validated structured briefing object immediately after summary generation so the consultant can validate both outputs side by side.
+- Add a dedicated `Hiring Manager Briefing` review tab in the primary workbench.
+- Defer physical Word document creation until the consultant explicitly exports or sends the briefing, using the configured Word template to govern final fields, formatting, and layout.
+- Make `Save Word Draft` create the consultant-reviewable hiring-manager Word draft from the same composed briefing content shown in the `Hiring Manager Briefing` tab, and keep that draft-generation path reusable for future email attachment handoff.
+- Keep the visible progress indicator aligned to the active generation phase and avoid enabling downstream Word actions until the briefing review content is ready.
+- Expand the canonical hiring-manager Word template and export payload so the Candidate Summary table and profile sections support nationality, preferred location, multiple languages, multiple education entries, and line-broken employment history rendering.
 - Let the recruiter switch between the built-in default template and a local reference template.
 - Test output consistency across at least two different template references.
 

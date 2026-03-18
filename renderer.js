@@ -12,10 +12,14 @@ const state = {
     cv: createEmptyDocumentSlot('cv'),
     jd: createEmptyDocumentSlot('jd')
   },
+  briefing: null,
+  briefingReview: '',
   summary: '',
   lastExportPath: '',
   debugTrace: [],
   isGenerating: false,
+  isSavingWordDraft: false,
+  progressLabel: 'Generating summary with the configured model...',
   summaryStatus: 'Draft Not Generated',
   summaryMessage: 'Import the CV and JD, then generate the summary.',
   generationError: '',
@@ -28,12 +32,15 @@ const elements = {
   openCvTab: document.getElementById('open-cv-tab'),
   openJdTab: document.getElementById('open-jd-tab'),
   openSummaryTab: document.getElementById('open-summary-tab'),
+  openBriefingTab: document.getElementById('open-briefing-tab'),
   cvPanel: document.getElementById('cv-panel'),
   jdPanel: document.getElementById('jd-panel'),
   summaryPanel: document.getElementById('summary-panel'),
+  briefingPanel: document.getElementById('briefing-panel'),
   cvNavStatus: document.getElementById('cv-nav-status'),
   jdNavStatus: document.getElementById('jd-nav-status'),
   summaryNavStatus: document.getElementById('summary-nav-status'),
+  briefingNavStatus: document.getElementById('briefing-nav-status'),
   openSettingsView: document.getElementById('open-settings-view'),
   returnToWorkbenchButton: document.getElementById('return-to-workbench-button'),
   settingsStatusChip: document.getElementById('settings-status-chip'),
@@ -68,9 +75,12 @@ const elements = {
   copySummaryButton: document.getElementById('copy-summary-button'),
   exportWordDraftButton: document.getElementById('export-word-draft-button'),
   revealWordDraftButton: document.getElementById('reveal-word-draft-button'),
+  openWordDraftButton: document.getElementById('open-word-draft-button'),
   debugTrace: document.getElementById('debug-trace'),
   templateLabel: document.getElementById('template-label'),
   draftMeta: document.getElementById('draft-meta'),
+  briefingStatus: document.getElementById('briefing-status'),
+  briefingPreview: document.getElementById('briefing-preview'),
   cv: {
     card: document.getElementById('cv-card'),
     chooseButton: document.getElementById('choose-cv-button'),
@@ -658,13 +668,15 @@ function setWorkbenchTab(tab) {
   const buttonMap = {
     cv: elements.openCvTab,
     jd: elements.openJdTab,
-    summary: elements.openSummaryTab
+    summary: elements.openSummaryTab,
+    briefing: elements.openBriefingTab
   };
 
   const panelMap = {
     cv: elements.cvPanel,
     jd: elements.jdPanel,
-    summary: elements.summaryPanel
+    summary: elements.summaryPanel,
+    briefing: elements.briefingPanel
   };
 
   Object.entries(buttonMap).forEach(([entryTab, button]) => {
@@ -769,29 +781,50 @@ function renderSummary() {
   elements.summaryStatus.textContent = state.summaryStatus;
   elements.summaryNavStatus.textContent = state.summaryStatus;
   elements.summaryMessage.textContent = state.generationError || state.summaryMessage;
-  elements.generationProgress.classList.toggle('is-hidden', !state.isGenerating);
-  elements.generationProgressLabel.textContent = state.isGenerating
-    ? 'Generating summary with the configured model...'
-    : 'Generating summary with the configured model...';
+  elements.generationProgress.classList.toggle('is-hidden', !isGenerationWorkflowBusy());
+  elements.generationProgressLabel.textContent = state.progressLabel;
 
   if (document.activeElement !== elements.summaryEditor) {
     setRichDocumentContent(elements.summaryEditor, state.summary);
   }
 
-  elements.copySummaryButton.disabled = state.isGenerating || state.summary.trim().length === 0;
-  elements.exportWordDraftButton.disabled = state.isGenerating || !canExportWordDraft();
+  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || state.summary.trim().length === 0;
+  elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
   elements.revealWordDraftButton.disabled = !state.lastExportPath;
+  elements.openWordDraftButton.disabled = !state.lastExportPath;
+  elements.openWordDraftButton.classList.toggle('is-hidden', !state.lastExportPath);
   elements.generateButton.disabled = !canGenerateSummary();
   elements.debugTrace.textContent = formatDebugTrace();
   elements.templateLabel.textContent = state.templateLabel;
   if (state.lastExportPath) {
-    elements.draftMeta.textContent = `Last saved Word draft: ${state.lastExportPath}`;
+    elements.draftMeta.textContent = `Latest saved Word draft: ${state.lastExportPath}`;
     return;
   }
 
-  elements.draftMeta.textContent = state.settings?.outputTemplateName
-    ? `Word export uses ${state.settings.outputTemplateName}.`
-    : 'Configure a Word template in Settings for export.';
+  elements.draftMeta.textContent = hasConfiguredWordTemplate()
+    ? 'Save Word Draft uses the same hiring-manager briefing content shown in the review tab and the future email attachment path.'
+    : 'Configure a Word template in Settings to create the hiring-manager Word draft.';
+}
+
+function renderBriefing() {
+  const hasBriefingReview = state.briefingReview.trim().length > 0;
+  const briefingStatus = state.isGenerating
+    ? 'Generating Briefing'
+    : (state.isSavingWordDraft ? 'Saving Word Draft' : (hasBriefingReview ? 'Briefing Ready' : 'Awaiting Briefing'));
+  const briefingText = hasBriefingReview
+    ? state.briefingReview
+    : 'Generate the candidate summary to populate the hiring-manager briefing review.';
+
+  elements.briefingStatus.textContent = briefingStatus;
+  elements.briefingNavStatus.textContent = briefingStatus;
+  setRichDocumentContent(
+    elements.briefingPreview,
+    briefingText,
+    {
+      mode: 'default',
+      showEmptyState: true
+    }
+  );
 }
 
 function render() {
@@ -801,6 +834,7 @@ function render() {
   renderSettingsStatus();
   updateSourcePanelStatus();
   renderSummary();
+  renderBriefing();
   setView(state.view);
   setWorkbenchTab(state.workbenchTab);
   setSettingsTab(state.settingsTab);
@@ -844,8 +878,14 @@ function splitErrorMessageAndTrace(message) {
 }
 
 function invalidateSummary(message) {
+  state.briefing = null;
+  state.briefingReview = '';
   state.summary = '';
+  state.lastExportPath = '';
+  state.debugTrace = [];
+  state.isSavingWordDraft = false;
   state.summaryStatus = 'Draft Not Generated';
+  state.progressLabel = 'Generating summary with the configured model...';
   setSummaryMessage(message);
 }
 
@@ -988,7 +1028,7 @@ function swapDocumentAssignments(fromSlot, toSlot) {
 }
 
 function canGenerateSummary() {
-  if (state.isGenerating) {
+  if (isGenerationWorkflowBusy()) {
     return false;
   }
 
@@ -999,9 +1039,42 @@ function canGenerateSummary() {
 }
 
 function canExportWordDraft() {
-  return Boolean(state.settings?.outputTemplatePath) &&
-    ['.docx', '.dotx'].includes(state.settings.outputTemplateExtension) &&
+  return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0;
+}
+
+function hasConfiguredWordTemplate() {
+  return Boolean(state.settings?.outputTemplatePath) &&
+    ['.docx', '.dotx'].includes(state.settings.outputTemplateExtension);
+}
+
+async function syncBriefingReviewFromCurrentSummary() {
+  if (!state.summary.trim() || !state.briefing) {
+    return;
+  }
+
+  const result = await window.recruitmentApi.renderBriefingReview({
+    briefing: state.briefing,
+    summary: state.summary,
+    cvDocument: state.documents.cv,
+    jdDocument: state.documents.jd
+  });
+
+  state.briefing = result.briefing || state.briefing;
+  state.briefingReview = result.hiringManagerBriefingReview || '';
+}
+
+async function refreshBriefingReview() {
+  if (!state.briefing) {
+    state.briefingReview = '';
+    return;
+  }
+
+  await syncBriefingReviewFromCurrentSummary();
+}
+
+function isGenerationWorkflowBusy() {
+  return state.isGenerating || state.isSavingWordDraft;
 }
 
 async function generateSummary() {
@@ -1023,8 +1096,11 @@ async function generateSummary() {
 
   state.summaryStatus = 'Generating Draft';
   state.isGenerating = true;
+  state.lastExportPath = '';
+  state.debugTrace = [];
   state.generationError = '';
-  state.summaryMessage = 'Generating the summary. This can take a moment.';
+  state.summaryMessage = 'Generating the candidate summary and hiring-manager briefing review.';
+  state.progressLabel = 'Generating candidate summary and hiring-manager briefing review...';
   state.workbenchTab = 'summary';
   renderSummary();
 
@@ -1034,16 +1110,23 @@ async function generateSummary() {
       jdDocument: state.documents.jd
     });
 
+    state.briefing = result.briefing || null;
+    state.briefingReview = result.hiringManagerBriefingReview || '';
     state.summary = result.summary;
-    state.isGenerating = false;
-    state.summaryStatus = 'Draft Ready for Review';
-    state.summaryMessage = 'Draft ready for review.';
     state.templateLabel = result.templateLabel;
+    state.workbenchTab = 'summary';
+    state.summaryStatus = 'Review Ready';
+    state.summaryMessage = hasConfiguredWordTemplate()
+      ? 'Candidate summary and hiring-manager briefing are ready for review.'
+      : 'Review outputs are ready. Configure a Word template when you need to create the Word draft.';
+    state.isGenerating = false;
+    state.progressLabel = 'Generating summary with the configured model...';
     state.workbenchTab = 'summary';
     renderSummary();
   } catch (error) {
     state.isGenerating = false;
     state.summaryStatus = 'Generation Failed';
+    state.progressLabel = 'Generating summary with the configured model...';
     state.generationError = error instanceof Error
       ? error.message
       : 'Unable to generate a summary. Review the settings and imported documents, then try again.';
@@ -1070,8 +1153,8 @@ async function exportWordDraft() {
     state.generationError = state.settings?.outputTemplatePath
       ? 'A saved recruiter summary is required before exporting the hiring-manager Word draft.'
       : 'Configure a Word .docx or .dotx template before exporting the hiring-manager draft.';
-    state.workbenchTab = 'summary';
-    renderSummary();
+    state.workbenchTab = 'briefing';
+    render();
     return;
   }
 
@@ -1079,13 +1162,18 @@ async function exportWordDraft() {
     `Export requested from workbench at ${new Date().toISOString()}`
   ];
   state.summaryStatus = 'Saving Word Draft';
+  state.isSavingWordDraft = true;
   state.generationError = '';
-  state.summaryMessage = 'Preparing the Word draft.';
-  state.workbenchTab = 'summary';
-  renderSummary();
+  state.summaryMessage = 'Refreshing the briefing review and preparing the Word draft.';
+  state.progressLabel = 'Preparing the hiring-manager Word draft...';
+  state.workbenchTab = 'briefing';
+  render();
 
   try {
+    await syncBriefingReviewFromCurrentSummary();
+
     const result = await window.recruitmentApi.exportHiringManagerWordDraft({
+      briefing: state.briefing,
       summary: state.summary,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
@@ -1095,17 +1183,15 @@ async function exportWordDraft() {
       state.debugTrace = result?.debugTrace || state.debugTrace;
       state.summaryStatus = 'Draft Ready for Review';
       state.summaryMessage = 'Word draft save cancelled.';
-      state.workbenchTab = 'summary';
-      renderSummary();
+      state.workbenchTab = 'briefing';
       return;
     }
 
     state.debugTrace = result.debugTrace || state.debugTrace;
     state.lastExportPath = result.filePath;
     state.summaryStatus = 'Word Draft Saved';
-    state.summaryMessage = `Hiring-manager Word draft saved to ${result.filePath}.`;
-    state.workbenchTab = 'summary';
-    renderSummary();
+    state.summaryMessage = `Hiring-manager Word draft saved to ${result.filePath}. This same draft can be reused for future email attachment handoff.`;
+    state.workbenchTab = 'briefing';
   } catch (error) {
     const parsed = splitErrorMessageAndTrace(
       error instanceof Error ? error.message : 'Unable to export the hiring-manager Word draft.'
@@ -1117,8 +1203,11 @@ async function exportWordDraft() {
 
     state.summaryStatus = 'Word Draft Export Failed';
     state.generationError = parsed.userMessage || 'Unable to export the hiring-manager Word draft.';
-    state.workbenchTab = 'summary';
-    renderSummary();
+    state.workbenchTab = 'briefing';
+  } finally {
+    state.isSavingWordDraft = false;
+    state.progressLabel = 'Generating summary with the configured model...';
+    render();
   }
 }
 
@@ -1142,13 +1231,37 @@ async function revealWordDraft() {
   }
 }
 
+async function openWordDraft() {
+  if (!state.lastExportPath) {
+    return;
+  }
+
+  try {
+    await window.recruitmentApi.openPath(state.lastExportPath);
+    state.summaryStatus = 'Word Draft Saved';
+    state.summaryMessage = `Opened hiring-manager Word draft: ${state.lastExportPath}.`;
+    state.generationError = '';
+    renderSummary();
+  } catch (error) {
+    state.summaryStatus = 'Briefing Open Failed';
+    state.generationError = error instanceof Error
+      ? error.message
+      : 'Unable to open the generated hiring-manager briefing.';
+    renderSummary();
+  }
+}
+
 function resetWorkspace() {
   state.documents.cv = createEmptyDocumentSlot('cv');
   state.documents.jd = createEmptyDocumentSlot('jd');
+  state.briefing = null;
+  state.briefingReview = '';
   state.summary = '';
   state.lastExportPath = '';
   state.debugTrace = [];
   state.isGenerating = false;
+  state.isSavingWordDraft = false;
+  state.progressLabel = 'Generating summary with the configured model...';
   state.summaryStatus = 'Draft Not Generated';
   state.summaryMessage = state.settingsValidation.isValid
     ? 'Workspace reset. Import both documents to generate a new draft.'
@@ -1265,6 +1378,19 @@ elements.openSummaryTab.addEventListener('click', () => {
   state.workbenchTab = 'summary';
   render();
 });
+elements.openBriefingTab.addEventListener('click', async () => {
+  state.workbenchTab = 'briefing';
+
+  if (state.briefing) {
+    try {
+      await refreshBriefingReview();
+    } catch (_error) {
+      // Keep the last rendered review if the refresh fails.
+    }
+  }
+
+  render();
+});
 
 elements.openLlmSettingsTab.addEventListener('click', () => {
   state.settingsTab = 'llm';
@@ -1292,22 +1418,33 @@ elements.generateButton.addEventListener('click', generateSummary);
 elements.copySummaryButton.addEventListener('click', copySummary);
 elements.exportWordDraftButton.addEventListener('click', exportWordDraft);
 elements.revealWordDraftButton.addEventListener('click', revealWordDraft);
+elements.openWordDraftButton.addEventListener('click', openWordDraft);
 elements.resetButton.addEventListener('click', resetWorkspace);
 elements.summaryEditor.addEventListener('input', () => {
   state.summary = readSummaryEditorText();
-  elements.copySummaryButton.disabled = state.summary.trim().length === 0;
-  elements.exportWordDraftButton.disabled = !canExportWordDraft();
+  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || state.summary.trim().length === 0;
+  elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
 });
 elements.summaryEditor.addEventListener('paste', (event) => {
   event.preventDefault();
   const text = event.clipboardData?.getData('text/plain') || '';
   document.execCommand('insertText', false, text);
 });
-elements.summaryEditor.addEventListener('blur', () => {
+elements.summaryEditor.addEventListener('blur', async () => {
   state.summary = readSummaryEditorText();
   setRichDocumentContent(elements.summaryEditor, state.summary);
-  elements.copySummaryButton.disabled = state.summary.trim().length === 0;
-  elements.exportWordDraftButton.disabled = !canExportWordDraft();
+  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || state.summary.trim().length === 0;
+  elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
+
+  if (state.briefing) {
+    try {
+      await refreshBriefingReview();
+    } catch (_error) {
+      // Keep the current review state if the refresh fails.
+    }
+  }
+
+  renderBriefing();
 });
 
 bindDropTarget(elements.dropzone, null);

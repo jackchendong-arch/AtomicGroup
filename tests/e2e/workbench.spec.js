@@ -64,14 +64,19 @@ test.describe('Candidate Match Workbench', () => {
   test('opens on the summary-first workbench and supports main review tabs', async () => {
     await expect(page.locator('#workbench-view')).toBeVisible();
     await expect(page.locator('#summary-panel')).toBeVisible();
+    await expect(page.locator('#briefing-panel')).toBeHidden();
     await expect(page.locator('#cv-panel')).toBeHidden();
     await expect(page.locator('#jd-panel')).toBeHidden();
     await expect(page.locator('#source-panel-status')).toHaveText(/Awaiting Documents/);
     await expect(page.locator('#summary-editor')).toHaveAttribute('contenteditable', 'true');
 
+    await page.locator('#open-briefing-tab').click();
+    await expect(page.locator('#briefing-panel')).toBeVisible();
+    await expect(page.locator('#summary-panel')).toBeHidden();
+
     await page.locator('#open-cv-tab').click();
     await expect(page.locator('#cv-panel')).toBeVisible();
-    await expect(page.locator('#summary-panel')).toBeHidden();
+    await expect(page.locator('#briefing-panel')).toBeHidden();
     await expect(page.locator('#cv-preview-text')).toHaveClass(/rich-document/);
 
     await page.locator('#open-jd-tab').click();

@@ -292,3 +292,51 @@ test('employment history parses date-first company groups with multiple dated ro
     ]
   });
 });
+
+test('buildTemplateData consolidates multiple languages and education entries for template rendering', () => {
+  const templateData = buildTemplateData({
+    summary: [
+      'Candidate: Alex Wong',
+      'Target Role: Head of Technology',
+      '',
+      '## Fit Summary',
+      'Strong fit for the role.'
+    ].join('\n'),
+    cvDocument: {
+      text: [
+        'Alex Wong',
+        'Nationality: Chinese',
+        'Preferred location: Singapore',
+        '',
+        'Languages',
+        'English',
+        'Cantonese',
+        'Mandarin',
+        '',
+        'Education',
+        'BEng Computer Science',
+        'HKUST',
+        '2008 - 2012',
+        'MBA',
+        'INSEAD',
+        '2016 - 2017'
+      ].join('\n'),
+      file: {
+        name: 'candidate-cv.pdf'
+      }
+    },
+    jdDocument: {
+      text: 'Job Title: Head of Technology\nCompany: Atomic Group',
+      file: {
+        name: 'role-jd.pdf'
+      }
+    }
+  });
+
+  assert.equal(templateData.candidate_nationality, 'Chinese');
+  assert.equal(templateData.candidate_preferred_location, 'Singapore');
+  assert.equal(templateData.candidate_languages, 'English, Cantonese, Mandarin');
+  assert.equal(templateData.education_entries.length, 2);
+  assert.match(templateData.education_summary, /BEng Computer Science/);
+  assert.match(templateData.education_summary, /MBA/);
+});

@@ -88,9 +88,21 @@ function normalizeLooseKey(value) {
 function extractCandidateName(cvText, fileName) {
   const lines = splitLines(cvText);
 
+  for (const line of lines.slice(0, 10)) {
+    const labeledMatch = line.match(/^(?:name|candidate name)\s*[:：]\s*(.+)$/i);
+
+    if (
+      labeledMatch?.[1] &&
+      !labeledMatch[1].includes('@') &&
+      !/\d{5,}/.test(labeledMatch[1])
+    ) {
+      return cleanLine(labeledMatch[1]);
+    }
+  }
+
   for (const line of lines.slice(0, 6)) {
     if (
-      /^[A-Z][a-z]+(?: [A-Z][a-z]+){1,3}$/.test(line) &&
+      /^[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){1,4}(?: \([A-Za-z][A-Za-z\s'-]*\))?$/.test(line) &&
       !line.includes('@') &&
       !/\d/.test(line)
     ) {
@@ -355,7 +367,7 @@ function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt }) {
     '',
     'Important constraints:',
     '- Do not anonymize the candidate in this release.',
-    '- Keep the output concise but recruiter-ready.',
+    '- Keep the output substantive and recruiter-ready. Include enough detail to explain fit clearly without padding.',
     '- If evidence is missing, state it as a gap instead of inventing information.'
   ].join('\n');
 

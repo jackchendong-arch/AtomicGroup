@@ -40,9 +40,12 @@ const SUPPORTED_WORD_TEMPLATE_TAGS = [
   'candidate_nationality',
   'candidate_location',
   'candidate_preferred_location',
+  'candidate_languages',
   'candidate_language_1',
   'candidate_language_2',
   'notice_period',
+  'education_entries',
+  'education_summary',
   'degree_name',
   'university',
   'start_year',
@@ -69,9 +72,11 @@ const TEMPLATE_TAG_ALIASES = {
   Candidate_nationality: 'candidate_nationality',
   Candidate_Location: 'candidate_location',
   Candidate_Preferred_Location: 'candidate_preferred_location',
+  Candidate_Languages: 'candidate_languages',
   'Candidate_Language 1': 'candidate_language_1',
   'Candidate_Language 2': 'candidate_language_2',
   Notice_Period: 'notice_period',
+  Education_Summary: 'education_summary',
   Degree_Name: 'degree_name',
   University: 'university',
   'Start Year': 'start_year',
@@ -332,23 +337,37 @@ function extractEarlyLocation(lines, candidateName) {
   return '';
 }
 
-function extractLanguageValues(lines, sectionLines = []) {
+function extractLanguageList(lines, sectionLines = []) {
   const inlineValue = extractLabeledValue(lines, ['Languages', 'Language']);
-  const rawValue = inlineValue || sectionLines.join(', ');
+  const rawValues = [
+    inlineValue,
+    ...(Array.isArray(sectionLines) ? sectionLines : [])
+  ].filter(Boolean);
 
-  if (!rawValue) {
-    return ['', ''];
+  if (rawValues.length === 0) {
+    return [];
   }
 
-  const values = rawValue
-    .split(/[,/;|]+/)
+  return [...new Set(rawValues
+    .flatMap((value) => String(value).split(/[,/;|]+/))
     .map((value) => value.trim())
-    .filter(Boolean);
-
-  return [values[0] || '', values[1] || ''];
+    .filter(Boolean))];
 }
 
 function extractEducationDetails(sectionLines = []) {
+  const educationEntries = extractEducationEntries(sectionLines);
+
+  if (educationEntries.length > 0) {
+    const firstEducationEntry = educationEntries[0];
+
+    return {
+      degreeName: firstEducationEntry.degreeName,
+      university: firstEducationEntry.university,
+      startYear: firstEducationEntry.startYear,
+      endYear: firstEducationEntry.endYear
+    };
+  }
+
   const yearLine = sectionLines.find((line) => YEAR_RANGE_PATTERN.test(line)) || '';
   const yearMatch = yearLine.match(YEAR_RANGE_PATTERN);
   const startYear = yearMatch?.[1] || '';
@@ -362,6 +381,75 @@ function extractEducationDetails(sectionLines = []) {
     startYear,
     endYear
   };
+}
+
+function parseEducationEntry(sectionLines = []) {
+  const normalizedLines = sectionLines
+    .map(normalizeTextBlock)
+    .filter((line) => line && !isPdfArtifactLine(line) && !isKnownCvSectionHeading(line));
+
+  if (normalizedLines.length === 0) {
+    return null;
+  }
+
+  const yearLine = normalizedLines.find((line) => YEAR_RANGE_PATTERN.test(line)) || '';
+  const yearMatch = yearLine.match(YEAR_RANGE_PATTERN);
+  const startYear = yearMatch?.[1] || '';
+  const endYear = yearMatch?.[3] || (yearMatch?.[2] && !/present|current|now/i.test(yearMatch[2]) ? yearMatch[2] : '');
+  const degreeName = normalizedLines.find((line) => DEGREE_LINE_PATTERN.test(line)) ||
+    normalizedLines.find((line) => !YEAR_RANGE_PATTERN.test(line) && !EDUCATION_ORG_PATTERN.test(line)) ||
+    '';
+  const university = normalizedLines.find((line) => EDUCATION_ORG_PATTERN.test(line)) || '';
+
+  if (!degreeName && !university && !startYear && !endYear) {
+    return null;
+  }
+
+  return {
+    degreeName,
+    university,
+    startYear,
+    endYear
+  };
+}
+
+function extractEducationEntries(sectionLines = []) {
+  const lines = sectionLines
+    .map(normalizeTextBlock)
+    .filter((line) => line && !isPdfArtifactLine(line));
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const yearLineIndices = lines
+    .map((line, index) => (YEAR_RANGE_PATTERN.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (yearLineIndices.length === 0) {
+    const singleEntry = parseEducationEntry(lines);
+    return singleEntry ? [singleEntry] : [];
+  }
+
+  const entries = [];
+  let cursor = 0;
+
+  for (const yearLineIndex of yearLineIndices) {
+    const entry = parseEducationEntry(lines.slice(cursor, yearLineIndex + 1));
+    if (entry) {
+      entries.push(entry);
+    }
+    cursor = yearLineIndex + 1;
+  }
+
+  if (cursor < lines.length && entries.length > 0) {
+    const trailingEntry = parseEducationEntry(lines.slice(cursor));
+    if (trailingEntry) {
+      entries.push(trailingEntry);
+    }
+  }
+
+  return entries;
 }
 
 function extractDateRange(value) {
@@ -908,8 +996,10 @@ function extractDocumentDerivedProfile({ cvDocument, jdDocument }) {
   const { lines, sections } = parseCvSections(cvText);
   const candidateName = extractCandidateName(cvText, cvDocument?.file?.name || 'candidate');
   const roleTitle = extractRoleTitleFromJd(jdText, jdDocument?.file?.name || 'role');
-  const [candidateLanguage1, candidateLanguage2] = extractLanguageValues(lines, sections.languages || []);
-  const education = extractEducationDetails((sections.education && sections.education.length > 0) ? sections.education : lines);
+  const candidateLanguages = extractLanguageList(lines, sections.languages || []);
+  const [candidateLanguage1, candidateLanguage2] = candidateLanguages;
+  const educationEntries = extractEducationEntries((sections.education && sections.education.length > 0) ? sections.education : lines);
+  const education = educationEntries[0] || extractEducationDetails((sections.education && sections.education.length > 0) ? sections.education : lines);
   const sectionExperienceHistory =
     sections.experience && sections.experience.length > 0
       ? extractExperienceHistory(sections.experience)
@@ -926,14 +1016,16 @@ function extractDocumentDerivedProfile({ cvDocument, jdDocument }) {
     roleTitle,
     hiringManager: extractHiringManagerTarget(jdText),
     candidateGender: extractLabeledValue(lines, ['Gender']),
-    candidateNationality: extractLabeledValue(lines, ['Nationality']),
+    candidateNationality: extractLabeledValue(lines, ['Nationality', 'Citizenship']),
     candidateLocation:
       extractLabeledValue(lines, ['Current location', 'Location', 'Based in']) ||
       extractEarlyLocation(lines, candidateName),
-    candidatePreferredLocation: extractLabeledValue(lines, ['Preferred location', 'Preferred Location']),
+    candidatePreferredLocation: extractLabeledValue(lines, ['Preferred location', 'Preferred Location', 'Preferred locations', 'Preferred working location']),
+    candidateLanguages,
     candidateLanguage1,
     candidateLanguage2,
     noticePeriod: extractLabeledValue(lines, ['Notice period', 'Availability']) || (sections.availability || [])[0] || '',
+    educationEntries,
     degreeName: education.degreeName,
     university: education.university,
     startYear: education.startYear,
@@ -1003,6 +1095,12 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
   const profile = extractDocumentDerivedProfile({ cvDocument, jdDocument });
   const generationDate = new Date();
   const fitSummary = sections.fit_summary || normalizeTextBlock(summary);
+  const educationEntries = (profile.educationEntries || []).map((entry) => ({
+    degree_name: entry.degreeName,
+    university: entry.university,
+    start_year: entry.startYear,
+    end_year: entry.endYear
+  }));
 
   const baseData = {
     candidate_name: sections.candidate_name || profile.candidateName,
@@ -1028,9 +1126,25 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
     candidate_nationality: profile.candidateNationality,
     candidate_location: profile.candidateLocation,
     candidate_preferred_location: profile.candidatePreferredLocation,
+    candidate_languages: (profile.candidateLanguages || []).join(', '),
     candidate_language_1: profile.candidateLanguage1,
     candidate_language_2: profile.candidateLanguage2,
     notice_period: profile.noticePeriod,
+    education_entries: educationEntries,
+    education_summary: educationEntries
+      .map((entry) => {
+        const lines = [];
+        if (entry.degree_name) {
+          lines.push(entry.degree_name);
+        }
+        const organizationLine = [entry.university, [entry.start_year, entry.end_year].filter(Boolean).join(' - ')].filter(Boolean).join(', ');
+        if (organizationLine) {
+          lines.push(organizationLine);
+        }
+        return lines.join('\n');
+      })
+      .filter(Boolean)
+      .join('\n\n'),
     degree_name: profile.degreeName,
     university: profile.university,
     start_year: profile.startYear,
@@ -1054,9 +1168,11 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
     Candidate_nationality: baseData.candidate_nationality,
     Candidate_Location: baseData.candidate_location,
     Candidate_Preferred_Location: baseData.candidate_preferred_location,
+    Candidate_Languages: baseData.candidate_languages,
     'Candidate_Language 1': baseData.candidate_language_1,
     'Candidate_Language 2': baseData.candidate_language_2,
     Notice_Period: baseData.notice_period,
+    Education_Summary: baseData.education_summary,
     Degree_Name: baseData.degree_name,
     University: baseData.university,
     'Start Year': baseData.start_year,
@@ -1350,6 +1466,7 @@ module.exports = {
   buildSuggestedOutputFilename,
   buildTemplateData,
   describeEmploymentExtraction,
+  extractDocumentDerivedProfile,
   parseStructuredSummary,
   renderHiringManagerWordDocument
 };

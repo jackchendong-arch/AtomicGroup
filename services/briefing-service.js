@@ -2,6 +2,7 @@ const {
   DEFAULT_TEMPLATE,
   DEFAULT_TEMPLATE_LABEL,
   buildSummaryPrompt,
+  resolveTemplateGuidance,
   extractCandidateName,
   extractRoleTitle,
   generateSummaryDraft,
@@ -844,9 +845,10 @@ function parseBriefingResponse(responseText) {
   return normalizeBriefing(parsed);
 }
 
-function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt }) {
+function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null }) {
   const candidateName = extractCandidateName(cvDocument.text, cvDocument.file.name);
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
+  const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance);
   const summaryPrompt = buildSummaryPrompt({
     candidateName,
     roleTitle,
@@ -877,8 +879,15 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt }) {
     '- `employment_history[].responsibilities` should be arrays of concise bullet-ready strings.',
     '- `evidence_refs` fields are optional, but include them when they help ground material facts.',
     '',
-    'Recruiter summary template guidance:',
-    DEFAULT_TEMPLATE,
+    resolvedTemplateGuidance.usesDefaultTemplate
+      ? 'Recruiter summary template guidance:'
+      : `Selected reference template guidance (${resolvedTemplateGuidance.label}):`,
+    resolvedTemplateGuidance.content,
+    ...(resolvedTemplateGuidance.usesDefaultTemplate ? [] : [
+      '',
+      'Required recruiter summary structure for the in-app review surface:',
+      DEFAULT_TEMPLATE
+    ]),
     '',
     'Current recruiter summary drafting prompt for tone and structure guidance:',
     summaryPrompt,
@@ -891,7 +900,7 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt }) {
   ].join('\n');
 
   return {
-    templateLabel: DEFAULT_TEMPLATE_LABEL,
+    templateLabel: resolvedTemplateGuidance.label || DEFAULT_TEMPLATE_LABEL,
     prompt,
     messages: [
       {

@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   pickWordTemplate() {
     return ipcRenderer.invoke('template:pick-word-template');
   },
+  pickReferenceTemplate() {
+    return ipcRenderer.invoke('template:pick-reference-template');
+  },
   exportHiringManagerWordDraft(payload) {
     return ipcRenderer.invoke('hiring-manager:export-word-draft', payload);
   },

@@ -18,3 +18,43 @@ test('LLM settings validation requires the user to provide an API key', () => {
   assert.equal(validation.isValid, false);
   assert.match(validation.errors.join(' '), /API key is required/i);
 });
+
+test('LLM settings validation requires a selected file when local reference template mode is enabled', () => {
+  const validation = validateSettings({
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder',
+    referenceTemplateMode: 'local-file'
+  });
+
+  assert.equal(validation.isValid, false);
+  assert.match(validation.errors.join(' '), /Choose a local reference template file/i);
+});
+
+test('LLM settings validation accepts a supported local reference template file', () => {
+  const validation = validateSettings({
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder',
+    referenceTemplateMode: 'local-file',
+    referenceTemplatePath: '/tmp/reference-template.md',
+    referenceTemplateName: 'reference-template.md',
+    referenceTemplateExtension: '.md'
+  });
+
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.settings.referenceTemplateMode, 'local-file');
+  assert.equal(validation.settings.referenceTemplateExtension, '.md');
+});
+
+test('LLM settings validation rejects non-Markdown reference template files', () => {
+  const validation = validateSettings({
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder',
+    referenceTemplateMode: 'local-file',
+    referenceTemplatePath: '/tmp/reference-template.docx',
+    referenceTemplateName: 'reference-template.docx',
+    referenceTemplateExtension: '.docx'
+  });
+
+  assert.equal(validation.isValid, false);
+  assert.match(validation.errors.join(' '), /Markdown \(\.md\) document/i);
+});

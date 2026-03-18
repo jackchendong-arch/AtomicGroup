@@ -44,6 +44,36 @@ function extractPlainTextFromDocx(buffer) {
     .trim();
 }
 
+function extractXmlFromDocx(buffer, filePath) {
+  const zip = new PizZip(buffer);
+  const entry = zip.file(filePath);
+  return entry ? entry.asText() : '';
+}
+
+function getMissingIgnorablePrefixes(xml) {
+  const rootTagMatch = String(xml || '').match(/<(w:[A-Za-z]+)\b([^>]*)>/);
+
+  if (!rootTagMatch) {
+    return [];
+  }
+
+  const attributes = rootTagMatch[2];
+  const ignorableMatch = attributes.match(/\smc:Ignorable="([^"]+)"/);
+
+  if (!ignorableMatch) {
+    return [];
+  }
+
+  const declaredPrefixes = new Set(
+    [...attributes.matchAll(/\sxmlns:([A-Za-z0-9]+)=/g)].map((match) => match[1])
+  );
+
+  return ignorableMatch[1]
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((prefix) => !declaredPrefixes.has(prefix));
+}
+
 function buildSummary() {
   return [
     '## Fit Summary',
@@ -133,8 +163,24 @@ for (const fixtureCase of fixtureCases) {
 
       const renderedBuffer = await fsPromises.readFile(outputPath);
       const renderedText = extractPlainTextFromDocx(renderedBuffer);
+      const contentTypesXml = extractXmlFromDocx(renderedBuffer, '[Content_Types].xml');
+      const documentXml = extractXmlFromDocx(renderedBuffer, 'word/document.xml');
+      const appPropertiesXml = extractXmlFromDocx(renderedBuffer, 'docProps/app.xml');
+      const zip = new PizZip(renderedBuffer);
 
       assert.ok(renderedText.length > 0, 'Rendered document should contain readable text');
+      assert.match(
+        contentTypesXml,
+        /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document\.main\+xml/
+      );
+      assert.doesNotMatch(
+        contentTypesXml,
+        /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.template\.main\+xml/
+      );
+      assert.doesNotMatch(documentXml, /<w:proofErr\b/);
+      assert.match(appPropertiesXml, /<Template>Normal\.dotm<\/Template>/);
+      assert.equal(Boolean(zip.file('docProps/custom.xml')), false);
+      assert.deepEqual(getMissingIgnorablePrefixes(documentXml), []);
 
       for (const expectedFragment of fixtureCase.expectedTextFragments) {
         assert.match(

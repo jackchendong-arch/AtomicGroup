@@ -1238,7 +1238,7 @@
               <div>
                 <span class="panel-kicker">Configuration</span>
                 <h2>Workspace Settings</h2>
-                <p class="panel-subtitle">Manage model access and Word template settings.</p>
+                <p class="panel-subtitle">Manage model access, recruiter summary guidance, and hiring-manager Word output.</p>
               </div>
               <div class="settings-actions">
                 <span class="status-chip" id="settings-status-chip">Settings Required</span>
@@ -1254,9 +1254,13 @@
                   LLM Model Configuration
                   <span>Provider, endpoint, model, API key, and generation defaults.</span>
                 </button>
-                <button class="settings-nav-button" id="open-template-settings-tab" type="button">
-                  Candidate Summary Template
-                  <span>Word output template selection and supported placeholder guidance.</span>
+                <button class="settings-nav-button" id="open-summary-guidance-settings-tab" type="button">
+                  Candidate Summary Guidance
+                  <span>Built-in vs local reference guidance for recruiter summary generation.</span>
+                </button>
+                <button class="settings-nav-button" id="open-word-template-settings-tab" type="button">
+                  Hiring Manager Briefing Template
+                  <span>Word document template used for hiring-manager draft export.</span>
                 </button>
               </div>
             </aside>
@@ -1307,12 +1311,46 @@
                 </div>
               </section>
 
-              <section class="form-panel is-hidden" id="template-settings-panel">
+              <section class="form-panel is-hidden" id="summary-guidance-settings-panel">
                 <div class="panel-header">
                   <div>
-                    <span class="panel-kicker">Output Template</span>
-                    <h2>Candidate Summary Template</h2>
-                    <p class="panel-subtitle">Used when saving the hiring-manager Word draft.</p>
+                    <span class="panel-kicker">Recruiter Summary</span>
+                    <h2>Candidate Summary Guidance</h2>
+                    <p class="panel-subtitle">Choose how the recruiter-facing summary should be guided during generation.</p>
+                  </div>
+                </div>
+
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="reference-template-mode-select">Generation Guidance Source</label>
+                    <select id="reference-template-mode-select">
+                      <option value="default">Built-in Default Template</option>
+                      <option value="local-file">Local Markdown Reference Template</option>
+                    </select>
+                    <p class="field-note">Use the built-in template by default, or ground generation on a selected local Markdown reference template.</p>
+                  </div>
+                  <div class="template-card">
+                    <strong id="reference-template-name">Built-in default template</strong>
+                    <p class="settings-status" id="reference-template-path">
+                      The built-in recruiter summary template is currently guiding generation.
+                    </p>
+                  </div>
+                  <div class="settings-actions">
+                    <button class="btn-primary" id="choose-reference-template-button" type="button">Choose Markdown Template</button>
+                    <button class="btn-secondary" id="clear-reference-template-button" type="button">Use Built-in Default</button>
+                  </div>
+                  <p class="settings-status" id="reference-template-note">
+                    When local reference mode is selected, the Markdown file content is loaded and included in LLM generation context for both the recruiter summary and the hiring-manager briefing.
+                  </p>
+                </div>
+              </section>
+
+              <section class="form-panel is-hidden" id="word-template-settings-panel">
+                <div class="panel-header">
+                  <div>
+                    <span class="panel-kicker">Hiring Manager Output</span>
+                    <h2>Hiring Manager Briefing Word Template</h2>
+                    <p class="panel-subtitle">Configure the Word document template used when the consultant exports the hiring-manager briefing.</p>
                   </div>
                 </div>
 

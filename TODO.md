@@ -100,7 +100,7 @@ Mark a release complete only when the work is:
 ## Release 2: Structured Briefing and Template-Guided Output
 - [-] Release 2 shipped, completed, and tested.
 - Add support for selecting a local reference template file.
-- Add support for selecting a local template folder for future multi-template workflows.
+- Limit local reference template guidance to Markdown files and remove the unused template-folder workflow.
 - Persist the recruiter's last selected template reference as a local preference.
 - Retrieve the relevant template content and include it in generation context.
 - Define a canonical structured candidate briefing schema that becomes the shared source of truth for both the recruiter summary and the hiring-manager Word document.
@@ -120,8 +120,10 @@ Mark a release complete only when the work is:
 - Make `Save Word Draft` create the consultant-reviewable hiring-manager Word draft from the same composed briefing content shown in the `Hiring Manager Briefing` tab, and keep that draft-generation path reusable for future email attachment handoff.
 - Keep the visible progress indicator aligned to the active generation phase and avoid enabling downstream Word actions until the briefing review content is ready.
 - Expand the canonical hiring-manager Word template and export payload so the Candidate Summary table and profile sections support nationality, preferred location, multiple languages, multiple education entries, and line-broken employment history rendering.
+- Harden `.dotx`-based Word export normalization so generated `.docx` files open cleanly in Word without unreadable-content repair prompts.
 - Keep LLM credentials local-only by default, with empty API-key defaults, gitignored local config, and tests guarding against committed default keys.
 - Let the recruiter switch between the built-in default template and a local reference template.
+- Separate recruiter summary guidance settings from hiring-manager Word template settings so each template purpose is configured in its own settings tab.
 - Test output consistency across at least two different template references.
 
 ## Release 3: Approval Gate and Anonymous Mode

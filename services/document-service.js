@@ -5,6 +5,7 @@ const mammoth = require('mammoth');
 const { PDFParse } = require('pdf-parse');
 
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.docx', '.txt']);
+const REFERENCE_TEMPLATE_EXTENSIONS = new Set(['.md']);
 
 function normalizeWhitespace(value) {
   return value.replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
@@ -48,6 +49,10 @@ async function extractTextFromTxt(filePath) {
   return fs.readFile(filePath, 'utf8');
 }
 
+async function extractTextFromMd(filePath) {
+  return fs.readFile(filePath, 'utf8');
+}
+
 async function extractTextFromDocx(filePath) {
   const result = await mammoth.extractRawText({ path: filePath });
   return result.value;
@@ -70,6 +75,10 @@ async function extractText(filePath, extension) {
     return extractTextFromTxt(filePath);
   }
 
+  if (extension === '.md') {
+    return extractTextFromMd(filePath);
+  }
+
   if (extension === '.docx') {
     return extractTextFromDocx(filePath);
   }
@@ -81,7 +90,10 @@ async function extractText(filePath, extension) {
   throw new Error(`Unsupported file type: ${extension}`);
 }
 
-async function importDocument(filePath) {
+async function importDocumentWithOptions(filePath, {
+  supportedExtensions = SUPPORTED_EXTENSIONS,
+  unsupportedMessage = 'Unsupported file type. Release 1 accepts PDF, DOCX, and TXT only.'
+} = {}) {
   const resolvedPath = path.resolve(filePath);
   const name = path.basename(resolvedPath);
   const extension = path.extname(resolvedPath).toLowerCase();
@@ -103,7 +115,7 @@ async function importDocument(filePath) {
     };
   }
 
-  if (!SUPPORTED_EXTENSIONS.has(extension)) {
+  if (!supportedExtensions.has(extension)) {
     return {
       file: {
         path: resolvedPath,
@@ -115,7 +127,7 @@ async function importDocument(filePath) {
       text: '',
       previewText: '',
       warnings: [],
-      error: 'Unsupported file type. Release 1 accepts PDF, DOCX, and TXT only.'
+      error: unsupportedMessage
     };
   }
 
@@ -153,7 +165,20 @@ async function importDocument(filePath) {
   }
 }
 
+async function importDocument(filePath) {
+  return importDocumentWithOptions(filePath);
+}
+
+async function importReferenceTemplateDocument(filePath) {
+  return importDocumentWithOptions(filePath, {
+    supportedExtensions: REFERENCE_TEMPLATE_EXTENSIONS,
+    unsupportedMessage: 'Unsupported reference template type. Reference templates accept Markdown (.md) only.'
+  });
+}
+
 module.exports = {
   importDocument,
+  importReferenceTemplateDocument,
+  REFERENCE_TEMPLATE_EXTENSIONS,
   SUPPORTED_EXTENSIONS
 };

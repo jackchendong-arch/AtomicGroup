@@ -13,6 +13,10 @@ function createDefaultSettings() {
     maxTokens: 1200,
     systemPrompt:
       'You are an executive search recruiter assistant. Produce grounded, evidence-based candidate profile summaries for hiring managers. Do not invent facts. Call out strengths and gaps clearly.',
+    referenceTemplateMode: 'default',
+    referenceTemplatePath: '',
+    referenceTemplateName: '',
+    referenceTemplateExtension: '',
     outputTemplatePath: '',
     outputTemplateName: '',
     outputTemplateExtension: ''
@@ -45,6 +49,10 @@ function normalizeSettings(input = {}) {
     temperature: normalizeNumericValue(merged.temperature, defaults.temperature),
     maxTokens: normalizeNumericValue(merged.maxTokens, defaults.maxTokens),
     systemPrompt: String(merged.systemPrompt || defaults.systemPrompt).trim(),
+    referenceTemplateMode: String(merged.referenceTemplateMode || defaults.referenceTemplateMode).trim() || 'default',
+    referenceTemplatePath: String(merged.referenceTemplatePath || '').trim(),
+    referenceTemplateName: String(merged.referenceTemplateName || '').trim(),
+    referenceTemplateExtension: String(merged.referenceTemplateExtension || '').trim().toLowerCase(),
     outputTemplatePath: String(merged.outputTemplatePath || '').trim(),
     outputTemplateName: String(merged.outputTemplateName || '').trim(),
     outputTemplateExtension: String(merged.outputTemplateExtension || '').trim().toLowerCase()
@@ -85,6 +93,21 @@ function validateSettings(input = {}) {
 
   if (!settings.systemPrompt) {
     errors.push('System prompt is required.');
+  }
+
+  if (!['default', 'local-file'].includes(settings.referenceTemplateMode)) {
+    errors.push('Reference template mode must be `default` or `local-file`.');
+  }
+
+  if (settings.referenceTemplateMode === 'local-file' && !settings.referenceTemplatePath) {
+    errors.push('Choose a local reference template file or switch back to the built-in default template.');
+  }
+
+  if (
+    settings.referenceTemplatePath &&
+    settings.referenceTemplateExtension !== '.md'
+  ) {
+    errors.push('The reference template must be a Markdown (.md) document.');
   }
 
   if (
@@ -274,6 +297,10 @@ class LlmSettingsStore {
       temperature: settings.temperature,
       maxTokens: settings.maxTokens,
       systemPrompt: settings.systemPrompt,
+      referenceTemplateMode: settings.referenceTemplateMode,
+      referenceTemplatePath: settings.referenceTemplatePath,
+      referenceTemplateName: settings.referenceTemplateName,
+      referenceTemplateExtension: settings.referenceTemplateExtension,
       outputTemplatePath: settings.outputTemplatePath,
       outputTemplateName: settings.outputTemplateName,
       outputTemplateExtension: settings.outputTemplateExtension,

@@ -55,11 +55,19 @@ const elements = {
   systemPromptInput: document.getElementById('system-prompt-input'),
   saveSettingsButton: document.getElementById('save-settings-button'),
   openLlmSettingsTab: document.getElementById('open-llm-settings-tab'),
-  openTemplateSettingsTab: document.getElementById('open-template-settings-tab'),
+  openSummaryGuidanceSettingsTab: document.getElementById('open-summary-guidance-settings-tab'),
+  openWordTemplateSettingsTab: document.getElementById('open-word-template-settings-tab'),
   llmSettingsPanel: document.getElementById('llm-settings-panel'),
-  templateSettingsPanel: document.getElementById('template-settings-panel'),
+  summaryGuidanceSettingsPanel: document.getElementById('summary-guidance-settings-panel'),
+  wordTemplateSettingsPanel: document.getElementById('word-template-settings-panel'),
   chooseWordTemplateButton: document.getElementById('choose-word-template-button'),
   clearWordTemplateButton: document.getElementById('clear-word-template-button'),
+  referenceTemplateModeSelect: document.getElementById('reference-template-mode-select'),
+  chooseReferenceTemplateButton: document.getElementById('choose-reference-template-button'),
+  clearReferenceTemplateButton: document.getElementById('clear-reference-template-button'),
+  referenceTemplateName: document.getElementById('reference-template-name'),
+  referenceTemplatePath: document.getElementById('reference-template-path'),
+  referenceTemplateNote: document.getElementById('reference-template-note'),
   wordTemplateName: document.getElementById('word-template-name'),
   wordTemplatePath: document.getElementById('word-template-path'),
   templateConfigNote: document.getElementById('template-config-note'),
@@ -656,6 +664,34 @@ function getTemplateDisplayPath() {
   return `Active runtime template path: ${state.settings.outputTemplatePath}`;
 }
 
+function getReferenceTemplateDisplayName() {
+  if (!state.settings) {
+    return 'Built-in default template';
+  }
+
+  if (state.settings.referenceTemplateMode !== 'local-file') {
+    return 'Built-in default template';
+  }
+
+  return state.settings.referenceTemplateName || 'No reference template selected';
+}
+
+function getReferenceTemplateDisplayPath() {
+  if (!state.settings) {
+    return '';
+  }
+
+  if (state.settings.referenceTemplateMode !== 'local-file') {
+    return 'The built-in recruiter summary template is currently guiding generation.';
+  }
+
+  if (!state.settings.referenceTemplatePath) {
+    return 'Choose a local Markdown reference template file to ground generation context.';
+  }
+
+  return `Selected reference template: ${state.settings.referenceTemplatePath}`;
+}
+
 function setView(view) {
   state.view = view;
   elements.workbenchView.classList.toggle('is-hidden', view !== 'workbench');
@@ -691,9 +727,11 @@ function setWorkbenchTab(tab) {
 function setSettingsTab(tab) {
   state.settingsTab = tab;
   elements.openLlmSettingsTab.classList.toggle('is-active', tab === 'llm');
-  elements.openTemplateSettingsTab.classList.toggle('is-active', tab === 'templates');
+  elements.openSummaryGuidanceSettingsTab.classList.toggle('is-active', tab === 'summary-guidance');
+  elements.openWordTemplateSettingsTab.classList.toggle('is-active', tab === 'word-template');
   elements.llmSettingsPanel.classList.toggle('is-hidden', tab !== 'llm');
-  elements.templateSettingsPanel.classList.toggle('is-hidden', tab !== 'templates');
+  elements.summaryGuidanceSettingsPanel.classList.toggle('is-hidden', tab !== 'summary-guidance');
+  elements.wordTemplateSettingsPanel.classList.toggle('is-hidden', tab !== 'word-template');
 }
 
 function updateSourcePanelStatus() {
@@ -768,6 +806,14 @@ function renderSettingsForm() {
   elements.temperatureInput.value = String(state.settings.temperature);
   elements.maxTokensInput.value = String(state.settings.maxTokens);
   elements.systemPromptInput.value = state.settings.systemPrompt;
+  elements.referenceTemplateModeSelect.value = state.settings.referenceTemplateMode || 'default';
+  elements.referenceTemplateName.textContent = getReferenceTemplateDisplayName();
+  elements.referenceTemplatePath.textContent = getReferenceTemplateDisplayPath();
+  elements.chooseReferenceTemplateButton.disabled = state.settings.referenceTemplateMode !== 'local-file';
+  elements.clearReferenceTemplateButton.disabled = !state.settings.referenceTemplatePath;
+  elements.referenceTemplateNote.textContent = state.settings.referenceTemplateMode === 'local-file'
+    ? 'The selected Markdown reference template is loaded and included in LLM generation context for both recruiter and hiring-manager briefing outputs.'
+    : 'The built-in recruiter summary template is currently guiding generation. Switch to a local Markdown reference template when you want external template guidance.';
   elements.providerHelpText.textContent = selectedProvider?.helpText || '';
   elements.wordTemplateName.textContent = getTemplateDisplayName();
   elements.wordTemplatePath.textContent = getTemplateDisplayPath();
@@ -901,6 +947,10 @@ function buildSettingsPayloadFromForm() {
     temperature: Number(elements.temperatureInput.value),
     maxTokens: Number(elements.maxTokensInput.value),
     systemPrompt: elements.systemPromptInput.value.trim(),
+    referenceTemplateMode: elements.referenceTemplateModeSelect.value,
+    referenceTemplatePath: state.settings?.referenceTemplatePath || '',
+    referenceTemplateName: state.settings?.referenceTemplateName || '',
+    referenceTemplateExtension: state.settings?.referenceTemplateExtension || '',
     outputTemplatePath: state.settings?.outputTemplatePath || '',
     outputTemplateName: state.settings?.outputTemplateName || '',
     outputTemplateExtension: state.settings?.outputTemplateExtension || ''
@@ -945,9 +995,46 @@ async function saveSettings() {
 
   if (!result.validation.isValid) {
     state.view = 'settings';
-    state.settingsTab = 'llm';
+    state.settingsTab = result.validation.errors.some((error) => /reference template/i.test(error))
+      ? 'summary-guidance'
+      : (result.validation.errors.some((error) => /output template|word/i.test(error))
+        ? 'word-template'
+        : 'llm');
   }
 
+  render();
+}
+
+async function chooseReferenceTemplate() {
+  const result = await window.recruitmentApi.pickReferenceTemplate();
+
+  if (!result || !state.settings) {
+    return;
+  }
+
+  state.settings = {
+    ...state.settings,
+    referenceTemplateMode: 'local-file',
+    referenceTemplatePath: result.path,
+    referenceTemplateName: result.name,
+    referenceTemplateExtension: result.extension
+  };
+  state.settingsTab = 'summary-guidance';
+  render();
+}
+
+function clearReferenceTemplate() {
+  if (!state.settings) {
+    return;
+  }
+
+  state.settings = {
+    ...state.settings,
+    referenceTemplateMode: 'default',
+    referenceTemplatePath: '',
+    referenceTemplateName: '',
+    referenceTemplateExtension: ''
+  };
   render();
 }
 
@@ -964,7 +1051,7 @@ async function chooseWordTemplate() {
     outputTemplateName: result.name,
     outputTemplateExtension: result.extension
   };
-  state.settingsTab = 'templates';
+  state.settingsTab = 'word-template';
   render();
 }
 
@@ -1397,8 +1484,13 @@ elements.openLlmSettingsTab.addEventListener('click', () => {
   render();
 });
 
-elements.openTemplateSettingsTab.addEventListener('click', () => {
-  state.settingsTab = 'templates';
+elements.openSummaryGuidanceSettingsTab.addEventListener('click', () => {
+  state.settingsTab = 'summary-guidance';
+  render();
+});
+
+elements.openWordTemplateSettingsTab.addEventListener('click', () => {
+  state.settingsTab = 'word-template';
   render();
 });
 
@@ -1407,7 +1499,21 @@ elements.providerSelect.addEventListener('change', () => {
   render();
 });
 
+elements.referenceTemplateModeSelect.addEventListener('change', () => {
+  if (!state.settings) {
+    return;
+  }
+
+  state.settings = {
+    ...state.settings,
+    referenceTemplateMode: elements.referenceTemplateModeSelect.value
+  };
+  state.settingsTab = 'summary-guidance';
+  render();
+});
 elements.saveSettingsButton.addEventListener('click', saveSettings);
+elements.chooseReferenceTemplateButton.addEventListener('click', chooseReferenceTemplate);
+elements.clearReferenceTemplateButton.addEventListener('click', clearReferenceTemplate);
 elements.chooseWordTemplateButton.addEventListener('click', chooseWordTemplate);
 elements.clearWordTemplateButton.addEventListener('click', clearWordTemplate);
 elements.cv.chooseButton.addEventListener('click', () => chooseDocument('cv'));

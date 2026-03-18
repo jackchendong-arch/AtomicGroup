@@ -2,7 +2,12 @@ const { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell 
 const fs = require('node:fs/promises');
 const path = require('path');
 
-const { importDocument, SUPPORTED_EXTENSIONS } = require('./services/document-service');
+const {
+  importDocument,
+  importReferenceTemplateDocument,
+  REFERENCE_TEMPLATE_EXTENSIONS,
+  SUPPORTED_EXTENSIONS
+} = require('./services/document-service');
 const {
   buildSuggestedOutputFilename,
   describeEmploymentExtraction,
@@ -100,6 +105,32 @@ function getSettingsStore() {
   }
 
   return settingsStore;
+}
+
+async function loadReferenceTemplateGuidance(settings) {
+  if (settings.referenceTemplateMode !== 'local-file') {
+    return null;
+  }
+
+  if (!settings.referenceTemplatePath) {
+    throw new Error('Choose a local reference template file or switch back to the built-in default template.');
+  }
+
+  const importedTemplate = await importReferenceTemplateDocument(settings.referenceTemplatePath);
+
+  if (importedTemplate.error) {
+    throw new Error(`Unable to load the selected reference template. ${importedTemplate.error}`);
+  }
+
+  if (!importedTemplate.text || !importedTemplate.text.trim()) {
+    throw new Error('The selected reference template did not yield readable text.');
+  }
+
+  return {
+    label: settings.referenceTemplateName || importedTemplate.file.name,
+    content: importedTemplate.text,
+    sourcePath: importedTemplate.file.path
+  };
 }
 
 async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
@@ -295,6 +326,32 @@ ipcMain.handle('template:pick-word-template', async () => {
   };
 });
 
+ipcMain.handle('template:pick-reference-template', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Select recruiter Markdown reference template',
+    properties: ['openFile'],
+    filters: [
+      {
+        name: 'Markdown templates',
+        extensions: [...REFERENCE_TEMPLATE_EXTENSIONS].map((extension) => extension.replace('.', ''))
+      }
+    ]
+  });
+
+  if (canceled || filePaths.length === 0) {
+    return null;
+  }
+
+  const filePath = filePaths[0];
+  const extension = path.extname(filePath).toLowerCase();
+
+  return {
+    path: filePath,
+    name: path.basename(filePath),
+    extension
+  };
+});
+
 ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   const debugTrace = [
     `Export started at ${new Date().toISOString()}`
@@ -374,15 +431,18 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     throw new Error(validation.errors.join(' '));
   }
 
+  const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
   const summaryRequest = buildSummaryRequest({
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
-    systemPrompt: settings.systemPrompt
+    systemPrompt: settings.systemPrompt,
+    templateGuidance
   });
   const briefingRequest = buildBriefingRequest({
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
-    systemPrompt: settings.systemPrompt
+    systemPrompt: settings.systemPrompt,
+    templateGuidance
   });
   const [summaryResult, structuredBriefingResult] = await Promise.all([
     generateWithConfiguredProvider({

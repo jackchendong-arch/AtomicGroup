@@ -322,8 +322,50 @@ function buildRecommendedNextStep(strengths, gaps) {
 }
 
 function buildSummaryPrompt({ candidateName, roleTitle, cvText, jdText }) {
+  return buildSummaryPromptWithTemplateGuidance({
+    candidateName,
+    roleTitle,
+    cvText,
+    jdText,
+    templateGuidance: null
+  });
+}
+
+function resolveTemplateGuidance(templateGuidance) {
+  if (!templateGuidance || templateGuidance.usesDefaultTemplate === true) {
+    return {
+      label: DEFAULT_TEMPLATE_LABEL,
+      content: DEFAULT_TEMPLATE,
+      usesDefaultTemplate: true
+    };
+  }
+
+  if (!templateGuidance.content || !templateGuidance.label) {
+    return {
+      label: DEFAULT_TEMPLATE_LABEL,
+      content: DEFAULT_TEMPLATE,
+      usesDefaultTemplate: true
+    };
+  }
+
+  return {
+    label: templateGuidance.label,
+    content: String(templateGuidance.content).trim(),
+    usesDefaultTemplate: false
+  };
+}
+
+function buildSummaryPromptWithTemplateGuidance({
+  candidateName,
+  roleTitle,
+  cvText,
+  jdText,
+  templateGuidance
+}) {
+  const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance);
+
   return [
-    'Create a named recruiter-ready candidate summary using the default template.',
+    `Create a named recruiter-ready candidate summary using the ${resolvedTemplateGuidance.usesDefaultTemplate ? 'built-in default template' : 'selected reference template guidance'}.`,
     `Candidate: ${candidateName}`,
     `Target role: ${roleTitle}`,
     '',
@@ -334,8 +376,17 @@ function buildSummaryPrompt({ candidateName, roleTitle, cvText, jdText }) {
     'Use plain bullets beginning with `- ` where the template expects lists.',
     'Do not add a report title, markdown bold, italics, tables, or decorative formatting.',
     '',
-    'Template:',
-    DEFAULT_TEMPLATE,
+    resolvedTemplateGuidance.usesDefaultTemplate
+      ? 'Template:'
+      : `Reference template guidance (${resolvedTemplateGuidance.label}):`,
+    resolvedTemplateGuidance.content,
+    ...(resolvedTemplateGuidance.usesDefaultTemplate ? [] : [
+      '',
+      'Return the recruiter summary using the app-required section structure shown below, while grounding section emphasis and phrasing in the selected reference template guidance.',
+      '',
+      'Required recruiter summary structure:',
+      DEFAULT_TEMPLATE
+    ]),
     '',
     'Candidate CV:',
     cvText,
@@ -345,7 +396,7 @@ function buildSummaryPrompt({ candidateName, roleTitle, cvText, jdText }) {
   ].join('\n');
 }
 
-function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt }) {
+function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null }) {
   const candidateName = extractCandidateName(cvDocument.text, cvDocument.file.name);
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
   const requirements = extractRequirements(jdDocument.text);
@@ -353,13 +404,15 @@ function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt }) {
     .filter((match) => match.evidence)
     .slice(0, 5)
     .map((match) => `- Requirement: ${match.requirement}\n  Evidence hint: ${match.evidence}`);
+  const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance);
 
   const prompt = [
-    buildSummaryPrompt({
+    buildSummaryPromptWithTemplateGuidance({
       candidateName,
       roleTitle,
       cvText: cvDocument.text,
-      jdText: jdDocument.text
+      jdText: jdDocument.text,
+      templateGuidance: resolvedTemplateGuidance
     }),
     '',
     'Requirement-to-evidence hints:',
@@ -372,7 +425,7 @@ function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt }) {
   ].join('\n');
 
   return {
-    templateLabel: DEFAULT_TEMPLATE_LABEL,
+    templateLabel: resolvedTemplateGuidance.label,
     prompt,
     messages: [
       {
@@ -499,8 +552,10 @@ module.exports = {
   DEFAULT_TEMPLATE_LABEL,
   buildSummaryRequest,
   buildSummaryPrompt,
+  buildSummaryPromptWithTemplateGuidance,
   extractCandidateName,
   extractRoleTitle,
   generateSummaryDraft,
-  normalizeGeneratedSummary
+  normalizeGeneratedSummary,
+  resolveTemplateGuidance
 };

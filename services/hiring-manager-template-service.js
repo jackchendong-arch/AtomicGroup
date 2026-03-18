@@ -1349,20 +1349,92 @@ function assertTemplateSupportsOutput(templateInspection) {
 }
 
 function normalizeWordPackageForOutput(zip, sourceExtension) {
-  if (sourceExtension !== '.dotx') {
-    return;
-  }
-
   const contentTypesFile = zip.file('[Content_Types].xml');
 
   if (!contentTypesFile) {
     throw new Error('The Word template package is missing [Content_Types].xml.');
   }
 
+  const wordXmlFileNames = Object.keys(zip.files).filter((fileName) => {
+    return fileName.startsWith('word/') && fileName.endsWith('.xml');
+  });
+
+  for (const fileName of wordXmlFileNames) {
+    const xmlFile = zip.file(fileName);
+
+    if (!xmlFile) {
+      continue;
+    }
+
+    const normalizedXml = normalizeWordXmlForOutput(xmlFile.asText());
+
+    zip.file(fileName, normalizedXml);
+  }
+
+  if (sourceExtension !== '.dotx') {
+    return;
+  }
+
+  const rootRelationshipsFile = zip.file('_rels/.rels');
+  const appPropertiesFile = zip.file('docProps/app.xml');
   const contentTypesXml = contentTypesFile.asText();
-  const normalizedContentTypesXml = contentTypesXml.replace(DOTX_MAIN_CONTENT_TYPE, DOCX_MAIN_CONTENT_TYPE);
+  const normalizedContentTypesXml = contentTypesXml
+    .replace(DOTX_MAIN_CONTENT_TYPE, DOCX_MAIN_CONTENT_TYPE)
+    .replace(
+      /<Override PartName="\/docProps\/custom\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.custom-properties\+xml"\s*\/>/g,
+      ''
+    );
 
   zip.file('[Content_Types].xml', normalizedContentTypesXml);
+
+  if (rootRelationshipsFile) {
+    const normalizedRelationshipsXml = rootRelationshipsFile
+      .asText()
+      .replace(
+        /<Relationship[^>]+Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/custom-properties"[^>]*\/>/g,
+        ''
+      );
+
+    zip.file('_rels/.rels', normalizedRelationshipsXml);
+  }
+
+  if (appPropertiesFile) {
+    const normalizedAppPropertiesXml = appPropertiesFile
+      .asText()
+      .replace(/<Template>[\s\S]*?<\/Template>/, '<Template>Normal.dotm</Template>');
+
+    zip.file('docProps/app.xml', normalizedAppPropertiesXml);
+  }
+
+  if (zip.file('docProps/custom.xml')) {
+    zip.remove('docProps/custom.xml');
+  }
+}
+
+function normalizeWordXmlForOutput(xml) {
+  return String(xml || '')
+    .replace(/<w:proofErr\b[^/>]*\/>/g, '')
+    .replace(/<(w:[A-Za-z]+)\b([^>]*)>/, (_match, tagName, attributes) => {
+      const ignorableMatch = attributes.match(/\smc:Ignorable="([^"]+)"/);
+
+      if (!ignorableMatch) {
+        return `<${tagName}${attributes}>`;
+      }
+
+      const declaredPrefixes = new Set(
+        [...attributes.matchAll(/\sxmlns:([A-Za-z0-9]+)=/g)].map((match) => match[1])
+      );
+      const filteredPrefixes = ignorableMatch[1]
+        .split(/\s+/)
+        .filter(Boolean)
+        .filter((prefix) => declaredPrefixes.has(prefix));
+      const nextIgnorableAttribute = filteredPrefixes.length > 0
+        ? ` mc:Ignorable="${filteredPrefixes.join(' ')}"`
+        : '';
+      const normalizedAttributes = attributes.replace(/\smc:Ignorable="([^"]+)"/, nextIgnorableAttribute);
+
+      return `<${tagName}${normalizedAttributes}>`;
+    });
 }
 
 function validateGeneratedWordDocument(buffer) {

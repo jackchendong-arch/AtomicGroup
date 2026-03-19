@@ -156,7 +156,7 @@ Mark a release complete only when the work is:
 - Test both named and anonymous generation flows end to end.
 
 ## Release 4: Email Draft Handoff
-- [-] Release 4 shipped, completed, and tested.
+- [x] Release 4 shipped, completed, and tested.
 - Add a `Share by Email` action for approved summaries.
 - Generate a hiring-manager-facing recommendation email draft with the configured LLM instead of reusing the recruiter summary text directly.
 - Build the email from the approved `Candidate Summary Review`, approved `Hiring Manager Briefing`, and the same grounded candidate facts used for Word briefing generation.

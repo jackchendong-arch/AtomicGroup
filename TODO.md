@@ -133,6 +133,7 @@ Mark a release complete only when the work is:
 - Tighten workbench-wide status chips, button sizing, and panel chrome so the summary, briefing, CV, and JD panels share one professional, compact interaction style.
 - Move reset-workspace into the top-right application title bar beside configuration so it reads as a global workspace control instead of a stage or source-intake action.
 - Add Windows installer packaging and a GitHub Actions release workflow so version tags publish a downloadable `.exe` installer on GitHub Releases.
+- Make the unit-test runner cross-platform so Windows release builds do not fail on shell-specific glob expansion.
 - Test output consistency across at least two different template references.
 
 ## Release 3: Approval Gate and Anonymous Mode

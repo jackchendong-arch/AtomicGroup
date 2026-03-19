@@ -9,6 +9,9 @@ const {
   normalizeGeneratedSummary
 } = require('./summary-service');
 const {
+  ANONYMOUS_CANDIDATE_LABEL
+} = require('./anonymization-service');
+const {
   extractDocumentDerivedProfile,
   parseStructuredSummary
 } = require('./hiring-manager-template-service');
@@ -845,20 +848,26 @@ function parseBriefingResponse(responseText) {
   return normalizeBriefing(parsed);
 }
 
-function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null }) {
+function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null, outputMode = 'named' }) {
   const candidateName = extractCandidateName(cvDocument.text, cvDocument.file.name);
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
   const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance);
+  const normalizedOutputMode = outputMode === 'anonymous' ? 'anonymous' : 'named';
+  const modeDescriptor = normalizedOutputMode === 'anonymous' ? 'an anonymous' : 'a named';
+  const candidateLabel = normalizedOutputMode === 'anonymous'
+    ? ANONYMOUS_CANDIDATE_LABEL
+    : candidateName;
   const summaryPrompt = buildSummaryPrompt({
-    candidateName,
+    candidateName: candidateLabel,
     roleTitle,
     cvText: cvDocument.text,
-    jdText: jdDocument.text
+    jdText: jdDocument.text,
+    outputMode: normalizedOutputMode
   });
 
   const prompt = [
-    'Create a grounded structured candidate briefing object from the CV and JD.',
-    `Candidate: ${candidateName}`,
+    `Create ${modeDescriptor} grounded structured candidate briefing object from the CV and JD.`,
+    `Candidate: ${candidateLabel}`,
     `Target role: ${roleTitle}`,
     '',
     'Return only valid JSON. Do not wrap the answer in markdown or prose.',
@@ -867,6 +876,12 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGu
     'Use grounded, sufficiently detailed hiring-manager-ready language for narrative fields. Do not be overly terse.',
     'The recruiter summary is generated separately. This structured object should preserve exact candidate facts and grounded hiring-manager briefing content.',
     'The `fit_summary` field should align with the recruiter summary key points and be suitable for the hiring-manager briefing summary section.',
+    ...(normalizedOutputMode === 'anonymous'
+      ? [
+        `Set \`candidate.name\` to \`${ANONYMOUS_CANDIDATE_LABEL}\`.`,
+        'Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address in any structured field.'
+      ]
+      : []),
     '',
     'JSON schema:',
     JSON.stringify(createEmptyBriefing(), null, 2),

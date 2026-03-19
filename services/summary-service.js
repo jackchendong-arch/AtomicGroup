@@ -4,6 +4,7 @@ const path = require('node:path');
 const DEFAULT_TEMPLATE_LABEL = 'Default Recruiter Profile Template';
 const DEFAULT_TEMPLATE_PATH = path.join(__dirname, '..', 'templates', 'default-summary-template.md');
 const DEFAULT_TEMPLATE = fs.readFileSync(DEFAULT_TEMPLATE_PATH, 'utf8').trim();
+const ANONYMOUS_CANDIDATE_LABEL = 'Anonymous Candidate';
 
 const STOP_WORDS = new Set([
   'a', 'about', 'after', 'all', 'also', 'an', 'and', 'any', 'are', 'as', 'at',
@@ -321,13 +322,14 @@ function buildRecommendedNextStep(strengths, gaps) {
   return 'Recommend further recruiter review before sharing, as the current CV does not yet provide enough direct evidence against the role requirements.';
 }
 
-function buildSummaryPrompt({ candidateName, roleTitle, cvText, jdText }) {
+function buildSummaryPrompt({ candidateName, roleTitle, cvText, jdText, outputMode = 'named' }) {
   return buildSummaryPromptWithTemplateGuidance({
     candidateName,
     roleTitle,
     cvText,
     jdText,
-    templateGuidance: null
+    templateGuidance: null,
+    outputMode
   });
 }
 
@@ -360,13 +362,19 @@ function buildSummaryPromptWithTemplateGuidance({
   roleTitle,
   cvText,
   jdText,
-  templateGuidance
+  templateGuidance,
+  outputMode = 'named'
 }) {
   const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance);
+  const normalizedOutputMode = outputMode === 'anonymous' ? 'anonymous' : 'named';
+  const modeDescriptor = normalizedOutputMode === 'anonymous' ? 'an anonymous' : 'a named';
+  const candidateLabel = normalizedOutputMode === 'anonymous'
+    ? ANONYMOUS_CANDIDATE_LABEL
+    : candidateName;
 
   return [
-    `Create a named recruiter-ready candidate summary using the ${resolvedTemplateGuidance.usesDefaultTemplate ? 'built-in default template' : 'selected reference template guidance'}.`,
-    `Candidate: ${candidateName}`,
+    `Create ${modeDescriptor} recruiter-ready candidate summary using the ${resolvedTemplateGuidance.usesDefaultTemplate ? 'built-in default template' : 'selected reference template guidance'}.`,
+    `Candidate: ${candidateLabel}`,
     `Target role: ${roleTitle}`,
     '',
     'Use only evidence supported by the CV against the JD.',
@@ -375,6 +383,12 @@ function buildSummaryPromptWithTemplateGuidance({
     'Keep `Candidate` and `Target Role` as single-line label/value entries.',
     'Use plain bullets beginning with `- ` where the template expects lists.',
     'Do not add a report title, markdown bold, italics, tables, or decorative formatting.',
+    ...(normalizedOutputMode === 'anonymous'
+      ? [
+        `Use \`${ANONYMOUS_CANDIDATE_LABEL}\` as the candidate label throughout the summary.`,
+        'Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address in the output.'
+      ]
+      : []),
     '',
     resolvedTemplateGuidance.usesDefaultTemplate
       ? 'Template:'
@@ -396,7 +410,7 @@ function buildSummaryPromptWithTemplateGuidance({
   ].join('\n');
 }
 
-function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null }) {
+function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null, outputMode = 'named' }) {
   const candidateName = extractCandidateName(cvDocument.text, cvDocument.file.name);
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
   const requirements = extractRequirements(jdDocument.text);
@@ -412,14 +426,22 @@ function buildSummaryRequest({ cvDocument, jdDocument, systemPrompt, templateGui
       roleTitle,
       cvText: cvDocument.text,
       jdText: jdDocument.text,
-      templateGuidance: resolvedTemplateGuidance
+      templateGuidance: resolvedTemplateGuidance,
+      outputMode
     }),
     '',
     'Requirement-to-evidence hints:',
     evidenceMatches.length > 0 ? evidenceMatches.join('\n') : '- No strong evidence hints were extracted automatically.',
     '',
     'Important constraints:',
-    '- Do not anonymize the candidate in this release.',
+    ...(outputMode === 'anonymous'
+      ? [
+        `- Keep the draft anonymous. Use \`${ANONYMOUS_CANDIDATE_LABEL}\` instead of the candidate's real name.`,
+        '- Do not include email, phone, LinkedIn URL, or exact street address details in the output.'
+      ]
+      : [
+        '- Use the candidate name when it is supported by the CV.'
+      ]),
     '- Keep the output substantive and recruiter-ready. Include enough detail to explain fit clearly without padding.',
     '- If evidence is missing, state it as a gap instead of inventing information.'
   ].join('\n');

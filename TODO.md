@@ -98,11 +98,11 @@ Mark a release complete only when the work is:
 - Test the complete Release 1 flow end to end with at least one CV and one JD.
 
 ## Release 2: Structured Briefing and Template-Guided Output
-- [-] Release 2 shipped, completed, and tested.
-- Add support for selecting a local reference template file.
+- [x] Release 2 shipped, completed, and tested.
+- Add support for selecting a local Markdown reference template file.
 - Limit local reference template guidance to Markdown files and remove the unused template-folder workflow.
 - Persist the recruiter's last selected template reference as a local preference.
-- Retrieve the relevant template content and include it in generation context.
+- Load the selected Markdown guidance template into generation context.
 - Define a canonical structured candidate briefing schema that becomes the shared source of truth for both the recruiter summary and the hiring-manager Word document.
 - Use the LLM to extract grounded candidate facts, employment history, and role-fit content from the CV and JD into that structured briefing schema instead of relying only on heuristic field extraction.
 - Require source-grounding or evidence references for material candidate facts and fit claims so recruiter review can distinguish supported content from inferred content.
@@ -123,6 +123,7 @@ Mark a release complete only when the work is:
 - Harden `.dotx`-based Word export normalization so generated `.docx` files open cleanly in Word without unreadable-content repair prompts.
 - Keep LLM credentials local-only by default, with empty API-key defaults, gitignored local config, and tests guarding against committed default keys.
 - Let the recruiter switch between the built-in default template and a local reference template.
+- Keep recruiter summary guidance templates distinct from hiring-manager Word presentation templates so each template type has one clear purpose.
 - Separate recruiter summary guidance settings from hiring-manager Word template settings so each template purpose is configured in its own settings tab.
 - Restyle the configuration screen with a compact top tab bar and remove duplicated settings titles so the settings workspace feels cleaner and uses less vertical space.
 - Flatten the configuration screen into one shared settings surface so tabs do not appear inside inconsistent nested boxes.
@@ -137,9 +138,12 @@ Mark a release complete only when the work is:
 - Test output consistency across at least two different template references.
 
 ## Release 3: Approval Gate and Anonymous Mode
-- [ ] Release 3 shipped, completed, and tested.
+- [x] Release 3 shipped, completed, and tested.
 - Add a recruiter control to choose named mode or anonymous mode before generation.
+- Make anonymous mode apply to recruiter and hiring-manager derived outputs at generation time instead of relying only on late-stage regex cleanup.
+- Keep raw CV and JD source views unchanged while applying anonymization to `Candidate Summary Review`, `Hiring Manager Briefing`, and Word export output.
 - Implement masking for candidate full name in anonymous mode.
+- Expand name masking beyond exact full-name matches so common first-name, surname, and filename-derived variants are redacted more reliably.
 - Implement masking for email address in anonymous mode.
 - Implement masking for phone number in anonymous mode.
 - Implement masking for exact address in anonymous mode.
@@ -170,6 +174,10 @@ Mark a release complete only when the work is:
 - Show browsable files from the selected source folder inside the app.
 - Let the recruiter select a CV and JD from the chosen folder.
 - Save a local workspace containing the selected CV, selected JD, selected template, and latest draft.
+- Build a workspace-scoped normalized source model for the selected CV, JD, and active Markdown guidance template.
+- Segment CV and JD content into section-aware source blocks with metadata that can be used for validation and retrieval.
+- Add ephemeral per-workspace retrieval over the active CV, JD, and guidance inputs instead of relying on a global cross-candidate document store.
+- Use workspace-level retrieval to select relevant source blocks for recruiter summary generation, structured briefing extraction, and evidence tracing.
 - Show a recent work list so the recruiter can reopen prior work.
 - Rehydrate the prior draft and document selections when a saved workspace is reopened.
 - Keep the existing direct file picker workflow working alongside folder-based intake.
@@ -194,3 +202,10 @@ Mark a release complete only when the work is:
 - Decide whether Release 1 should also export Markdown, HTML, or PDF in addition to clipboard copy.
 - Decide how much local history should be stored by default.
 - Decide whether evidence citations or source traceability must be present in the first review UI.
+
+## Cross-Cutting Architecture Direction
+- Treat the active CV, JD, and guidance template as a workspace-scoped document set rather than a persistent global document library.
+- Keep retrieval ephemeral and local to the active workspace; do not start with a cross-candidate or cross-role vector store.
+- Keep recruiter summary guidance in Markdown and hiring-manager presentation in Word so template responsibilities stay distinct.
+- Use the grounded structured briefing model as the shared content source of truth for hiring-manager briefing review and Word export.
+- Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.

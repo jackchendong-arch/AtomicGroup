@@ -27,6 +27,10 @@ const {
   buildSummaryRequest,
   normalizeGeneratedSummary
 } = require('./services/summary-service');
+const {
+  buildAnonymizedGenerationInputs,
+  anonymizeDraftOutput
+} = require('./services/anonymization-service');
 
 let settingsStore;
 
@@ -242,8 +246,36 @@ async function writeWordDraftToPath({ settings, outputPath, templateData, debugT
   return {
     filePath: outputPath,
     templateName: settings.outputTemplateName,
-    debugLogPath: EXPORT_DEBUG_LOG_PATH,
+    debugLogPath: getExportDebugLogPath(),
     debugTrace
+  };
+}
+
+function normalizeOutputMode(value) {
+  return value === 'anonymous' ? 'anonymous' : 'named';
+}
+
+function applyDraftOutputMode({ outputMode, recruiterSummary, briefing, cvDocument, jdDocument }) {
+  const normalizedOutputMode = normalizeOutputMode(outputMode);
+
+  if (normalizedOutputMode === 'anonymous') {
+    return {
+      outputMode: normalizedOutputMode,
+      ...anonymizeDraftOutput({
+        recruiterSummary,
+        briefing,
+        cvDocument,
+        jdDocument
+      })
+    };
+  }
+
+  return {
+    outputMode: normalizedOutputMode,
+    summary: recruiterSummary,
+    briefing,
+    warnings: [],
+    modeLabel: 'Named Draft'
   };
 }
 
@@ -364,12 +396,24 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   ];
 
   const settings = await getSettingsStore().load();
+  const preparedPayload = normalizeOutputMode(payload.outputMode) === 'anonymous'
+    ? {
+      ...payload,
+      ...applyDraftOutputMode({
+        outputMode: payload.outputMode,
+        recruiterSummary: payload.summary,
+        briefing: payload.briefing,
+        cvDocument: payload.cvDocument,
+        jdDocument: payload.jdDocument
+      })
+    }
+    : payload;
   let templateData;
   let suggestedName;
 
   try {
     ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
-      payload,
+      payload: preparedPayload,
       settings,
       debugTrace
     }));
@@ -412,7 +456,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     });
     shell.showItemInFolder(outputPath);
     debugTrace.push('Finder reveal requested.');
-    debugTrace.push(`Debug log path: ${EXPORT_DEBUG_LOG_PATH}`);
+    debugTrace.push(`Debug log path: ${getExportDebugLogPath()}`);
     await appendExportDebugLog(debugTrace);
 
     return {
@@ -421,7 +465,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     };
   } catch (error) {
     debugTrace.push(`Export failed: ${error instanceof Error ? error.message : 'Unknown export failure.'}`);
-    debugTrace.push(`Debug log path: ${EXPORT_DEBUG_LOG_PATH}`);
+    debugTrace.push(`Debug log path: ${getExportDebugLogPath()}`);
     await appendExportDebugLog(debugTrace);
     throw new Error(
       `${error instanceof Error ? error.message : 'Unable to export the hiring-manager Word draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`
@@ -437,18 +481,30 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     throw new Error(validation.errors.join(' '));
   }
 
+  const outputMode = normalizeOutputMode(payload.outputMode);
+  const generationInputs = outputMode === 'anonymous'
+    ? buildAnonymizedGenerationInputs({
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    })
+    : {
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    };
   const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
   const summaryRequest = buildSummaryRequest({
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument,
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument,
     systemPrompt: settings.systemPrompt,
-    templateGuidance
+    templateGuidance,
+    outputMode
   });
   const briefingRequest = buildBriefingRequest({
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument,
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument,
     systemPrompt: settings.systemPrompt,
-    templateGuidance
+    templateGuidance,
+    outputMode
   });
   const [summaryResult, structuredBriefingResult] = await Promise.all([
     generateWithConfiguredProvider({
@@ -465,8 +521,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
   const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
 
   const fallbackBriefing = buildFallbackBriefing({
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument
   });
   let briefing;
 
@@ -483,19 +539,29 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
   }
 
   const validatedBriefing = briefingValidation.briefing;
-  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
+  const preparedOutput = applyDraftOutputMode({
+    outputMode,
+    recruiterSummary,
     briefing: validatedBriefing,
-    recruiterSummary
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
+    briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary
   });
 
   return {
     templateLabel: summaryRequest.templateLabel,
-    summary: recruiterSummary,
+    summary: preparedOutput.summary,
     hiringManagerBriefingReview: hiringManagerBriefing.review,
     prompt: summaryRequest.prompt,
     providerLabel: settings.providerLabel,
     model: settings.model,
-    briefing: validatedBriefing
+    briefing: preparedOutput.briefing,
+    outputMode: preparedOutput.outputMode,
+    modeLabel: preparedOutput.modeLabel,
+    approvalWarnings: preparedOutput.warnings
   };
 });
 
@@ -507,14 +573,24 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
   const requestedBriefing = payload.briefing
     ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
     : fallbackBriefing;
-  const composed = prepareHiringManagerBriefingOutput({
+  const preparedOutput = applyDraftOutputMode({
+    outputMode: payload.outputMode,
+    recruiterSummary: payload.summary,
     briefing: requestedBriefing,
-    recruiterSummary: payload.summary
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const composed = prepareHiringManagerBriefingOutput({
+    briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary
   });
 
   return {
     briefing: composed.briefing,
-    hiringManagerBriefingReview: composed.review
+    hiringManagerBriefingReview: composed.review,
+    summary: preparedOutput.summary,
+    modeLabel: preparedOutput.modeLabel,
+    approvalWarnings: preparedOutput.warnings
   };
 });
 

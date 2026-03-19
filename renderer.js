@@ -15,6 +15,9 @@ const state = {
   briefing: null,
   briefingReview: '',
   summary: '',
+  outputMode: 'named',
+  draftLifecycle: 'empty',
+  approvalWarnings: [],
   lastExportPath: '',
   debugTrace: [],
   isGenerating: false,
@@ -74,6 +77,8 @@ const elements = {
   sourcePanelStatus: document.getElementById('source-panel-status'),
   dropzone: document.getElementById('dropzone'),
   swapSourceButton: document.getElementById('swap-source-button'),
+  setNamedModeButton: document.getElementById('set-named-mode-button'),
+  setAnonymousModeButton: document.getElementById('set-anonymous-mode-button'),
   generateButton: document.getElementById('generate-summary-button'),
   resetButton: document.getElementById('reset-workspace-button'),
   summaryStatus: document.getElementById('summary-status'),
@@ -81,13 +86,18 @@ const elements = {
   generationProgress: document.getElementById('generation-progress'),
   generationProgressLabel: document.getElementById('generation-progress-label'),
   summaryEditor: document.getElementById('summary-editor'),
+  approveDraftButton: document.getElementById('approve-draft-button'),
   copySummaryButton: document.getElementById('copy-summary-button'),
   exportWordDraftButton: document.getElementById('export-word-draft-button'),
   revealWordDraftButton: document.getElementById('reveal-word-draft-button'),
   openWordDraftButton: document.getElementById('open-word-draft-button'),
   debugTrace: document.getElementById('debug-trace'),
+  draftModePill: document.getElementById('draft-mode-pill'),
+  draftLifecyclePill: document.getElementById('draft-lifecycle-pill'),
   templateLabel: document.getElementById('template-label'),
   draftMeta: document.getElementById('draft-meta'),
+  approvalWarningPanel: document.getElementById('approval-warning-panel'),
+  approvalWarningList: document.getElementById('approval-warning-list'),
   briefingStatus: document.getElementById('briefing-status'),
   briefingPreview: document.getElementById('briefing-preview'),
   cv: {
@@ -815,12 +825,17 @@ function renderSummary() {
   elements.summaryMessage.textContent = state.generationError || state.summaryMessage;
   elements.generationProgress.classList.toggle('is-hidden', !isGenerationWorkflowBusy());
   elements.generationProgressLabel.textContent = state.progressLabel;
+  elements.setNamedModeButton.classList.toggle('is-active', state.outputMode === 'named');
+  elements.setAnonymousModeButton.classList.toggle('is-active', state.outputMode === 'anonymous');
+  elements.draftModePill.textContent = state.outputMode === 'anonymous' ? 'Anonymous Draft' : 'Named Draft';
+  elements.draftLifecyclePill.textContent = getDraftLifecycleLabel();
 
   if (document.activeElement !== elements.summaryEditor) {
     setRichDocumentContent(elements.summaryEditor, state.summary);
   }
 
-  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || state.summary.trim().length === 0;
+  elements.approveDraftButton.disabled = isGenerationWorkflowBusy() || !canApproveDraft();
+  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || !canCopySummary();
   elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
   elements.revealWordDraftButton.disabled = !state.lastExportPath;
   elements.openWordDraftButton.disabled = !state.lastExportPath;
@@ -828,14 +843,22 @@ function renderSummary() {
   elements.generateButton.disabled = !canGenerateSummary();
   elements.debugTrace.textContent = formatDebugTrace();
   elements.templateLabel.textContent = state.templateLabel;
+  renderApprovalWarnings();
   if (state.lastExportPath) {
     elements.draftMeta.textContent = `Latest saved Word draft: ${state.lastExportPath}`;
     return;
   }
 
+  if (state.draftLifecycle === 'approved') {
+    elements.draftMeta.textContent = hasConfiguredWordTemplate()
+      ? 'Approved draft is ready for hiring-manager Word export.'
+      : 'Approved draft is ready. Add a Word template in Settings when you need to export it.';
+    return;
+  }
+
   elements.draftMeta.textContent = hasConfiguredWordTemplate()
-    ? 'Save Word Draft uses the same briefing shown in the review tab.'
-    : 'Configure a Word template in Settings to create the hiring-manager Word draft.';
+    ? 'Review the draft and approve it before copying or exporting the hiring-manager version.'
+    : 'Review and approve the draft first. Add a Word template in Settings when you need to export it.';
 }
 
 function renderBriefing() {
@@ -913,12 +936,94 @@ function invalidateSummary(message) {
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
+  state.draftLifecycle = 'empty';
+  state.approvalWarnings = [];
   state.lastExportPath = '';
   state.debugTrace = [];
   state.isSavingWordDraft = false;
   state.summaryStatus = 'No Draft';
   state.progressLabel = 'Generating summary with the configured model...';
   setSummaryMessage(message);
+}
+
+function getDraftLifecycleLabel() {
+  switch (state.draftLifecycle) {
+    case 'generated':
+      return 'Generated';
+    case 'edited':
+      return 'Edited';
+    case 'approved':
+      return 'Approved';
+    default:
+      return 'Draft Pending';
+  }
+}
+
+function renderApprovalWarnings() {
+  const warnings = state.outputMode === 'anonymous' ? state.approvalWarnings : [];
+  const hasWarnings = warnings.length > 0;
+
+  elements.approvalWarningPanel.classList.toggle('is-hidden', !hasWarnings);
+
+  if (!hasWarnings) {
+    elements.approvalWarningList.innerHTML = '';
+    return;
+  }
+
+  elements.approvalWarningList.innerHTML = warnings
+    .map((warning) => `<li>${escapeHtml(warning)}</li>`)
+    .join('');
+}
+
+function markDraftEdited() {
+  if (!state.summary.trim()) {
+    return;
+  }
+
+  if (state.draftLifecycle === 'generated' || state.draftLifecycle === 'approved') {
+    state.draftLifecycle = 'edited';
+    state.lastExportPath = '';
+    state.summaryMessage = state.outputMode === 'anonymous'
+      ? 'Anonymous draft updated. Re-review masking and approve again before copying or exporting.'
+      : 'Draft updated. Approve again before copying or exporting.';
+    state.generationError = '';
+  }
+}
+
+function setOutputMode(mode) {
+  const normalizedMode = mode === 'anonymous' ? 'anonymous' : 'named';
+
+  if (state.outputMode === normalizedMode) {
+    return;
+  }
+
+  state.outputMode = normalizedMode;
+  state.lastExportPath = '';
+  state.approvalWarnings = [];
+
+  if (state.summary.trim()) {
+    invalidateSummary(
+      normalizedMode === 'anonymous'
+        ? 'Draft mode changed to anonymous. Generate a fresh draft to apply anonymization.'
+        : 'Draft mode changed to named. Generate a fresh draft to restore named output.'
+    );
+  }
+
+  render();
+}
+
+function approveDraft() {
+  if (!canApproveDraft() || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  state.draftLifecycle = 'approved';
+  state.summaryStatus = 'Ready';
+  state.summaryMessage = state.outputMode === 'anonymous'
+    ? 'Anonymous draft approved. Copy and Word export are now enabled.'
+    : 'Draft approved. Copy and Word export are now enabled.';
+  state.generationError = '';
+  renderSummary();
 }
 
 function buildSettingsPayloadFromForm() {
@@ -1113,7 +1218,18 @@ function canGenerateSummary() {
 
 function canExportWordDraft() {
   return hasConfiguredWordTemplate() &&
-    state.summary.trim().length > 0;
+    state.summary.trim().length > 0 &&
+    state.draftLifecycle === 'approved';
+}
+
+function canCopySummary() {
+  return state.summary.trim().length > 0 &&
+    state.draftLifecycle === 'approved';
+}
+
+function canApproveDraft() {
+  return state.summary.trim().length > 0 &&
+    state.draftLifecycle !== 'approved';
 }
 
 function hasConfiguredWordTemplate() {
@@ -1129,12 +1245,15 @@ async function syncBriefingReviewFromCurrentSummary() {
   const result = await window.recruitmentApi.renderBriefingReview({
     briefing: state.briefing,
     summary: state.summary,
+    outputMode: state.outputMode,
     cvDocument: state.documents.cv,
     jdDocument: state.documents.jd
   });
 
   state.briefing = result.briefing || state.briefing;
   state.briefingReview = result.hiringManagerBriefingReview || '';
+  state.summary = result.summary || state.summary;
+  state.approvalWarnings = result.approvalWarnings || [];
 }
 
 async function refreshBriefingReview() {
@@ -1169,6 +1288,8 @@ async function generateSummary() {
 
   state.summaryStatus = 'Generating';
   state.isGenerating = true;
+  state.draftLifecycle = 'empty';
+  state.approvalWarnings = [];
   state.lastExportPath = '';
   state.debugTrace = [];
   state.generationError = '';
@@ -1180,18 +1301,24 @@ async function generateSummary() {
   try {
     const result = await window.recruitmentApi.generateSummary({
       cvDocument: state.documents.cv,
-      jdDocument: state.documents.jd
+      jdDocument: state.documents.jd,
+      outputMode: state.outputMode
     });
 
     state.briefing = result.briefing || null;
     state.briefingReview = result.hiringManagerBriefingReview || '';
     state.summary = result.summary;
+    state.outputMode = result.outputMode || state.outputMode;
+    state.approvalWarnings = result.approvalWarnings || [];
+    state.draftLifecycle = 'generated';
     state.templateLabel = result.templateLabel;
     state.workbenchTab = 'summary';
     state.summaryStatus = 'Ready';
-    state.summaryMessage = hasConfiguredWordTemplate()
-      ? 'Candidate summary and hiring-manager briefing are ready for review.'
-      : 'Review outputs are ready. Configure a Word template when you need to create the Word draft.';
+    state.summaryMessage = state.outputMode === 'anonymous'
+      ? (state.approvalWarnings.length > 0
+        ? 'Anonymous draft is ready. Review the residual privacy warnings and approve it before export.'
+        : 'Anonymous draft is ready. Review and approve it before copying or exporting.')
+      : 'Candidate summary and hiring-manager briefing are ready for review and approval.';
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
     state.workbenchTab = 'summary';
@@ -1248,6 +1375,7 @@ async function exportWordDraft() {
     const result = await window.recruitmentApi.exportHiringManagerWordDraft({
       briefing: state.briefing,
       summary: state.summary,
+      outputMode: state.outputMode,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -1330,6 +1458,8 @@ function resetWorkspace() {
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
+  state.draftLifecycle = 'empty';
+  state.approvalWarnings = [];
   state.lastExportPath = '';
   state.debugTrace = [];
   state.isGenerating = false;
@@ -1505,7 +1635,10 @@ elements.clearWordTemplateButton.addEventListener('click', clearWordTemplate);
 elements.cv.chooseButton.addEventListener('click', () => chooseDocument('cv'));
 elements.jd.chooseButton.addEventListener('click', () => chooseDocument('jd'));
 elements.swapSourceButton.addEventListener('click', swapDocumentAssignments);
+elements.setNamedModeButton.addEventListener('click', () => setOutputMode('named'));
+elements.setAnonymousModeButton.addEventListener('click', () => setOutputMode('anonymous'));
 elements.generateButton.addEventListener('click', generateSummary);
+elements.approveDraftButton.addEventListener('click', approveDraft);
 elements.copySummaryButton.addEventListener('click', copySummary);
 elements.exportWordDraftButton.addEventListener('click', exportWordDraft);
 elements.revealWordDraftButton.addEventListener('click', revealWordDraft);
@@ -1513,8 +1646,8 @@ elements.openWordDraftButton.addEventListener('click', openWordDraft);
 elements.resetButton.addEventListener('click', resetWorkspace);
 elements.summaryEditor.addEventListener('input', () => {
   state.summary = readSummaryEditorText();
-  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || state.summary.trim().length === 0;
-  elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
+  markDraftEdited();
+  renderSummary();
 });
 elements.summaryEditor.addEventListener('paste', (event) => {
   event.preventDefault();
@@ -1523,9 +1656,6 @@ elements.summaryEditor.addEventListener('paste', (event) => {
 });
 elements.summaryEditor.addEventListener('blur', async () => {
   state.summary = readSummaryEditorText();
-  setRichDocumentContent(elements.summaryEditor, state.summary);
-  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || state.summary.trim().length === 0;
-  elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
 
   if (state.briefing) {
     try {
@@ -1535,7 +1665,9 @@ elements.summaryEditor.addEventListener('blur', async () => {
     }
   }
 
+  setRichDocumentContent(elements.summaryEditor, state.summary);
   renderBriefing();
+  renderSummary();
 });
 
 bindDropTarget(elements.dropzone, null);

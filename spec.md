@@ -3,7 +3,7 @@
 ## Document Status
 - Owner: Product / Founding Team
 - Status: Draft v0.1
-- Last updated: 2026-03-18
+- Last updated: 2026-03-19
 - Product surface: Desktop app (Electron)
 
 ## Product Summary
@@ -19,7 +19,11 @@ The summary can be generated in two modes:
 - Named: includes the candidate's identifying details.
 - Anonymous: removes or masks candidate-identifying details.
 
-The output must follow a consistent template, with template guidance grounded by a reference document or template library that can later be used as RAG input.
+The product should treat templates as two separate systems:
+- a Markdown guidance template for recruiter-facing summary generation
+- a Word template for hiring-manager document layout and presentation
+
+CVs and JDs are dynamic workspace inputs, so the app should handle them through local extraction, normalization, and workspace-scoped retrieval rather than a single global document knowledge base.
 
 ## Problem Statement
 Headhunters spend significant time reading CVs, comparing them with JDs, drafting candidate profiles, and formatting those profiles consistently for hiring managers.
@@ -68,17 +72,23 @@ As a headhunter, I want to load a candidate CV and a job description, generate a
 3. The app extracts the document text and shows the imported files.
 4. User selects:
    - named or anonymous output
-   - a profile template or template set
+   - a recruiter summary guidance template
+   - a hiring-manager Word template
 5. User clicks `Generate Summary`.
-6. The app produces a structured candidate summary based on:
+6. The app produces:
+   - `Candidate Summary Review` for the recruiter, and
+   - `Hiring Manager Briefing` for consultant validation before export
+7. These outputs are based on:
    - CV content
    - JD content
-   - the reference template
-7. User reviews and edits the draft in the app.
-8. User marks the draft as approved.
-9. User clicks `Share by Email`.
-10. The app opens the system's default email client with a prepared draft.
-11. User performs the final send manually.
+   - the selected Markdown guidance template
+   - the grounded structured briefing model
+8. User reviews and edits the draft in the app.
+9. User marks the draft as approved.
+10. User clicks `Save Word Draft` and/or `Share by Email`.
+11. The app renders the final Word document through the configured Word template.
+12. The app opens the system's default email client with a prepared draft when requested.
+13. User performs the final send manually.
 
 ## Functional Requirements
 
@@ -100,6 +110,20 @@ Initial recommended file support:
 - The app surfaces extraction failures clearly.
 - The user can preview extracted text or a shortened preview before generation.
 - The app warns when a file appears empty, image-only, or low-quality.
+
+### 2A. Workspace-Scoped Source Model and Retrieval
+- Each active CV and JD pair should be treated as a workspace-scoped source corpus.
+- The app should normalize extracted content into section-aware source blocks with metadata such as:
+  - source document
+  - section
+  - approximate page when available
+  - block type
+- Retrieval, when used, should operate only over the active workspace inputs:
+  - CV
+  - JD
+  - optional Markdown guidance template
+- The first retrieval design should be ephemeral and local to the active workspace, not a persistent global vector store of all candidates and roles.
+- Retrieval should support long-document focus, evidence tracing, and structured-briefing generation without turning the system into a cross-candidate knowledge base.
 
 ### 3. Summary Generation
 - The app generates a structured candidate profile summary from the CV and JD.
@@ -123,15 +147,16 @@ Recommended output sections:
 ### 4. Template-Guided Output
 - The summary format must be consistent.
 - The app should support a built-in default template first.
-- The app should later support a user-provided reference template or template library.
-- The generation system should ground output formatting and phrasing using the chosen template guidance.
+- The app should later support a user-provided Markdown reference template.
+- The generation system should ground recruiter-summary phrasing and structure using the chosen Markdown guidance template.
 - If the model output breaks the expected structure, the app should reject or repair the output before review.
 - The app should provide a separate `Hiring Manager Briefing` view for the hiring manager audience.
 - The target receiver for `Hiring Manager Briefing` is the hiring manager, not the recruiter.
 - `Hiring Manager Briefing` should combine:
   - the key summary / fit summary from `Candidate Summary Review`
   - grounded structured candidate details sourced from the CV and JD
-- The content, fields, format, and visual layout of the final hiring-manager document should be governed by the configured Word template.
+- The content values for `Hiring Manager Briefing` should come from the grounded structured briefing model, not from the Word template itself.
+- The configured Word template should govern the final hiring-manager document's fields, format, and visual layout.
 - The physical Word document should only be created when the consultant explicitly exports or sends the briefing.
 
 ### 5. Anonymous and Named Modes
@@ -211,13 +236,15 @@ This is the initial output structure to standardize against before a more flexib
 The current implementation uses a hybrid flow:
 
 1. The app extracts raw text from the CV and JD locally.
-2. The LLM generates the recruiter-facing candidate summary from CV text, JD text, and the default summary template.
-3. The hiring-manager Word document is populated separately through deterministic field extraction and Word-template rendering.
+2. The current LLM requests use direct prompt context from the extracted CV and JD rather than a true retrieval layer.
+3. The LLM generates the recruiter-facing candidate summary from CV text, JD text, and the default summary template.
+4. The hiring-manager Word document is populated separately through deterministic field extraction and Word-template rendering.
 
 In practice, this means:
 - The recruiter summary is LLM-generated.
 - The Word briefing layout is controlled by the configured Word template.
 - Structured candidate facts used for Word export are currently derived mostly through local parsing and rule-based extraction.
+- The app is not yet using a persistent or workspace-scoped RAG pipeline for CV/JD retrieval.
 
 Strengths of the current design:
 - Word output layout is stable and controlled by the template.
@@ -229,8 +256,12 @@ Limitations of the current design:
 - Recruiter summary content and Word-briefing content can drift because they are not generated from the same structured source of truth.
 - Employment history and profile fields depend on heuristics that are harder to generalize across real-world CV formats.
 
-## Target Architecture Direction: Grounded Structured Briefing Model
-The preferred future design is not to ask the LLM to generate a Word document directly. Instead, the app should separate recruiter-facing assessment from hiring-manager-facing briefing composition.
+## Target Architecture Direction: Workspace-Scoped Source Model and Template Separation
+The preferred future design is not to ask the LLM to generate a Word document directly. Instead, the app should separate:
+- dynamic source-document handling
+- recruiter-facing assessment guidance
+- grounded structured briefing content
+- final Word presentation
 
 The intended split is:
 - `Candidate Summary Review`: recruiter-facing assessment generated by the LLM completing the recruiter summary template directly from CV + JD
@@ -244,21 +275,46 @@ The intended split is:
 - The LLM should generate recruiter assessment content and structured grounded content, not final Word document layout.
 - The Word template should remain responsible for document format, visual design, and layout consistency.
 - Recruiter-facing review and hiring-manager-facing briefing are related outputs, but they are not the same surface and should not be conflated.
+- CV and JD inputs should be handled as workspace-scoped dynamic documents, not as entries in a global long-lived candidate knowledge base.
+
+### Source Handling Design
+- CVs and JDs are always changing and should be treated as dynamic inputs loaded into the current recruiter workspace.
+- The app should extract and normalize those documents locally before any LLM generation step.
+- The normalized source model should preserve section structure and source metadata so candidate facts, employment history, and role requirements can be grounded and validated.
+- Retrieval, when introduced, should be ephemeral and scoped to the active workspace only.
+- The product should avoid starting with a global vector store that mixes many candidates and many roles together.
+
+### Template Design
+There are two different template systems in the product and they should remain separate:
+
+1. Recruiter summary guidance template
+- format: Markdown
+- purpose: guide `Candidate Summary Review` structure, phrasing, and expected sections
+- examples:
+  - built-in default summary template
+  - optional local Markdown reference template
+
+2. Hiring-manager Word template
+- format: `.docx` or `.dotx`
+- purpose: govern the final document's fields, layout, branding, and visual presentation
+- used only when rendering the exportable Word document
+- not the source of truth for candidate facts or narrative content
 
 ### Proposed End-to-End Flow
 1. Extract raw text from CV and JD locally.
-2. Normalize and segment the source text into stable input blocks for prompting and validation.
-3. Ask the LLM to complete the recruiter-facing `Candidate Summary Review` template directly from CV + JD.
-4. Ask the LLM and/or extraction layer to produce a strict grounded structured briefing object from CV + JD + template guidance.
-5. Require evidence or source-grounding for material facts and fit claims.
-6. Validate the structured output before any rendering step.
-7. Show `Candidate Summary Review` to the consultant for editing and approval.
-8. Compose the in-app `Hiring Manager Briefing` from:
+2. Normalize and segment the source text into stable source blocks for prompting, validation, and retrieval.
+3. Build an ephemeral workspace-level retrieval set over the active CV, JD, and optional Markdown guidance template.
+4. Ask the LLM to complete the recruiter-facing `Candidate Summary Review` template using relevant workspace-scoped source material.
+5. Ask the LLM and/or extraction layer to produce a strict grounded structured briefing object from CV + JD + template guidance.
+6. Require evidence or source-grounding for material facts and fit claims.
+7. Validate the structured output before any rendering step.
+8. Show `Candidate Summary Review` to the consultant for editing and approval.
+9. Compose the in-app `Hiring Manager Briefing` from:
    - the key summary / fit summary from `Candidate Summary Review`
    - the validated structured briefing object
-9. Only when the consultant explicitly exports or sends the briefing:
+10. Only when the consultant explicitly exports or sends the briefing:
    - render the hiring-manager Word document through the configured Word template
-10. Keep recruiter review and approval as a mandatory human step before sharing.
+11. Keep recruiter review and approval as a mandatory human step before sharing.
 
 ### Recommended Structured Briefing Schema
 The exact field set can evolve, but the data model should be explicit and stable. A representative structure is:
@@ -301,6 +357,7 @@ Notes:
 - `fit_summary` / `key_summary` is the narrative bridge from recruiter assessment into the hiring-manager briefing.
 - Exact candidate profile values such as name, nationality, education, notice period, and employment history should come from grounded CV/JD extraction, not from unconstrained narrative generation.
 - The Word template controls how these values are laid out in the final document, but it is not the source of truth for the values themselves.
+- The same structured briefing object should drive both the in-app `Hiring Manager Briefing` review and the final Word export.
 
 ### Validation Expectations
 Before the app renders the hiring-manager briefing or generates the Word document, it should validate:
@@ -328,6 +385,7 @@ Risks of direct LLM-to-Word generation:
 The preferred model is:
 - LLM for recruiter assessment and structured extraction
 - deterministic template engine for final Word rendering
+- workspace-scoped retrieval for long-document focus and evidence grounding
 
 ## Design Comparison
 ### Current Implemented Approach
@@ -398,8 +456,8 @@ Value:
 - The recruiter can assess the candidate in one review surface and validate a separate hiring-manager-facing briefing before generating the final Word document.
 
 Scope:
-- User can select a reference template file or template folder
-- Retrieval of relevant template content to guide generation
+- User can select a Markdown reference template file
+- Selected Markdown guidance content is included in generation context
 - Candidate Summary Review remains the recruiter-facing LLM-completed summary template
 - Canonical grounded structured candidate briefing schema for exact candidate details and employment history
 - LLM-assisted extraction of grounded candidate facts, employment history, and fit content into that schema
@@ -450,7 +508,7 @@ Acceptance criteria:
 
 ### Release 5: Local Folder Intake and Job Workspace
 Value:
-- The recruiter spends less time repeatedly locating files and setting up each draft.
+- The recruiter spends less time repeatedly locating files and setting up each draft, while the app gains a stable workspace-level source model for retrieval and validation.
 
 Scope:
 - Select a source folder on local machine
@@ -460,11 +518,14 @@ Scope:
   - chosen JD
   - selected template
   - latest generated draft
+- Build a workspace-scoped normalized source model for the chosen CV, JD, and active Markdown guidance template
+- Add ephemeral retrieval over the active workspace inputs instead of a global cross-candidate store
 - Re-open recent work
 
 Acceptance criteria:
 - User can select a folder and pick files from it.
 - User can resume recent work without re-importing everything manually.
+- Retrieval is limited to the active workspace and does not mix unrelated candidate or role documents.
 - Existing single-file workflow still works.
 
 ### Release 6: Production Hardening
@@ -499,7 +560,8 @@ This epic can also be viewed as a set of smaller feature tracks that can be impl
 - Show parsing failures and warnings
 
 ### C. Generation
-- Prompt assembly from CV + JD + template guidance
+- Prompt assembly from CV + JD + Markdown guidance template
+- Workspace-scoped retrieval over normalized source blocks
 - Structured output generation
 - Grounding and hallucination controls
 
@@ -519,19 +581,20 @@ This epic can also be viewed as a set of smaller feature tracks that can be impl
 - Attach or paste summary where possible
 
 ### G. Template Intelligence
-- Default template
-- Local template selection
-- RAG over template references
-- Schema validation
+- Built-in Markdown guidance template
+- Local Markdown guidance template selection
+- Separate Word presentation template for hiring-manager export
+- Schema validation and Word-template compatibility checks
 
 ## Suggested Technical Boundaries
 To keep implementation incremental, the app should separate these modules early:
 - File intake and parsing
-- Prompt / retrieval preparation
+- Workspace-scoped document normalization and retrieval preparation
 - Summary generation
+- Structured briefing generation and validation
 - Redaction / anonymization
 - Draft review state
-- Distribution / email handoff
+- Word rendering and distribution / email handoff
 
 This separation reduces rework when the model provider, template system, or email strategy changes later.
 
@@ -547,7 +610,7 @@ This separation reduces rework when the model provider, template system, or emai
 - Users work from local files on their laptops.
 - Users are comfortable with a manual review and manual send step.
 - The model provider can be swapped later behind a stable summarization interface.
-- A built-in template is acceptable before a richer template library is introduced.
+- A built-in Markdown guidance template is acceptable before a richer guidance-library workflow is introduced.
 
 ## Open Questions
 - Which AI model/provider should be used in the first implementation?

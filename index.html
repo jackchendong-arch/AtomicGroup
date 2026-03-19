@@ -392,8 +392,43 @@
       .source-management {
         display: flex;
         justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
         gap: 8px;
         margin-top: 10px;
+      }
+
+      .mode-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .mode-toggle-button {
+        border: 0;
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+      }
+
+      .mode-toggle-button:hover {
+        transform: translateY(-1px);
+        color: var(--ink);
+      }
+
+      .mode-toggle-button.is-active {
+        background: rgba(187, 91, 52, 0.12);
+        color: var(--accent-deep);
       }
 
       .pill {
@@ -591,6 +626,32 @@
 
       .generation-progress.is-hidden {
         display: none !important;
+      }
+
+      .warning-panel {
+        display: grid;
+        gap: 8px;
+        padding: 12px 14px;
+        border: 1px solid rgba(187, 91, 52, 0.14);
+        border-radius: 16px;
+        background: rgba(255, 247, 242, 0.9);
+      }
+
+      .warning-panel strong {
+        color: var(--accent-deep);
+        font-size: 0.84rem;
+      }
+
+      .warning-panel ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--ink);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+
+      .warning-panel li + li {
+        margin-top: 4px;
       }
 
       .generation-progress-label {
@@ -1177,6 +1238,10 @@
               </div>
 
               <div class="source-management">
+                <div class="mode-toggle" aria-label="Draft mode">
+                  <button class="mode-toggle-button is-active" id="set-named-mode-button" type="button">Named</button>
+                  <button class="mode-toggle-button" id="set-anonymous-mode-button" type="button">Anonymous</button>
+                </div>
                 <button class="btn-ghost btn-inline" id="swap-source-button" type="button">Swap CV / JD</button>
               </div>
 
@@ -1218,17 +1283,24 @@
               <div class="summary-shell">
                 <div class="summary-topline">
                   <div class="summary-toolbar">
-                    <span class="pill">Named Draft</span>
+                    <span class="pill" id="draft-mode-pill">Named Draft</span>
+                    <span class="pill" id="draft-lifecycle-pill">Draft Pending</span>
                     <span class="pill" id="template-label">Default Recruiter Profile Template</span>
                   </div>
                   <div class="summary-actions">
-                    <button class="btn-primary" id="copy-summary-button" type="button" disabled>Copy Summary</button>
+                    <button class="btn-primary" id="approve-draft-button" type="button" disabled>Approve Draft</button>
+                    <button class="btn-ghost" id="copy-summary-button" type="button" disabled>Copy Summary</button>
                     <button class="btn-secondary" id="export-word-draft-button" type="button" disabled>Save Word Draft</button>
                     <button class="btn-ghost" id="reveal-word-draft-button" type="button" disabled>Reveal Saved Draft</button>
                   </div>
                 </div>
 
                 <p class="summary-message" id="summary-message">Load the CV and JD, then generate the recruiter summary.</p>
+
+                <div class="warning-panel is-hidden" id="approval-warning-panel">
+                  <strong>Residual Privacy Review</strong>
+                  <ul id="approval-warning-list"></ul>
+                </div>
 
                 <div class="generation-progress is-hidden" id="generation-progress">
                   <p class="generation-progress-label" id="generation-progress-label">Generating summary with the configured model...</p>

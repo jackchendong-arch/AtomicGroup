@@ -109,6 +109,7 @@ test('buildSummaryRequest switches to anonymous drafting instructions when anony
   assert.match(request.prompt, /Create an anonymous recruiter-ready candidate summary/i);
   assert.match(request.prompt, /Candidate: Anonymous Candidate/);
   assert.match(request.prompt, /Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address/i);
+  assert.match(request.prompt, /refer to the person as "the candidate" or "this candidate"/i);
   assert.doesNotMatch(request.prompt, /Do not anonymize the candidate in this release/i);
 });
 
@@ -124,5 +125,6 @@ test('buildBriefingRequest switches to anonymous structured-briefing instruction
   assert.match(request.prompt, /Create an anonymous grounded structured candidate briefing object/i);
   assert.match(request.prompt, /Candidate: Anonymous Candidate/);
   assert.match(request.prompt, /Set `candidate\.name` to `Anonymous Candidate`\./);
+  assert.match(request.prompt, /refer to the person as "the candidate" or "this candidate"/i);
   assert.match(request.prompt, /Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address/i);
 });

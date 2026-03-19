@@ -146,6 +146,31 @@ function anonymizeText(text, candidateNamePatterns) {
   return replacePhoneLikeContent(next);
 }
 
+function normalizeAnonymousNarrativeText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        return line;
+      }
+
+      if (/^\s*Candidate\s*:\s*Anonymous Candidate\s*$/i.test(trimmed)) {
+        return 'Candidate: Anonymous Candidate';
+      }
+
+      let next = line
+        .replace(/\bAnonymous Candidate's\b/g, "the candidate's")
+        .replace(/\bAnonymous Candidate\b/g, 'the candidate')
+        .replace(/^the candidate\b/, 'The candidate');
+
+      return next;
+    })
+    .join('\n');
+}
+
 function buildAnonymizedSourceDocument(document, candidateNamePatterns, fallbackName) {
   const originalName = String(document?.file?.name || '');
   const extensionMatch = originalName.match(/(\.[^.]+)$/);
@@ -168,10 +193,11 @@ function anonymizeValue(value, candidateNamePatterns, path = '') {
     }
 
     if (path === 'candidate.location' || path === 'candidate.preferred_location') {
-      return looksLikeStreetAddress(value) ? '[address redacted]' : anonymizeText(value, candidateNamePatterns);
+      const anonymizedValue = looksLikeStreetAddress(value) ? '[address redacted]' : anonymizeText(value, candidateNamePatterns);
+      return normalizeAnonymousNarrativeText(anonymizedValue);
     }
 
-    return anonymizeText(value, candidateNamePatterns);
+    return normalizeAnonymousNarrativeText(anonymizeText(value, candidateNamePatterns));
   }
 
   if (Array.isArray(value)) {
@@ -241,7 +267,9 @@ function findResidualWarnings({ summary, briefing, candidateNamePatterns }) {
 
 function anonymizeDraftOutput({ recruiterSummary, briefing, cvDocument, jdDocument }) {
   const { candidateNamePatterns } = buildAnonymizationContext({ cvDocument, jdDocument });
-  const anonymizedSummary = anonymizeText(recruiterSummary, candidateNamePatterns);
+  const anonymizedSummary = normalizeAnonymousNarrativeText(
+    anonymizeText(recruiterSummary, candidateNamePatterns)
+  );
   const anonymizedBriefing = anonymizeValue(
     JSON.parse(JSON.stringify(briefing || {})),
     candidateNamePatterns
@@ -272,5 +300,6 @@ function buildAnonymizedGenerationInputs({ cvDocument, jdDocument }) {
 module.exports = {
   ANONYMOUS_CANDIDATE_LABEL,
   buildAnonymizedGenerationInputs,
-  anonymizeDraftOutput
+  anonymizeDraftOutput,
+  normalizeAnonymousNarrativeText
 };

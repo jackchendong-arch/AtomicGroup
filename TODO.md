@@ -156,13 +156,23 @@ Mark a release complete only when the work is:
 - Test both named and anonymous generation flows end to end.
 
 ## Release 4: Email Draft Handoff
-- [ ] Release 4 shipped, completed, and tested.
+- [-] Release 4 shipped, completed, and tested.
 - Add a `Share by Email` action for approved summaries.
-- Build a default email subject from the candidate profile summary context.
-- Build a default email body from the approved summary.
+- Generate a hiring-manager-facing recommendation email draft with the configured LLM instead of reusing the recruiter summary text directly.
+- Build the email from the approved `Candidate Summary Review`, approved `Hiring Manager Briefing`, and the same grounded candidate facts used for Word briefing generation.
+- Make the email articulate the purpose of the recommendation, why the candidate is a strong fit, and what the attached briefing document contains.
+- Keep the email tone professional, business-oriented, clean, and concise for a hiring-manager audience.
+- Generate an email-specific subject and body rather than reusing review-surface labels or internal recruiter formatting.
 - Open the user's default email client with a prepared draft.
 - Ensure the email handoff works only for approved summaries.
+- Generate or reuse the hiring-manager Word briefing draft for the email handoff path and clearly tell the consultant when manual attachment is required.
+- Keep anonymous mode consistent in the email subject, body, and generated attachment path.
 - Add plain-text fallback for email clients that do not handle rich formatting reliably.
+- Encode `mailto:` subject and body content in a way common desktop mail clients render as readable plain text instead of showing literal `+` separators or raw URL fragments.
+- Surface the generated hiring-manager Word draft path clearly after `Share by Email` so manual attachment is obvious when the mail client does not add attachments automatically.
+- Make anonymous output read naturally in recruiter summary, hiring-manager briefing, and email body so `Anonymous Candidate` remains a label instead of awkward narrative phrasing.
+- Let the user configure a visible output folder for generated hiring-manager briefing documents in the `Hiring Manager Briefing Template` settings, and use that folder for email handoff draft generation.
+- Add deterministic fallback email composition when the LLM output is malformed or unavailable.
 - Add clipboard fallback if direct email draft handoff fails.
 - Preserve recruiter control over recipients and final send.
 - Test email draft handoff on macOS.

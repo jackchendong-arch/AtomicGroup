@@ -385,7 +385,8 @@ function buildSummaryPromptWithTemplateGuidance({
     'Do not add a report title, markdown bold, italics, tables, or decorative formatting.',
     ...(normalizedOutputMode === 'anonymous'
       ? [
-        `Use \`${ANONYMOUS_CANDIDATE_LABEL}\` as the candidate label throughout the summary.`,
+        `Use \`${ANONYMOUS_CANDIDATE_LABEL}\` only for the single-line Candidate label.`,
+        'In narrative sentences, refer to the person as "the candidate" or "this candidate" instead of repeating the anonymous label.',
         'Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address in the output.'
       ]
       : []),

@@ -80,6 +80,7 @@ test('anonymizeDraftOutput masks direct identifiers while keeping grounded profi
   assert.equal(result.briefing.candidate.nationality, 'Singaporean');
   assert.equal(result.briefing.candidate.location, 'Singapore');
   assert.equal(result.briefing.candidate.preferred_location, 'Hong Kong');
+  assert.doesNotMatch(result.summary, /Anonymous Candidate can/i);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.modeLabel, 'Anonymous Draft');
 });
@@ -127,4 +128,6 @@ test('anonymizeDraftOutput also masks common first-name-only variants that appea
   assert.doesNotMatch(result.summary, /\bJohn\b/);
   assert.equal(result.briefing.candidate.name, ANONYMOUS_CANDIDATE_LABEL);
   assert.doesNotMatch(result.briefing.fit_summary, /\bJohn\b/);
+  assert.match(result.summary, /The candidate is a strong fit/i);
+  assert.match(result.briefing.fit_summary, /the candidate can lead the platform agenda/i);
 });

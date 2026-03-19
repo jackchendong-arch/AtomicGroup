@@ -19,7 +19,8 @@ function createDefaultSettings() {
     referenceTemplateExtension: '',
     outputTemplatePath: '',
     outputTemplateName: '',
-    outputTemplateExtension: ''
+    outputTemplateExtension: '',
+    outputBriefingFolderPath: ''
   };
 }
 
@@ -55,7 +56,8 @@ function normalizeSettings(input = {}) {
     referenceTemplateExtension: String(merged.referenceTemplateExtension || '').trim().toLowerCase(),
     outputTemplatePath: String(merged.outputTemplatePath || '').trim(),
     outputTemplateName: String(merged.outputTemplateName || '').trim(),
-    outputTemplateExtension: String(merged.outputTemplateExtension || '').trim().toLowerCase()
+    outputTemplateExtension: String(merged.outputTemplateExtension || '').trim().toLowerCase(),
+    outputBriefingFolderPath: String(merged.outputBriefingFolderPath || '').trim()
   };
 }
 
@@ -304,6 +306,7 @@ class LlmSettingsStore {
       outputTemplatePath: settings.outputTemplatePath,
       outputTemplateName: settings.outputTemplateName,
       outputTemplateExtension: settings.outputTemplateExtension,
+      outputBriefingFolderPath: settings.outputBriefingFolderPath,
       apiKeyMode: encrypted.apiKeyMode,
       apiKey: encrypted.apiKey
     };

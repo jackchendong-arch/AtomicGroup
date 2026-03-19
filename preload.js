@@ -19,11 +19,17 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   pickWordTemplate() {
     return ipcRenderer.invoke('template:pick-word-template');
   },
+  pickBriefingOutputFolder() {
+    return ipcRenderer.invoke('template:pick-briefing-output-folder');
+  },
   pickReferenceTemplate() {
     return ipcRenderer.invoke('template:pick-reference-template');
   },
   exportHiringManagerWordDraft(payload) {
     return ipcRenderer.invoke('hiring-manager:export-word-draft', payload);
+  },
+  shareDraftByEmail(payload) {
+    return ipcRenderer.invoke('email:share-draft', payload);
   },
   renderBriefingReview(payload) {
     return ipcRenderer.invoke('briefing:render-review', payload);

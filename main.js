@@ -31,6 +31,12 @@ const {
   buildAnonymizedGenerationInputs,
   anonymizeDraftOutput
 } = require('./services/anonymization-service');
+const {
+  buildEmailDraftRequest,
+  buildFallbackEmailDraft,
+  finalizeEmailDraft,
+  parseEmailDraftResponse
+} = require('./services/email-draft-service');
 
 let settingsStore;
 
@@ -59,6 +65,18 @@ function getUserDataPath() {
 
 function getExportDebugLogPath() {
   return path.join(getUserDataPath(), 'debug', 'word-draft-export.log');
+}
+
+function getManagedGeneratedBriefingsPath() {
+  return path.join(getUserDataPath(), 'generated-briefings');
+}
+
+function getConfiguredBriefingOutputFolder(settings) {
+  if (settings?.outputBriefingFolderPath) {
+    return expandHomeDirectory(settings.outputBriefingFolderPath);
+  }
+
+  return path.join(app.getPath('documents'), 'AtomicGroup Briefings');
 }
 
 async function pathPointsToDirectory(filePath) {
@@ -104,6 +122,14 @@ async function appendExportDebugLog(lines) {
 
   await fs.mkdir(path.dirname(exportDebugLogPath), { recursive: true });
   await fs.appendFile(exportDebugLogPath, `${content}\n`, 'utf8');
+}
+
+function buildManagedGeneratedBriefingFilename(suggestedName) {
+  const parsed = path.parse(suggestedName || 'hiring-manager-briefing.docx');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const ext = parsed.ext && parsed.ext.toLowerCase() === '.docx' ? parsed.ext : '.docx';
+  const safeName = parsed.name || 'hiring-manager-briefing';
+  return `${safeName}-${timestamp}${ext}`;
 }
 
 function getSettingsStore() {
@@ -390,6 +416,21 @@ ipcMain.handle('template:pick-reference-template', async () => {
   };
 });
 
+ipcMain.handle('template:pick-briefing-output-folder', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Select hiring-manager briefing output folder',
+    properties: ['openDirectory', 'createDirectory']
+  });
+
+  if (canceled || filePaths.length === 0) {
+    return null;
+  }
+
+  return {
+    path: filePaths[0]
+  };
+});
+
 ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   const debugTrace = [
     `Export started at ${new Date().toISOString()}`
@@ -470,6 +511,127 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     throw new Error(
       `${error instanceof Error ? error.message : 'Unable to export the hiring-manager Word draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`
     );
+  }
+});
+
+ipcMain.handle('email:share-draft', async (_event, payload) => {
+  const debugTrace = [
+    `Email draft handoff started at ${new Date().toISOString()}`
+  ];
+  const settings = await getSettingsStore().load();
+  const outputMode = normalizeOutputMode(payload.outputMode);
+  const preparedPayload = outputMode === 'anonymous'
+    ? {
+      ...payload,
+      ...applyDraftOutputMode({
+        outputMode,
+        recruiterSummary: payload.summary,
+        briefing: payload.briefing,
+        cvDocument: payload.cvDocument,
+        jdDocument: payload.jdDocument
+      })
+    }
+    : payload;
+  const fallbackBriefing = buildFallbackBriefing({
+    cvDocument: preparedPayload.cvDocument,
+    jdDocument: preparedPayload.jdDocument
+  });
+  const requestedBriefing = preparedPayload.briefing
+    ? mergeBriefingWithFallback(preparedPayload.briefing, fallbackBriefing)
+    : fallbackBriefing;
+  const composedOutput = prepareHiringManagerBriefingOutput({
+    briefing: requestedBriefing,
+    recruiterSummary: preparedPayload.summary
+  });
+
+  let attachmentPath = '';
+
+  if (settings.outputTemplatePath && ['.docx', '.dotx'].includes(settings.outputTemplateExtension)) {
+    let templateData;
+    let suggestedName;
+
+    ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
+      payload: preparedPayload,
+      settings,
+      debugTrace
+    }));
+
+    const configuredOutputFolder = getConfiguredBriefingOutputFolder(settings);
+    await fs.mkdir(configuredOutputFolder, { recursive: true });
+    attachmentPath = path.join(
+      configuredOutputFolder,
+      buildManagedGeneratedBriefingFilename(suggestedName)
+    );
+    debugTrace.push(`Managed email attachment path: ${attachmentPath}`);
+
+    await writeWordDraftToPath({
+      settings,
+      outputPath: attachmentPath,
+      templateData,
+      debugTrace
+    });
+  } else {
+    debugTrace.push('No Word template configured; email draft will be opened without a generated attachment.');
+  }
+
+  let emailDraft;
+
+  try {
+    const emailDraftRequest = buildEmailDraftRequest({
+      summary: preparedPayload.summary,
+      briefing: composedOutput.briefing,
+      outputMode,
+      systemPrompt: settings.systemPrompt,
+      attachmentExpected: Boolean(attachmentPath)
+    });
+    const emailResult = await generateWithConfiguredProvider({
+      settings,
+      messages: emailDraftRequest.messages,
+      fetchImpl: (...args) => net.fetch(...args)
+    });
+    const parsedEmailDraft = parseEmailDraftResponse(emailResult.text);
+
+    emailDraft = finalizeEmailDraft({
+      ...parsedEmailDraft,
+      attachmentPath
+    });
+    debugTrace.push('LLM email draft generated successfully.');
+  } catch (error) {
+    debugTrace.push(`Email draft fallback used: ${error instanceof Error ? error.message : 'Unknown LLM email draft failure.'}`);
+    emailDraft = buildFallbackEmailDraft({
+      summary: preparedPayload.summary,
+      briefing: composedOutput.briefing,
+      outputMode,
+      attachmentPath,
+      attachmentExpected: Boolean(attachmentPath)
+    });
+  }
+
+  try {
+    await shell.openExternal(emailDraft.mailtoUrl);
+    debugTrace.push('Default email client open requested.');
+    await appendExportDebugLog(debugTrace);
+
+    return {
+      mode: 'mailto',
+      subject: emailDraft.subject,
+      body: emailDraft.body,
+      attachmentPath,
+      debugTrace
+    };
+  } catch (error) {
+    clipboard.writeText(emailDraft.clipboardText);
+    debugTrace.push(`Email handoff fallback used: ${error instanceof Error ? error.message : 'Unknown email client handoff failure.'}`);
+    await appendExportDebugLog(debugTrace);
+
+    return {
+      mode: 'clipboard',
+      subject: emailDraft.subject,
+      body: emailDraft.body,
+      attachmentPath,
+      clipboardText: emailDraft.clipboardText,
+      debugTrace
+    };
   }
 });
 

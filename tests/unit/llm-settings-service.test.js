@@ -58,3 +58,14 @@ test('LLM settings validation rejects non-Markdown reference template files', ()
   assert.equal(validation.isValid, false);
   assert.match(validation.errors.join(' '), /Markdown \(\.md\) document/i);
 });
+
+test('LLM settings validation preserves an optional briefing output folder path', () => {
+  const validation = validateSettings({
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder',
+    outputBriefingFolderPath: '/Users/jack/Documents/AtomicGroup Briefings'
+  });
+
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.settings.outputBriefingFolderPath, '/Users/jack/Documents/AtomicGroup Briefings');
+});

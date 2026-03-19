@@ -22,6 +22,7 @@ const state = {
   debugTrace: [],
   isGenerating: false,
   isSavingWordDraft: false,
+  isSharingEmail: false,
   progressLabel: 'Generating summary with the configured model...',
   summaryStatus: 'No Draft',
   summaryMessage: 'Load the CV and JD, then generate the summary.',
@@ -65,6 +66,8 @@ const elements = {
   wordTemplateSettingsPanel: document.getElementById('word-template-settings-panel'),
   chooseWordTemplateButton: document.getElementById('choose-word-template-button'),
   clearWordTemplateButton: document.getElementById('clear-word-template-button'),
+  chooseBriefingOutputFolderButton: document.getElementById('choose-briefing-output-folder-button'),
+  clearBriefingOutputFolderButton: document.getElementById('clear-briefing-output-folder-button'),
   referenceTemplateModeSelect: document.getElementById('reference-template-mode-select'),
   chooseReferenceTemplateButton: document.getElementById('choose-reference-template-button'),
   clearReferenceTemplateButton: document.getElementById('clear-reference-template-button'),
@@ -73,6 +76,8 @@ const elements = {
   referenceTemplateNote: document.getElementById('reference-template-note'),
   wordTemplateName: document.getElementById('word-template-name'),
   wordTemplatePath: document.getElementById('word-template-path'),
+  briefingOutputFolderName: document.getElementById('briefing-output-folder-name'),
+  briefingOutputFolderPath: document.getElementById('briefing-output-folder-path'),
   templateConfigNote: document.getElementById('template-config-note'),
   sourcePanelStatus: document.getElementById('source-panel-status'),
   dropzone: document.getElementById('dropzone'),
@@ -88,6 +93,7 @@ const elements = {
   summaryEditor: document.getElementById('summary-editor'),
   approveDraftButton: document.getElementById('approve-draft-button'),
   copySummaryButton: document.getElementById('copy-summary-button'),
+  shareByEmailButton: document.getElementById('share-by-email-button'),
   exportWordDraftButton: document.getElementById('export-word-draft-button'),
   revealWordDraftButton: document.getElementById('reveal-word-draft-button'),
   openWordDraftButton: document.getElementById('open-word-draft-button'),
@@ -671,6 +677,22 @@ function getTemplateDisplayPath() {
   return `Active runtime template path: ${state.settings.outputTemplatePath}`;
 }
 
+function getBriefingOutputFolderDisplayName() {
+  if (!state.settings?.outputBriefingFolderPath) {
+    return 'Documents/AtomicGroup Briefings';
+  }
+
+  return state.settings.outputBriefingFolderPath;
+}
+
+function getBriefingOutputFolderDisplayPath() {
+  if (!state.settings?.outputBriefingFolderPath) {
+    return 'Generated hiring-manager briefing documents for email handoff are saved to ~/Documents/AtomicGroup Briefings by default.';
+  }
+
+  return `Generated hiring-manager briefing documents will be saved to: ${state.settings.outputBriefingFolderPath}`;
+}
+
 function getReferenceTemplateDisplayName() {
   if (!state.settings) {
     return 'Built-in default template';
@@ -813,9 +835,12 @@ function renderSettingsForm() {
   elements.providerHelpText.textContent = selectedProvider?.helpText || '';
   elements.wordTemplateName.textContent = getTemplateDisplayName();
   elements.wordTemplatePath.textContent = getTemplateDisplayPath();
+  elements.briefingOutputFolderName.textContent = getBriefingOutputFolderDisplayName();
+  elements.briefingOutputFolderPath.textContent = getBriefingOutputFolderDisplayPath();
   elements.clearWordTemplateButton.disabled = !state.settings.outputTemplatePath;
+  elements.clearBriefingOutputFolderButton.disabled = !state.settings.outputBriefingFolderPath;
   elements.templateConfigNote.textContent = state.settings.outputTemplatePath
-    ? 'The Word template is stored locally and used for hiring-manager draft export.'
+    ? 'The Word template is stored locally and used for hiring-manager draft export and email handoff attachment generation.'
     : 'Add a Word template when you want a hiring-manager draft format.';
 }
 
@@ -836,6 +861,7 @@ function renderSummary() {
 
   elements.approveDraftButton.disabled = isGenerationWorkflowBusy() || !canApproveDraft();
   elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || !canCopySummary();
+  elements.shareByEmailButton.disabled = isGenerationWorkflowBusy() || !canShareByEmail();
   elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
   elements.revealWordDraftButton.disabled = !state.lastExportPath;
   elements.openWordDraftButton.disabled = !state.lastExportPath;
@@ -851,8 +877,8 @@ function renderSummary() {
 
   if (state.draftLifecycle === 'approved') {
     elements.draftMeta.textContent = hasConfiguredWordTemplate()
-      ? 'Approved draft is ready for hiring-manager Word export.'
-      : 'Approved draft is ready. Add a Word template in Settings when you need to export it.';
+      ? 'Approved draft is ready for Word export or email handoff.'
+      : 'Approved draft is ready. Add a Word template in Settings when you need to export or share it.';
     return;
   }
 
@@ -941,6 +967,7 @@ function invalidateSummary(message) {
   state.lastExportPath = '';
   state.debugTrace = [];
   state.isSavingWordDraft = false;
+  state.isSharingEmail = false;
   state.summaryStatus = 'No Draft';
   state.progressLabel = 'Generating summary with the configured model...';
   setSummaryMessage(message);
@@ -1044,7 +1071,8 @@ function buildSettingsPayloadFromForm() {
     referenceTemplateExtension: state.settings?.referenceTemplateExtension || '',
     outputTemplatePath: state.settings?.outputTemplatePath || '',
     outputTemplateName: state.settings?.outputTemplateName || '',
-    outputTemplateExtension: state.settings?.outputTemplateExtension || ''
+    outputTemplateExtension: state.settings?.outputTemplateExtension || '',
+    outputBriefingFolderPath: state.settings?.outputBriefingFolderPath || ''
   };
 }
 
@@ -1146,6 +1174,33 @@ async function chooseWordTemplate() {
   render();
 }
 
+async function chooseBriefingOutputFolder() {
+  const result = await window.recruitmentApi.pickBriefingOutputFolder();
+
+  if (!result || !state.settings) {
+    return;
+  }
+
+  state.settings = {
+    ...state.settings,
+    outputBriefingFolderPath: result.path
+  };
+  state.settingsTab = 'word-template';
+  render();
+}
+
+function clearBriefingOutputFolder() {
+  if (!state.settings) {
+    return;
+  }
+
+  state.settings = {
+    ...state.settings,
+    outputBriefingFolderPath: ''
+  };
+  render();
+}
+
 function clearWordTemplate() {
   if (!state.settings) {
     return;
@@ -1227,6 +1282,12 @@ function canCopySummary() {
     state.draftLifecycle === 'approved';
 }
 
+function canShareByEmail() {
+  return hasConfiguredWordTemplate() &&
+    state.summary.trim().length > 0 &&
+    state.draftLifecycle === 'approved';
+}
+
 function canApproveDraft() {
   return state.summary.trim().length > 0 &&
     state.draftLifecycle !== 'approved';
@@ -1266,7 +1327,7 @@ async function refreshBriefingReview() {
 }
 
 function isGenerationWorkflowBusy() {
-  return state.isGenerating || state.isSavingWordDraft;
+  return state.isGenerating || state.isSavingWordDraft || state.isSharingEmail;
 }
 
 async function generateSummary() {
@@ -1344,6 +1405,76 @@ async function copySummary() {
   state.summaryStatus = 'Copied';
   state.summaryMessage = 'Summary copied to the clipboard.';
   renderSummary();
+}
+
+async function shareByEmail() {
+  if (!canShareByEmail()) {
+    state.summaryStatus = 'Not Ready';
+    state.generationError = hasConfiguredWordTemplate()
+      ? 'Approve the current draft before opening an email draft.'
+      : 'Configure the hiring-manager Word template and approve the current draft before sharing by email.';
+    renderSummary();
+    return;
+  }
+
+  state.debugTrace = [
+    `Email handoff requested from workbench at ${new Date().toISOString()}`
+  ];
+  state.summaryStatus = 'Preparing Email';
+  state.isSharingEmail = true;
+  state.generationError = '';
+  state.summaryMessage = 'Refreshing the briefing review and preparing the email draft.';
+  state.progressLabel = 'Preparing the email draft...';
+  state.workbenchTab = 'briefing';
+  render();
+
+  try {
+    await syncBriefingReviewFromCurrentSummary();
+
+    const result = await window.recruitmentApi.shareDraftByEmail({
+      briefing: state.briefing,
+      summary: state.summary,
+      outputMode: state.outputMode,
+      cvDocument: state.documents.cv,
+      jdDocument: state.documents.jd
+    });
+
+    state.debugTrace = result?.debugTrace || state.debugTrace;
+
+    if (result?.attachmentPath) {
+      state.lastExportPath = result.attachmentPath;
+    }
+
+    if (result?.mode === 'clipboard') {
+      state.summaryStatus = 'Clipboard Ready';
+      state.summaryMessage = result.attachmentPath
+        ? `Default email handoff failed. Subject/body were copied to the clipboard. Attach the prepared Word draft manually from ${result.attachmentPath}.`
+        : 'Default email handoff failed. Subject and body were copied to the clipboard.';
+    } else {
+      state.summaryStatus = 'Email Ready';
+      state.summaryMessage = result?.attachmentPath
+        ? `Opened the default email client with a prepared draft. Attach the generated Word briefing from ${result.attachmentPath} if your mail client does not add attachments automatically.`
+        : 'Opened the default email client with a prepared draft.';
+    }
+
+    state.workbenchTab = 'summary';
+  } catch (error) {
+    const parsed = splitErrorMessageAndTrace(
+      error instanceof Error ? error.message : 'Unable to prepare the email draft.'
+    );
+
+    if (parsed.debugTrace.length > 0) {
+      state.debugTrace = parsed.debugTrace;
+    }
+
+    state.summaryStatus = 'Failed';
+    state.generationError = parsed.userMessage || 'Unable to prepare the email draft.';
+    state.workbenchTab = 'summary';
+  } finally {
+    state.isSharingEmail = false;
+    state.progressLabel = 'Generating summary with the configured model...';
+    render();
+  }
 }
 
 async function exportWordDraft() {
@@ -1464,6 +1595,7 @@ function resetWorkspace() {
   state.debugTrace = [];
   state.isGenerating = false;
   state.isSavingWordDraft = false;
+  state.isSharingEmail = false;
   state.progressLabel = 'Generating summary with the configured model...';
   state.summaryStatus = 'No Draft';
   state.summaryMessage = state.settingsValidation.isValid
@@ -1632,6 +1764,8 @@ elements.chooseReferenceTemplateButton.addEventListener('click', chooseReference
 elements.clearReferenceTemplateButton.addEventListener('click', clearReferenceTemplate);
 elements.chooseWordTemplateButton.addEventListener('click', chooseWordTemplate);
 elements.clearWordTemplateButton.addEventListener('click', clearWordTemplate);
+elements.chooseBriefingOutputFolderButton.addEventListener('click', chooseBriefingOutputFolder);
+elements.clearBriefingOutputFolderButton.addEventListener('click', clearBriefingOutputFolder);
 elements.cv.chooseButton.addEventListener('click', () => chooseDocument('cv'));
 elements.jd.chooseButton.addEventListener('click', () => chooseDocument('jd'));
 elements.swapSourceButton.addEventListener('click', swapDocumentAssignments);
@@ -1640,6 +1774,7 @@ elements.setAnonymousModeButton.addEventListener('click', () => setOutputMode('a
 elements.generateButton.addEventListener('click', generateSummary);
 elements.approveDraftButton.addEventListener('click', approveDraft);
 elements.copySummaryButton.addEventListener('click', copySummary);
+elements.shareByEmailButton.addEventListener('click', shareByEmail);
 elements.exportWordDraftButton.addEventListener('click', exportWordDraft);
 elements.revealWordDraftButton.addEventListener('click', revealWordDraft);
 elements.openWordDraftButton.addEventListener('click', openWordDraft);

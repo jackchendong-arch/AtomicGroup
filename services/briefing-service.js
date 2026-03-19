@@ -879,6 +879,7 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGu
     ...(normalizedOutputMode === 'anonymous'
       ? [
         `Set \`candidate.name\` to \`${ANONYMOUS_CANDIDATE_LABEL}\`.`,
+        'In narrative fields such as `fit_summary`, `relevant_experience`, and `recommended_next_step`, refer to the person as "the candidate" or "this candidate" instead of repeating the anonymous label.',
         'Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address in any structured field.'
       ]
       : []),

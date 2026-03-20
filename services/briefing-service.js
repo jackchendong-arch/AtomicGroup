@@ -1,16 +1,20 @@
 const {
-  DEFAULT_TEMPLATE,
-  DEFAULT_TEMPLATE_LABEL,
   buildSummaryPrompt,
   resolveTemplateGuidance,
   extractCandidateName,
   extractRoleTitle,
   generateSummaryDraft,
+  getDefaultTemplateForLanguage,
+  getDefaultTemplateLabel,
   normalizeGeneratedSummary
 } = require('./summary-service');
 const {
   ANONYMOUS_CANDIDATE_LABEL
 } = require('./anonymization-service');
+const {
+  isChineseOutputLanguage,
+  normalizeOutputLanguage
+} = require('./output-language-service');
 const {
   extractDocumentDerivedProfile,
   parseStructuredSummary
@@ -35,6 +39,98 @@ function splitNonEmptyLines(value) {
 
 function stripBulletPrefix(value) {
   return cleanLine(value).replace(/^[-*•–—]\s*/, '');
+}
+
+function getLocalizedBriefingCopy(outputLanguage = 'en') {
+  if (isChineseOutputLanguage(outputLanguage)) {
+    return {
+      candidateLabel: '候选人',
+      targetRoleLabel: '目标职位',
+      hiringCompanyLabel: '招聘公司',
+      hiringManagerLabel: '招聘经理',
+      briefingSummaryHeading: '## 简报摘要',
+      candidateSnapshotHeading: '## 候选人概览',
+      educationHeading: '## 教育背景',
+      employmentHeading: '## 工作经历',
+      relevantExperienceHeading: '## 相关经验',
+      matchRequirementsHeading: '## 与关键要求的匹配',
+      concernsHeading: '## 潜在顾虑 / 差距',
+      nextStepHeading: '## 建议下一步',
+      locationLabel: '地点',
+      preferredLocationLabel: '意向地点',
+      nationalityLabel: '国籍',
+      genderLabel: '性别',
+      noticePeriodLabel: '到岗时间',
+      languagesLabel: '语言',
+      noSummary: '暂未生成简报摘要。',
+      noSnapshot: '暂无更多候选人概览信息。',
+      noEducation: '- 暂未捕获教育信息。',
+      noEmployment: '- 暂未捕获工作经历。',
+      noEvidence: '- 本节暂无可用信息。',
+      noRequirementMatches: '- 暂未捕获岗位要求与证据匹配。',
+      noNextStep: '暂无建议下一步。',
+      genericCandidate: '候选人',
+      genericRole: '职位',
+      listJoiner: '、',
+      dateSeparator: ' 至 ',
+      organizationSeparator: '，',
+      labelSeparator: '：'
+    };
+  }
+
+  return {
+    candidateLabel: 'Candidate',
+    targetRoleLabel: 'Target Role',
+    hiringCompanyLabel: 'Hiring Company',
+    hiringManagerLabel: 'Hiring Manager',
+    briefingSummaryHeading: '## Briefing Summary',
+    candidateSnapshotHeading: '## Candidate Snapshot',
+    educationHeading: '## Education',
+    employmentHeading: '## Employment Experience',
+    relevantExperienceHeading: '## Relevant Experience',
+    matchRequirementsHeading: '## Match Against Key Requirements',
+    concernsHeading: '## Potential Concerns / Gaps',
+    nextStepHeading: '## Recommended Next Step',
+    locationLabel: 'Location',
+    preferredLocationLabel: 'Preferred Location',
+    nationalityLabel: 'Nationality',
+    genderLabel: 'Gender',
+    noticePeriodLabel: 'Notice Period',
+    languagesLabel: 'Languages',
+    noSummary: 'No briefing summary available yet.',
+    noSnapshot: 'No additional candidate snapshot details were captured.',
+    noEducation: '- No education details were captured.',
+    noEmployment: '- No employment history was captured.',
+    noEvidence: '- No evidence was captured in this section.',
+    noRequirementMatches: '- No requirement-to-evidence matches were captured.',
+    noNextStep: 'No recommended next step captured.',
+    genericCandidate: 'Candidate',
+    genericRole: 'Role',
+    listJoiner: ', ',
+    dateSeparator: ' - ',
+    organizationSeparator: ', ',
+    labelSeparator: ': '
+  };
+}
+
+function formatDateRange(startDate, endDate, outputLanguage = 'en') {
+  const copy = getLocalizedBriefingCopy(outputLanguage);
+  const start = cleanLine(startDate);
+  const end = cleanLine(endDate);
+
+  if (!start) {
+    return end;
+  }
+
+  if (!end) {
+    return start;
+  }
+
+  if (isChineseOutputLanguage(outputLanguage) && /^至/.test(end)) {
+    return `${start} ${end}`;
+  }
+
+  return `${start}${copy.dateSeparator}${end}`;
 }
 
 function createEmptyBriefing() {
@@ -462,9 +558,9 @@ function parseMatchRequirementSection(value) {
     .filter((entry) => entry.requirement || entry.evidence);
 }
 
-function buildFallbackBriefing({ cvDocument, jdDocument }) {
+function buildFallbackBriefing({ cvDocument, jdDocument, outputLanguage = 'en' }) {
   const profile = extractDocumentDerivedProfile({ cvDocument, jdDocument });
-  const draft = generateSummaryDraft({ cvDocument, jdDocument });
+  const draft = generateSummaryDraft({ cvDocument, jdDocument, outputLanguage });
   const sections = parseStructuredSummary(draft.summary);
 
   return normalizeBriefing({
@@ -518,17 +614,21 @@ function fillTemplate(template, replacements) {
   return template.replace(/\{\{([a-z_]+)\}\}/g, (_match, key) => replacements[key] ?? '');
 }
 
-function formatBulletLines(lines) {
+function formatBulletLines(lines, outputLanguage = 'en') {
+  const copy = getLocalizedBriefingCopy(outputLanguage);
+
   if (!Array.isArray(lines) || lines.length === 0) {
-    return '- No evidence was captured in this section.';
+    return copy.noEvidence;
   }
 
   return lines.map((line) => `- ${stripBulletPrefix(line)}`).join('\n');
 }
 
-function formatMatchRequirements(lines) {
+function formatMatchRequirements(lines, outputLanguage = 'en') {
+  const copy = getLocalizedBriefingCopy(outputLanguage);
+
   if (!Array.isArray(lines) || lines.length === 0) {
-    return '- No requirement-to-evidence matches were captured.';
+    return copy.noRequirementMatches;
   }
 
   return lines
@@ -545,9 +645,11 @@ function formatMatchRequirements(lines) {
     .join('\n');
 }
 
-function formatEducationLines(education) {
+function formatEducationLines(education, outputLanguage = 'en') {
+  const copy = getLocalizedBriefingCopy(outputLanguage);
+
   if (!Array.isArray(education) || education.length === 0) {
-    return '- No education details were captured.';
+    return copy.noEducation;
   }
 
   return education
@@ -555,7 +657,7 @@ function formatEducationLines(education) {
       const parts = [
         cleanLine(entry.degree_name),
         cleanLine(entry.university),
-        [cleanLine(entry.start_year), cleanLine(entry.end_year)].filter(Boolean).join(' - ')
+        formatDateRange(entry.start_year, entry.end_year, outputLanguage)
       ].filter(Boolean);
 
       return `- ${parts.join(' | ')}`;
@@ -563,16 +665,18 @@ function formatEducationLines(education) {
     .join('\n');
 }
 
-function formatEmploymentHistoryForReview(history) {
+function formatEmploymentHistoryForReview(history, outputLanguage = 'en') {
+  const copy = getLocalizedBriefingCopy(outputLanguage);
+
   if (!Array.isArray(history) || history.length === 0) {
-    return '- No employment history was captured.';
+    return copy.noEmployment;
   }
 
   return history
     .map((entry) => {
       const lines = [];
       const titleLine = [entry.job_title, entry.company_name].filter(Boolean).join(' | ');
-      const dateLine = [entry.start_date, entry.end_date].filter(Boolean).join(' - ');
+      const dateLine = formatDateRange(entry.start_date, entry.end_date, outputLanguage);
 
       if (titleLine) {
         lines.push(titleLine);
@@ -596,60 +700,62 @@ function formatEmploymentHistoryForReview(history) {
     .join('\n\n');
 }
 
-function renderSummaryFromBriefing(briefing) {
+function renderSummaryFromBriefing(briefing, outputLanguage = 'en') {
   const normalized = normalizeBriefing(briefing);
+  const copy = getLocalizedBriefingCopy(outputLanguage);
 
-  return normalizeGeneratedSummary(fillTemplate(DEFAULT_TEMPLATE, {
-    candidate_name: normalized.candidate.name || 'Candidate',
-    role_title: normalized.role.title || 'Role',
+  return normalizeGeneratedSummary(fillTemplate(getDefaultTemplateForLanguage(outputLanguage), {
+    candidate_name: normalized.candidate.name || copy.genericCandidate,
+    role_title: normalized.role.title || copy.genericRole,
     fit_summary: normalized.fit_summary,
-    relevant_experience: formatBulletLines(normalized.relevant_experience),
-    match_requirements: formatMatchRequirements(normalized.match_requirements),
-    potential_concerns: formatBulletLines(normalized.potential_concerns),
+    relevant_experience: formatBulletLines(normalized.relevant_experience, outputLanguage),
+    match_requirements: formatMatchRequirements(normalized.match_requirements, outputLanguage),
+    potential_concerns: formatBulletLines(normalized.potential_concerns, outputLanguage),
     recommended_next_step: normalized.recommended_next_step
   }));
 }
 
-function renderHiringManagerBriefingReviewFromBriefing(briefing) {
+function renderHiringManagerBriefingReviewFromBriefing(briefing, outputLanguage = 'en') {
   const normalized = normalizeBriefing(briefing);
+  const copy = getLocalizedBriefingCopy(outputLanguage);
   const candidateSnapshotLines = [
-    normalized.candidate.location ? `Location: ${normalized.candidate.location}` : '',
-    normalized.candidate.preferred_location ? `Preferred Location: ${normalized.candidate.preferred_location}` : '',
-    normalized.candidate.nationality ? `Nationality: ${normalized.candidate.nationality}` : '',
-    normalized.candidate.gender ? `Gender: ${normalized.candidate.gender}` : '',
-    normalized.candidate.notice_period ? `Notice Period: ${normalized.candidate.notice_period}` : '',
-    normalized.candidate.languages.length > 0 ? `Languages: ${normalized.candidate.languages.join(', ')}` : ''
+    normalized.candidate.location ? `${copy.locationLabel}${copy.labelSeparator}${normalized.candidate.location}` : '',
+    normalized.candidate.preferred_location ? `${copy.preferredLocationLabel}${copy.labelSeparator}${normalized.candidate.preferred_location}` : '',
+    normalized.candidate.nationality ? `${copy.nationalityLabel}${copy.labelSeparator}${normalized.candidate.nationality}` : '',
+    normalized.candidate.gender ? `${copy.genderLabel}${copy.labelSeparator}${normalized.candidate.gender}` : '',
+    normalized.candidate.notice_period ? `${copy.noticePeriodLabel}${copy.labelSeparator}${normalized.candidate.notice_period}` : '',
+    normalized.candidate.languages.length > 0 ? `${copy.languagesLabel}${copy.labelSeparator}${normalized.candidate.languages.join(copy.listJoiner)}` : ''
   ].filter(Boolean);
 
   return normalizeGeneratedSummary([
-    `Candidate: ${normalized.candidate.name || 'Candidate'}`,
-    `Target Role: ${normalized.role.title || 'Role'}`,
-    normalized.role.company ? `Hiring Company: ${normalized.role.company}` : '',
-    normalized.role.hiring_manager ? `Hiring Manager: ${normalized.role.hiring_manager}` : '',
+    `${copy.candidateLabel}${copy.labelSeparator}${normalized.candidate.name || copy.genericCandidate}`,
+    `${copy.targetRoleLabel}${copy.labelSeparator}${normalized.role.title || copy.genericRole}`,
+    normalized.role.company ? `${copy.hiringCompanyLabel}${copy.labelSeparator}${normalized.role.company}` : '',
+    normalized.role.hiring_manager ? `${copy.hiringManagerLabel}${copy.labelSeparator}${normalized.role.hiring_manager}` : '',
     '',
-    '## Briefing Summary',
-    normalized.fit_summary || 'No briefing summary available yet.',
+    copy.briefingSummaryHeading,
+    normalized.fit_summary || copy.noSummary,
     '',
-    '## Candidate Snapshot',
-    candidateSnapshotLines.length > 0 ? candidateSnapshotLines.join('\n') : 'No additional candidate snapshot details were captured.',
+    copy.candidateSnapshotHeading,
+    candidateSnapshotLines.length > 0 ? candidateSnapshotLines.join('\n') : copy.noSnapshot,
     '',
-    '## Education',
-    formatEducationLines(normalized.candidate.education),
+    copy.educationHeading,
+    formatEducationLines(normalized.candidate.education, outputLanguage),
     '',
-    '## Employment Experience',
-    formatEmploymentHistoryForReview(normalized.employment_history),
+    copy.employmentHeading,
+    formatEmploymentHistoryForReview(normalized.employment_history, outputLanguage),
     '',
-    '## Relevant Experience',
-    formatBulletLines(normalized.relevant_experience),
+    copy.relevantExperienceHeading,
+    formatBulletLines(normalized.relevant_experience, outputLanguage),
     '',
-    '## Match Against Key Requirements',
-    formatMatchRequirements(normalized.match_requirements),
+    copy.matchRequirementsHeading,
+    formatMatchRequirements(normalized.match_requirements, outputLanguage),
     '',
-    '## Potential Concerns / Gaps',
-    formatBulletLines(normalized.potential_concerns),
+    copy.concernsHeading,
+    formatBulletLines(normalized.potential_concerns, outputLanguage),
     '',
-    '## Recommended Next Step',
-    normalized.recommended_next_step || 'No recommended next step captured.'
+    copy.nextStepHeading,
+    normalized.recommended_next_step || copy.noNextStep
   ].filter((line, index, array) => {
     if (line !== '') {
       return true;
@@ -659,7 +765,7 @@ function renderHiringManagerBriefingReviewFromBriefing(briefing) {
   }).join('\n'));
 }
 
-function composeHiringManagerBriefing({ briefing, recruiterSummary = '' }) {
+function composeHiringManagerBriefing({ briefing, recruiterSummary = '', outputLanguage = 'en' }) {
   const normalizedBriefing = normalizeBriefing(briefing);
   const reviewBriefing = recruiterSummary && recruiterSummary.trim()
     ? applySummaryOverridesToBriefing(normalizedBriefing, recruiterSummary)
@@ -672,24 +778,26 @@ function composeHiringManagerBriefing({ briefing, recruiterSummary = '' }) {
 
   return {
     briefing: validation.briefing,
-    review: renderHiringManagerBriefingReviewFromBriefing(validation.briefing)
+    review: renderHiringManagerBriefingReviewFromBriefing(validation.briefing, outputLanguage)
   };
 }
 
-function prepareHiringManagerBriefingOutput({ briefing, recruiterSummary = '' }) {
+function prepareHiringManagerBriefingOutput({ briefing, recruiterSummary = '', outputLanguage = 'en' }) {
   const composed = composeHiringManagerBriefing({
     briefing,
-    recruiterSummary
+    recruiterSummary,
+    outputLanguage
   });
 
   return {
     ...composed,
-    templateData: buildTemplateDataFromBriefing(composed.briefing)
+    templateData: buildTemplateDataFromBriefing(composed.briefing, outputLanguage)
   };
 }
 
-function buildTemplateDataFromBriefing(briefing) {
+function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
   const normalized = normalizeBriefing(briefing);
+  const copy = getLocalizedBriefingCopy(outputLanguage);
   const firstEducation = normalized.candidate.education[0] || {};
   const firstEmployment = normalized.employment_history[0] || {};
   const generationDate = new Date();
@@ -723,7 +831,7 @@ function buildTemplateDataFromBriefing(briefing) {
       .map((entry) => {
         const lines = [];
         const titleLine = [entry.job_title, entry.company_name].filter(Boolean).join(' | ');
-        const dateLine = [entry.start_date, entry.end_date].filter(Boolean).join(' - ');
+        const dateLine = formatDateRange(entry.start_date, entry.end_date, outputLanguage);
 
         if (titleLine) {
           lines.push(titleLine);
@@ -743,16 +851,16 @@ function buildTemplateDataFromBriefing(briefing) {
       })
       .filter(Boolean)
       .join('\n\n'),
-    relevant_experience: formatBulletLines(normalized.relevant_experience),
-    match_requirements: formatMatchRequirements(normalized.match_requirements),
-    potential_concerns: formatBulletLines(normalized.potential_concerns),
+    relevant_experience: formatBulletLines(normalized.relevant_experience, outputLanguage),
+    match_requirements: formatMatchRequirements(normalized.match_requirements, outputLanguage),
+    potential_concerns: formatBulletLines(normalized.potential_concerns, outputLanguage),
     recommended_next_step: normalized.recommended_next_step,
     candidate_summary: fitSummary,
     candidate_gender: normalized.candidate.gender,
     candidate_nationality: normalized.candidate.nationality,
     candidate_location: normalized.candidate.location,
     candidate_preferred_location: normalized.candidate.preferred_location,
-    candidate_languages: candidateLanguages.join(', '),
+    candidate_languages: candidateLanguages.join(copy.listJoiner),
     candidate_language_1: normalized.candidate.languages[0] || '',
     candidate_language_2: normalized.candidate.languages[1] || '',
     notice_period: normalized.candidate.notice_period,
@@ -763,7 +871,7 @@ function buildTemplateDataFromBriefing(briefing) {
         if (entry.degree_name) {
           lines.push(entry.degree_name);
         }
-        const organizationLine = [entry.university, [entry.start_year, entry.end_year].filter(Boolean).join(' - ')].filter(Boolean).join(', ');
+        const organizationLine = [entry.university, formatDateRange(entry.start_year, entry.end_year, outputLanguage)].filter(Boolean).join(copy.organizationSeparator);
         if (organizationLine) {
           lines.push(organizationLine);
         }
@@ -848,10 +956,18 @@ function parseBriefingResponse(responseText) {
   return normalizeBriefing(parsed);
 }
 
-function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGuidance = null, outputMode = 'named' }) {
+function buildBriefingRequest({
+  cvDocument,
+  jdDocument,
+  systemPrompt,
+  templateGuidance = null,
+  outputMode = 'named',
+  outputLanguage = 'en'
+}) {
   const candidateName = extractCandidateName(cvDocument.text, cvDocument.file.name);
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
-  const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance);
+  const normalizedOutputLanguage = normalizeOutputLanguage(outputLanguage);
+  const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance, normalizedOutputLanguage);
   const normalizedOutputMode = outputMode === 'anonymous' ? 'anonymous' : 'named';
   const modeDescriptor = normalizedOutputMode === 'anonymous' ? 'an anonymous' : 'a named';
   const candidateLabel = normalizedOutputMode === 'anonymous'
@@ -862,7 +978,8 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGu
     roleTitle,
     cvText: cvDocument.text,
     jdText: jdDocument.text,
-    outputMode: normalizedOutputMode
+    outputMode: normalizedOutputMode,
+    outputLanguage: normalizedOutputLanguage
   });
 
   const prompt = [
@@ -874,12 +991,18 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGu
     'Do not invent candidate facts, employers, dates, or role-fit claims.',
     'If a field is not supported by the CV or JD, return an empty string or empty array.',
     'Use grounded, sufficiently detailed hiring-manager-ready language for narrative fields. Do not be overly terse.',
+    isChineseOutputLanguage(normalizedOutputLanguage)
+      ? 'Write narrative and human-readable text fields in Simplified Chinese.'
+      : 'Write narrative and human-readable text fields in English.',
+    'Preserve exact names, employers, qualifications, and other source facts in their original form when appropriate.',
     'The recruiter summary is generated separately. This structured object should preserve exact candidate facts and grounded hiring-manager briefing content.',
     'The `fit_summary` field should align with the recruiter summary key points and be suitable for the hiring-manager briefing summary section.',
     ...(normalizedOutputMode === 'anonymous'
       ? [
         `Set \`candidate.name\` to \`${ANONYMOUS_CANDIDATE_LABEL}\`.`,
-        'In narrative fields such as `fit_summary`, `relevant_experience`, and `recommended_next_step`, refer to the person as "the candidate" or "this candidate" instead of repeating the anonymous label.',
+        isChineseOutputLanguage(normalizedOutputLanguage)
+          ? 'In narrative fields such as `fit_summary`, `relevant_experience`, and `recommended_next_step`, refer to the person as “该候选人” or “候选人” instead of repeating the anonymous label.'
+          : 'In narrative fields such as `fit_summary`, `relevant_experience`, and `recommended_next_step`, refer to the person as "the candidate" or "this candidate" instead of repeating the anonymous label.',
         'Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address in any structured field.'
       ]
       : []),
@@ -902,7 +1025,7 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGu
     ...(resolvedTemplateGuidance.usesDefaultTemplate ? [] : [
       '',
       'Required recruiter summary structure for the in-app review surface:',
-      DEFAULT_TEMPLATE
+      getDefaultTemplateForLanguage(normalizedOutputLanguage)
     ]),
     '',
     'Current recruiter summary drafting prompt for tone and structure guidance:',
@@ -916,7 +1039,7 @@ function buildBriefingRequest({ cvDocument, jdDocument, systemPrompt, templateGu
   ].join('\n');
 
   return {
-    templateLabel: resolvedTemplateGuidance.label || DEFAULT_TEMPLATE_LABEL,
+    templateLabel: resolvedTemplateGuidance.label || getDefaultTemplateLabel(normalizedOutputLanguage),
     prompt,
     messages: [
       {

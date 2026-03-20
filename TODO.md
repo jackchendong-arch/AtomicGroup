@@ -179,7 +179,7 @@ Mark a release complete only when the work is:
 - Test email draft handoff on Windows.
 
 ## Release 5: Local Folder Intake and Job Workspace
-- [ ] Release 5 shipped, completed, and tested.
+- [-] Release 5 shipped, completed, and tested.
 - Add a folder picker so the recruiter can choose a local source folder.
 - Show browsable files from the selected source folder inside the app.
 - Let the recruiter select a CV and JD from the chosen folder.
@@ -192,6 +192,14 @@ Mark a release complete only when the work is:
 - Rehydrate the prior draft and document selections when a saved workspace is reopened.
 - Keep the existing direct file picker workflow working alongside folder-based intake.
 - Test reopening a saved workspace from local history.
+- Add user-selectable output language support for English and Chinese.
+- Apply the selected output language consistently to:
+  - Candidate Summary Review
+  - Hiring Manager Briefing
+  - email draft handoff
+  - generated Word briefing content
+- Keep raw imported CV and JD source views unchanged while allowing bilingual derived outputs.
+- Add Chinese-language regression fixtures and unit tests for summary, briefing, email, and Word-draft generation.
 
 ## Release 6: Production Hardening
 - [ ] Release 6 shipped, completed, and tested.
@@ -204,6 +212,22 @@ Mark a release complete only when the work is:
 - Decide whether product-approved telemetry is allowed and implement it only if approved.
 - Run regression testing across all previously shipped workflows.
 
+## Release 7: LLM Ops Artifact Registry and Promotion
+- [ ] Release 7 shipped, completed, and tested.
+- Replace free-form consultant prompt editing with selection from approved imported prompt artifacts.
+- Introduce one app-managed artifact registry for:
+  - prompt artifacts
+  - Markdown recruiter-summary guidance templates
+  - Word hiring-manager presentation templates
+- Version each artifact with stable ID, artifact type, semantic version, content hash, approval status, and import metadata.
+- Seed the registry with built-in default artifacts while allowing later approved artifact imports without redeploying the app.
+- Define an artifact bundle format so prompts and templates can be authored outside the app and then imported into user installs.
+- Design the promotion flow from development to production for prompt/template artifacts, including review and approval before they become selectable in the user app.
+- Persist a generation run artifact for each summary, briefing, and email generation step with selected artifact versions, model settings, source document hashes, and outputs.
+- Add retrieval/run manifests so later workspace-scoped retrieval captures retrieved source block IDs, scores, and evidence lineage.
+- Surface run IDs and selected artifact versions in the app and/or exported diagnostics so recommendations can be audited later.
+- Support rollback to a previous approved prompt or template artifact version.
+
 ## Cross-Cutting Product Decisions
 - Extend the provider abstraction cleanly when additional LLM vendors are added after DeepSeek.
 - Decide whether Release 1 must support image-only scanned PDFs or only text-based documents.
@@ -212,6 +236,8 @@ Mark a release complete only when the work is:
 - Decide whether Release 1 should also export Markdown, HTML, or PDF in addition to clipboard copy.
 - Decide how much local history should be stored by default.
 - Decide whether evidence citations or source traceability must be present in the first review UI.
+- Decide how prompt/template artifacts are authored, reviewed, approved, and promoted from development into production user installs.
+- Decide whether artifact updates should arrive by manual import, managed sync, or installer upgrade.
 
 ## Cross-Cutting Architecture Direction
 - Treat the active CV, JD, and guidance template as a workspace-scoped document set rather than a persistent global document library.
@@ -219,3 +245,6 @@ Mark a release complete only when the work is:
 - Keep recruiter summary guidance in Markdown and hiring-manager presentation in Word so template responsibilities stay distinct.
 - Use the grounded structured briefing model as the shared content source of truth for hiring-manager briefing review and Word export.
 - Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.
+- Manage prompts, Markdown guidance templates, and Word templates through one app-managed artifact registry with type-specific metadata and versioning.
+- Replace consultant-edited free-form prompts with selection/import of approved prompt artifacts.
+- Persist generation run artifacts with prompt/template versions, input hashes, model settings, and later retrieval manifests so decisions remain traceable.

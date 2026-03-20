@@ -293,6 +293,57 @@ test('employment history parses date-first company groups with multiple dated ro
   });
 });
 
+test('buildTemplateData parses Simplified Chinese summary headings for Word-template fields', () => {
+  const templateData = buildTemplateData({
+    summary: [
+      '候选人：张伟',
+      '目标职位：技术负责人',
+      '',
+      '## 匹配概述',
+      '候选人与岗位具有较强匹配度。',
+      '',
+      '## 相关经验',
+      '- 负责平台现代化改造',
+      '',
+      '## 与关键要求的匹配',
+      '- 技术领导力 -> 负责区域工程团队',
+      '',
+      '## 潜在顾虑 / 差距',
+      '- 暂缺直接保险行业经验',
+      '',
+      '## 建议下一步',
+      '建议进入用人经理评审。'
+    ].join('\n'),
+    cvDocument: {
+      text: [
+        '张伟',
+        '上海',
+        '',
+        '工作经历',
+        '技术总监',
+        '汇丰',
+        '2020 - 至今',
+        '- 负责平台转型'
+      ].join('\n'),
+      file: {
+        name: 'candidate-cv.pdf'
+      }
+    },
+    jdDocument: {
+      text: '职位：技术负责人\n公司：原子集团',
+      file: {
+        name: 'role-jd.pdf'
+      }
+    }
+  });
+
+  assert.equal(templateData.candidate_name, '张伟');
+  assert.equal(templateData.role_title, '技术负责人');
+  assert.equal(templateData.fit_summary, '候选人与岗位具有较强匹配度。');
+  assert.match(templateData.match_requirements, /技术领导力 -> 负责区域工程团队/);
+  assert.equal(templateData.recommended_next_step, '建议进入用人经理评审。');
+});
+
 test('buildTemplateData consolidates multiple languages and education entries for template rendering', () => {
   const templateData = buildTemplateData({
     summary: [

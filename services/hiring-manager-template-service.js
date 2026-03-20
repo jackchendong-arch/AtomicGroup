@@ -16,12 +16,21 @@ const SECTION_KEY_BY_HEADING = {
   'Relevant Experience': 'relevant_experience',
   'Match Against Key Requirements': 'match_requirements',
   'Potential Concerns / Gaps': 'potential_concerns',
-  'Recommended Next Step': 'recommended_next_step'
+  'Recommended Next Step': 'recommended_next_step',
+  候选人: 'candidate_name',
+  目标职位: 'role_title',
+  匹配概述: 'fit_summary',
+  相关经验: 'relevant_experience',
+  '与关键要求的匹配': 'match_requirements',
+  '潜在顾虑 / 差距': 'potential_concerns',
+  建议下一步: 'recommended_next_step'
 };
 
 const SUMMARY_FIELD_KEY_BY_LABEL = {
   candidate: 'candidate_name',
-  'target role': 'role_title'
+  'target role': 'role_title',
+  候选人: 'candidate_name',
+  目标职位: 'role_title'
 };
 
 const SUPPORTED_WORD_TEMPLATE_TAGS = [
@@ -143,12 +152,21 @@ const SECTION_NAME_TO_KEY = {
   'employment experience': 'experience',
   'professional experience': 'experience',
   'project experience': 'experience',
+  工作经历: 'experience',
+  工作经验: 'experience',
+  职业经历: 'experience',
+  项目经历: 'experience',
   education: 'education',
+  教育背景: 'education',
+  教育经历: 'education',
   skills: 'skills',
   language: 'languages',
   languages: 'languages',
+  语言: 'languages',
   availability: 'availability',
-  'notice period': 'availability'
+  'notice period': 'availability',
+  到岗时间: 'availability',
+  可到岗时间: 'availability'
 };
 
 function normalizeTextBlock(value) {
@@ -167,7 +185,7 @@ function splitNonEmptyLines(value) {
 function normalizeHeadingKey(value) {
   return normalizeTextBlock(value)
     .replace(/^#+\s*/, '')
-    .replace(/:$/, '')
+    .replace(/[:：]$/, '')
     .toLowerCase();
 }
 
@@ -304,7 +322,7 @@ function extractLabeledValue(lines, labels) {
     const line = lines[index];
 
     for (const label of labels) {
-      const inlineMatch = line.match(new RegExp(`^${escapeRegExp(label)}\\s*:?\\s*(.+)$`, 'i'));
+      const inlineMatch = line.match(new RegExp(`^${escapeRegExp(label)}\\s*[:：]?\\s*(.+)$`, 'i'));
 
       if (inlineMatch && inlineMatch[1]) {
         return inlineMatch[1].trim();
@@ -338,7 +356,7 @@ function extractEarlyLocation(lines, candidateName) {
 }
 
 function extractLanguageList(lines, sectionLines = []) {
-  const inlineValue = extractLabeledValue(lines, ['Languages', 'Language']);
+  const inlineValue = extractLabeledValue(lines, ['Languages', 'Language', '语言']);
   const rawValues = [
     inlineValue,
     ...(Array.isArray(sectionLines) ? sectionLines : [])
@@ -976,12 +994,12 @@ function extractExperienceDetails(sectionLines = []) {
 
 function extractHiringManagerTarget(jdText) {
   const lines = splitNonEmptyLines(jdText);
-  return extractLabeledValue(lines, ['Hiring Manager', 'Company', 'Organization', 'Client', 'Employer']);
+  return extractLabeledValue(lines, ['Hiring Manager', 'Company', 'Organization', 'Client', 'Employer', '招聘经理', '公司', '客户']);
 }
 
 function extractRoleTitleFromJd(jdText, fileName) {
   const lines = splitNonEmptyLines(jdText);
-  const labeledTitle = extractLabeledValue(lines, ['Job title', 'Role', 'Position', 'Title']);
+  const labeledTitle = extractLabeledValue(lines, ['Job title', 'Role', 'Position', 'Title', '职位', '岗位', '职位名称']);
 
   if (labeledTitle && !/^(about the job|job description|job summary|overview|responsibilities|requirements)$/i.test(labeledTitle)) {
     return labeledTitle;
@@ -1015,16 +1033,16 @@ function extractDocumentDerivedProfile({ cvDocument, jdDocument }) {
     candidateName,
     roleTitle,
     hiringManager: extractHiringManagerTarget(jdText),
-    candidateGender: extractLabeledValue(lines, ['Gender']),
-    candidateNationality: extractLabeledValue(lines, ['Nationality', 'Citizenship']),
+    candidateGender: extractLabeledValue(lines, ['Gender', '性别']),
+    candidateNationality: extractLabeledValue(lines, ['Nationality', 'Citizenship', '国籍']),
     candidateLocation:
-      extractLabeledValue(lines, ['Current location', 'Location', 'Based in']) ||
+      extractLabeledValue(lines, ['Current location', 'Location', 'Based in', '当前地点', '所在地', '地点']) ||
       extractEarlyLocation(lines, candidateName),
-    candidatePreferredLocation: extractLabeledValue(lines, ['Preferred location', 'Preferred Location', 'Preferred locations', 'Preferred working location']),
+    candidatePreferredLocation: extractLabeledValue(lines, ['Preferred location', 'Preferred Location', 'Preferred locations', 'Preferred working location', '意向地点', '期望地点']),
     candidateLanguages,
     candidateLanguage1,
     candidateLanguage2,
-    noticePeriod: extractLabeledValue(lines, ['Notice period', 'Availability']) || (sections.availability || [])[0] || '',
+    noticePeriod: extractLabeledValue(lines, ['Notice period', 'Availability', '到岗时间', '可到岗时间']) || (sections.availability || [])[0] || '',
     educationEntries,
     degreeName: education.degreeName,
     university: education.university,
@@ -1057,7 +1075,7 @@ function parseStructuredSummary(summary) {
   }
 
   for (const line of lines) {
-    const labelMatch = line.match(/^([^:]+):\s+(.+)$/);
+    const labelMatch = line.match(/^([^:：]+)[:：]\s*(.+)$/);
 
     if (labelMatch) {
       const fieldKey = SUMMARY_FIELD_KEY_BY_LABEL[normalizeHeadingKey(labelMatch[1])];

@@ -37,6 +37,7 @@ const {
   finalizeEmailDraft,
   parseEmailDraftResponse
 } = require('./services/email-draft-service');
+const { normalizeOutputLanguage } = require('./services/output-language-service');
 
 let settingsStore;
 
@@ -192,9 +193,11 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
     throw new Error('Generate and review the recruiter summary before exporting the hiring-manager draft.');
   }
 
+  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
   const fallbackBriefing = buildFallbackBriefing({
     cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
+    jdDocument: payload.jdDocument,
+    outputLanguage
   });
   const requestedBriefing = payload.briefing
     ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
@@ -204,7 +207,8 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
   try {
     composedOutput = prepareHiringManagerBriefingOutput({
       briefing: requestedBriefing,
-      recruiterSummary: payload.summary
+      recruiterSummary: payload.summary,
+      outputLanguage
     });
   } catch (error) {
     debugTrace.push(`Structured briefing validation failed: ${error instanceof Error ? error.message : 'Unknown validation failure.'}`);
@@ -520,6 +524,7 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
   ];
   const settings = await getSettingsStore().load();
   const outputMode = normalizeOutputMode(payload.outputMode);
+  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
   const preparedPayload = outputMode === 'anonymous'
     ? {
       ...payload,
@@ -534,14 +539,16 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
     : payload;
   const fallbackBriefing = buildFallbackBriefing({
     cvDocument: preparedPayload.cvDocument,
-    jdDocument: preparedPayload.jdDocument
+    jdDocument: preparedPayload.jdDocument,
+    outputLanguage
   });
   const requestedBriefing = preparedPayload.briefing
     ? mergeBriefingWithFallback(preparedPayload.briefing, fallbackBriefing)
     : fallbackBriefing;
   const composedOutput = prepareHiringManagerBriefingOutput({
     briefing: requestedBriefing,
-    recruiterSummary: preparedPayload.summary
+    recruiterSummary: preparedPayload.summary,
+    outputLanguage
   });
 
   let attachmentPath = '';
@@ -582,7 +589,8 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
       briefing: composedOutput.briefing,
       outputMode,
       systemPrompt: settings.systemPrompt,
-      attachmentExpected: Boolean(attachmentPath)
+      attachmentExpected: Boolean(attachmentPath),
+      outputLanguage
     });
     const emailResult = await generateWithConfiguredProvider({
       settings,
@@ -603,7 +611,8 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
       briefing: composedOutput.briefing,
       outputMode,
       attachmentPath,
-      attachmentExpected: Boolean(attachmentPath)
+      attachmentExpected: Boolean(attachmentPath),
+      outputLanguage
     });
   }
 
@@ -644,6 +653,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
   }
 
   const outputMode = normalizeOutputMode(payload.outputMode);
+  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
   const generationInputs = outputMode === 'anonymous'
     ? buildAnonymizedGenerationInputs({
       cvDocument: payload.cvDocument,
@@ -659,14 +669,16 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     jdDocument: generationInputs.jdDocument,
     systemPrompt: settings.systemPrompt,
     templateGuidance,
-    outputMode
+    outputMode,
+    outputLanguage
   });
   const briefingRequest = buildBriefingRequest({
     cvDocument: generationInputs.cvDocument,
     jdDocument: generationInputs.jdDocument,
     systemPrompt: settings.systemPrompt,
     templateGuidance,
-    outputMode
+    outputMode,
+    outputLanguage
   });
   const [summaryResult, structuredBriefingResult] = await Promise.all([
     generateWithConfiguredProvider({
@@ -684,7 +696,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 
   const fallbackBriefing = buildFallbackBriefing({
     cvDocument: generationInputs.cvDocument,
-    jdDocument: generationInputs.jdDocument
+    jdDocument: generationInputs.jdDocument,
+    outputLanguage
   });
   let briefing;
 
@@ -710,7 +723,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
   });
   const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage
   });
 
   return {
@@ -722,15 +736,18 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     model: settings.model,
     briefing: preparedOutput.briefing,
     outputMode: preparedOutput.outputMode,
+    outputLanguage,
     modeLabel: preparedOutput.modeLabel,
     approvalWarnings: preparedOutput.warnings
   };
 });
 
 ipcMain.handle('briefing:render-review', async (_event, payload) => {
+  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
   const fallbackBriefing = buildFallbackBriefing({
     cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
+    jdDocument: payload.jdDocument,
+    outputLanguage
   });
   const requestedBriefing = payload.briefing
     ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
@@ -744,7 +761,8 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
   });
   const composed = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage
   });
 
   return {

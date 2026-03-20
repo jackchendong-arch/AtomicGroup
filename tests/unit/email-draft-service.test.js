@@ -96,6 +96,55 @@ test('buildFallbackEmailDraft creates a readable recommendation email with attac
   assert.match(draft.clipboardText, /Attachment path: \/tmp\/alex-wong-briefing\.docx/);
 });
 
+test('buildEmailDraftRequest can target Simplified Chinese email output', () => {
+  const request = buildEmailDraftRequest({
+    summary: '已审批的顾问摘要',
+    briefing: {
+      ...createBriefing(),
+      candidate: {
+        ...createBriefing().candidate,
+        name: '张伟'
+      },
+      role: {
+        ...createBriefing().role,
+        title: '技术负责人'
+      }
+    },
+    outputLanguage: 'zh',
+    attachmentExpected: true
+  });
+
+  assert.match(request.prompt, /Output language: Simplified Chinese/);
+  assert.match(request.prompt, /Candidate label: 张伟/);
+});
+
+test('buildFallbackEmailDraft creates a readable Simplified Chinese recommendation email', () => {
+  const draft = buildFallbackEmailDraft({
+    summary: '候选人：张伟\n目标职位：技术负责人\n\n## 匹配概述\n候选人与岗位高度匹配。',
+    briefing: {
+      ...createBriefing(),
+      candidate: {
+        ...createBriefing().candidate,
+        name: '张伟'
+      },
+      role: {
+        ...createBriefing().role,
+        title: '技术负责人'
+      },
+      fit_summary: '该候选人与目标岗位具有较强匹配度。'
+    },
+    outputLanguage: 'zh',
+    attachmentExpected: true,
+    attachmentPath: '/tmp/zhang-wei-briefing.docx'
+  });
+
+  assert.match(draft.subject, /张伟｜技术负责人/);
+  assert.match(draft.body, /我想推荐张伟供您考虑技术负责人/);
+  assert.match(draft.body, /附件为《Hiring Manager Briefing》文档/);
+  assert.match(draft.body, /重点亮点：/);
+  assert.match(draft.clipboardText, /Attachment path: \/tmp\/zhang-wei-briefing\.docx/);
+});
+
 test('finalizeEmailDraft and buildMailtoUrl encode subject and body safely', () => {
   const draft = finalizeEmailDraft({
     subject: 'Alex Wong | Head of Technology',

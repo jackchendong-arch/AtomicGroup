@@ -128,3 +128,30 @@ test('buildBriefingRequest switches to anonymous structured-briefing instruction
   assert.match(request.prompt, /refer to the person as "the candidate" or "this candidate"/i);
   assert.match(request.prompt, /Do not include the candidate’s real name, email, phone number, LinkedIn URL, or exact street address/i);
 });
+
+test('buildSummaryRequest can target Simplified Chinese output with the localized built-in template', () => {
+  const { cvDocument, jdDocument } = createFixtureDocuments();
+  const request = buildSummaryRequest({
+    cvDocument,
+    jdDocument,
+    systemPrompt: 'System prompt',
+    outputLanguage: 'zh'
+  });
+
+  assert.match(request.prompt, /Return the completed recruiter summary in Simplified Chinese/i);
+  assert.match(request.prompt, /候选人：\{\{candidate_name\}\}/);
+  assert.match(request.prompt, /## 匹配概述/);
+});
+
+test('buildBriefingRequest can target Simplified Chinese narrative fields', () => {
+  const { cvDocument, jdDocument } = createFixtureDocuments();
+  const request = buildBriefingRequest({
+    cvDocument,
+    jdDocument,
+    systemPrompt: 'System prompt',
+    outputLanguage: 'zh'
+  });
+
+  assert.match(request.prompt, /Write narrative and human-readable text fields in Simplified Chinese/i);
+  assert.match(request.prompt, /候选人：\{\{candidate_name\}\}/);
+});

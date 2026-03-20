@@ -16,6 +16,7 @@ const state = {
   briefingReview: '',
   summary: '',
   outputMode: 'named',
+  outputLanguage: 'en',
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
@@ -84,6 +85,8 @@ const elements = {
   swapSourceButton: document.getElementById('swap-source-button'),
   setNamedModeButton: document.getElementById('set-named-mode-button'),
   setAnonymousModeButton: document.getElementById('set-anonymous-mode-button'),
+  setEnglishOutputButton: document.getElementById('set-english-output-button'),
+  setChineseOutputButton: document.getElementById('set-chinese-output-button'),
   generateButton: document.getElementById('generate-summary-button'),
   resetButton: document.getElementById('reset-workspace-button'),
   summaryStatus: document.getElementById('summary-status'),
@@ -852,6 +855,8 @@ function renderSummary() {
   elements.generationProgressLabel.textContent = state.progressLabel;
   elements.setNamedModeButton.classList.toggle('is-active', state.outputMode === 'named');
   elements.setAnonymousModeButton.classList.toggle('is-active', state.outputMode === 'anonymous');
+  elements.setEnglishOutputButton.classList.toggle('is-active', state.outputLanguage === 'en');
+  elements.setChineseOutputButton.classList.toggle('is-active', state.outputLanguage === 'zh');
   elements.draftModePill.textContent = state.outputMode === 'anonymous' ? 'Anonymous Draft' : 'Named Draft';
   elements.draftLifecyclePill.textContent = getDraftLifecycleLabel();
 
@@ -1033,6 +1038,28 @@ function setOutputMode(mode) {
       normalizedMode === 'anonymous'
         ? 'Draft mode changed to anonymous. Generate a fresh draft to apply anonymization.'
         : 'Draft mode changed to named. Generate a fresh draft to restore named output.'
+    );
+  }
+
+  render();
+}
+
+function setOutputLanguage(language) {
+  const normalizedLanguage = language === 'zh' ? 'zh' : 'en';
+
+  if (state.outputLanguage === normalizedLanguage) {
+    return;
+  }
+
+  state.outputLanguage = normalizedLanguage;
+  state.lastExportPath = '';
+  state.approvalWarnings = [];
+
+  if (state.summary.trim()) {
+    invalidateSummary(
+      normalizedLanguage === 'zh'
+        ? 'Output language changed to Chinese. Generate a fresh draft to refresh the summary, briefing, email, and Word output language.'
+        : 'Output language changed to English. Generate a fresh draft to refresh the summary, briefing, email, and Word output language.'
     );
   }
 
@@ -1307,6 +1334,7 @@ async function syncBriefingReviewFromCurrentSummary() {
     briefing: state.briefing,
     summary: state.summary,
     outputMode: state.outputMode,
+    outputLanguage: state.outputLanguage,
     cvDocument: state.documents.cv,
     jdDocument: state.documents.jd
   });
@@ -1363,13 +1391,15 @@ async function generateSummary() {
     const result = await window.recruitmentApi.generateSummary({
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd,
-      outputMode: state.outputMode
+      outputMode: state.outputMode,
+      outputLanguage: state.outputLanguage
     });
 
     state.briefing = result.briefing || null;
     state.briefingReview = result.hiringManagerBriefingReview || '';
     state.summary = result.summary;
     state.outputMode = result.outputMode || state.outputMode;
+    state.outputLanguage = result.outputLanguage || state.outputLanguage;
     state.approvalWarnings = result.approvalWarnings || [];
     state.draftLifecycle = 'generated';
     state.templateLabel = result.templateLabel;
@@ -1435,6 +1465,7 @@ async function shareByEmail() {
       briefing: state.briefing,
       summary: state.summary,
       outputMode: state.outputMode,
+      outputLanguage: state.outputLanguage,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -1507,6 +1538,7 @@ async function exportWordDraft() {
       briefing: state.briefing,
       summary: state.summary,
       outputMode: state.outputMode,
+      outputLanguage: state.outputLanguage,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -1771,6 +1803,8 @@ elements.jd.chooseButton.addEventListener('click', () => chooseDocument('jd'));
 elements.swapSourceButton.addEventListener('click', swapDocumentAssignments);
 elements.setNamedModeButton.addEventListener('click', () => setOutputMode('named'));
 elements.setAnonymousModeButton.addEventListener('click', () => setOutputMode('anonymous'));
+elements.setEnglishOutputButton.addEventListener('click', () => setOutputLanguage('en'));
+elements.setChineseOutputButton.addEventListener('click', () => setOutputLanguage('zh'));
 elements.generateButton.addEventListener('click', generateSummary);
 elements.approveDraftButton.addEventListener('click', approveDraft);
 elements.copySummaryButton.addEventListener('click', copySummary);

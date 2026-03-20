@@ -319,6 +319,75 @@ test('renderHiringManagerBriefingReviewFromBriefing produces a reviewable hiring
   assert.match(review, /Led platform transformation/);
 });
 
+test('renderSummaryFromBriefing supports Simplified Chinese output headings', () => {
+  const briefing = normalizeBriefing({
+    candidate: {
+      name: '张伟'
+    },
+    role: {
+      title: '技术负责人'
+    },
+    fit_summary: '该候选人与目标岗位具有较强匹配度。',
+    relevant_experience: ['负责平台现代化改造'],
+    match_requirements: [
+      {
+        requirement: '技术领导力',
+        evidence: '负责区域工程团队'
+      }
+    ],
+    potential_concerns: ['暂缺直接保险行业经验'],
+    recommended_next_step: '建议进入用人经理评审。'
+  });
+
+  const summary = renderSummaryFromBriefing(briefing, 'zh');
+
+  assert.match(summary, /候选人：张伟/);
+  assert.match(summary, /## 匹配概述/);
+  assert.match(summary, /技术领导力 -> 负责区域工程团队/);
+});
+
+test('renderHiringManagerBriefingReviewFromBriefing supports Simplified Chinese review headings', () => {
+  const briefing = normalizeBriefing({
+    candidate: {
+      name: '张伟',
+      location: '上海',
+      languages: ['中文', 'English']
+    },
+    role: {
+      title: '技术负责人',
+      company: '原子集团'
+    },
+    fit_summary: '该候选人与目标岗位具有较强匹配度。',
+    relevant_experience: ['负责平台现代化改造'],
+    match_requirements: [
+      {
+        requirement: '技术领导力',
+        evidence: '负责区域工程团队'
+      }
+    ],
+    potential_concerns: ['暂缺直接保险行业经验'],
+    recommended_next_step: '建议进入用人经理评审。',
+    employment_history: [
+      {
+        job_title: '技术总监',
+        company_name: '汇丰',
+        start_date: '2020',
+        end_date: '至今',
+        responsibilities: ['负责平台转型']
+      }
+    ]
+  });
+
+  const review = renderHiringManagerBriefingReviewFromBriefing(briefing, 'zh');
+
+  assert.match(review, /## 简报摘要/);
+  assert.match(review, /候选人：张伟/);
+  assert.match(review, /招聘公司：原子集团/);
+  assert.match(review, /## 工作经历/);
+  assert.match(review, /技术总监 \| 汇丰/);
+  assert.match(review, /负责平台转型/);
+});
+
 test('prepareHiringManagerBriefingOutput keeps briefing review and Word template data aligned', () => {
   const output = prepareHiringManagerBriefingOutput({
     briefing: normalizeBriefing({

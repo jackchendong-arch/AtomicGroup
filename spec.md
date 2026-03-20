@@ -159,6 +159,33 @@ Recommended output sections:
 - The configured Word template should govern the final hiring-manager document's fields, format, and visual layout.
 - The physical Word document should only be created when the consultant explicitly exports or sends the briefing.
 
+### 4A. LLM Ops and Artifact Governance
+- Consultants should not manage prompts by editing free-form prompt text directly.
+- Prompt artifacts should be authored outside the consultant workflow, versioned, reviewed, and then imported into the app as approved artifacts.
+- The app should manage prompt artifacts, Markdown guidance templates, and Word presentation templates through one app-managed artifact registry.
+- The registry should track, at minimum:
+  - artifact ID
+  - artifact type
+  - semantic version
+  - content hash
+  - approval status
+  - import timestamp
+  - optional compatibility metadata
+- Built-in default artifacts may ship with the app, but new approved artifact versions should be importable later without redeploying the whole app.
+- The consultant should select from approved artifact versions rather than editing prompt bodies.
+- Each generation run should persist a run artifact containing:
+  - selected prompt/template artifact versions and hashes
+  - provider/model/runtime settings
+  - source document hashes
+  - generated outputs
+  - approval/share/export events
+- When workspace-scoped retrieval is introduced, the run artifact should also capture the retrieval manifest:
+  - source block IDs
+  - retriever version
+  - ranking or score metadata
+  - evidence lineage used in generation
+- The product should later define how prompt/template artifacts move from development into production user installs, for example by approved import bundles, managed sync, or another governed promotion path.
+
 ### 5. Anonymous and Named Modes
 - The user can choose named or anonymous mode before generation.
 - Named mode includes candidate-identifying information when present.
@@ -544,6 +571,47 @@ Acceptance criteria:
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.
 
+### Release 7: LLM Ops Artifact Registry and Promotion
+Value:
+- Prompt, guidance, and template behavior becomes governable, versioned, and auditable without requiring full app redeploys for every artifact update.
+
+Scope:
+- App-managed artifact registry for prompts, Markdown guidance templates, and Word templates
+- Approved artifact selection instead of free-form consultant prompt editing
+- Artifact metadata including IDs, versions, hashes, and approval status
+- Artifact bundle import path for dev-authored prompt/template updates
+- Run-level provenance artifacts for summary, briefing, and email generation
+- Promotion design for moving approved artifacts from development into production user installs
+- Rollback support for prior approved prompt/template artifacts
+
+Acceptance criteria:
+- Consultants can select only approved artifact versions for prompts and templates.
+- The app can import newer approved prompt/template artifacts without a full app redeploy.
+- Each generation run stores enough provenance to identify which artifacts, inputs, and runtime settings produced the result.
+- Artifact promotion from development to production is documented and operationally clear.
+
+### Placeholder: Future Artifact Ops Design Review
+This section is intentionally a placeholder for a later deeper design review. The current goal is to capture the main recommendation areas so artifact governance is treated as a product and operational capability, not just an implementation detail.
+
+Topics to review later:
+- artifact bundle format for prompts, Markdown guidance templates, and Word templates
+- artifact metadata contract, including IDs, versions, hashes, approval state, and compatibility rules
+- authoring workflow outside the consultant app
+- review and approval workflow before an artifact becomes selectable by end users
+- promotion model from development to production user installs
+- distribution options:
+  - manual artifact import
+  - managed sync
+  - installer-delivered artifact packs
+- rollback strategy for prior approved artifact versions
+- signature or integrity verification for imported artifacts
+- environment strategy, such as dev, test, staging, and production artifact channels
+- how run artifacts should reference prompt/template versions and future retrieval manifests
+- whether the app should snapshot imported artifact content locally for full audit replay
+- how artifact lifecycle changes should be exposed in the UI without overwhelming consultants
+- offline and enterprise-managed deployment considerations
+- retention, privacy, and support expectations for run artifacts and audit records
+
 ## Feature Decomposition by Capability
 This epic can also be viewed as a set of smaller feature tracks that can be implemented in sequence.
 
@@ -586,12 +654,20 @@ This epic can also be viewed as a set of smaller feature tracks that can be impl
 - Separate Word presentation template for hiring-manager export
 - Schema validation and Word-template compatibility checks
 
+### H. Artifact Ops
+- Versioned prompt artifacts
+- App-managed artifact registry
+- Import and approval flow for artifact bundles
+- Run provenance and audit records
+- Artifact rollback and promotion
+
 ## Suggested Technical Boundaries
 To keep implementation incremental, the app should separate these modules early:
 - File intake and parsing
 - Workspace-scoped document normalization and retrieval preparation
 - Summary generation
 - Structured briefing generation and validation
+- Prompt/template artifact registry and run provenance
 - Redaction / anonymization
 - Draft review state
 - Word rendering and distribution / email handoff
@@ -620,6 +696,8 @@ This separation reduces rework when the model provider, template system, or emai
 - Should the first release export a shareable file such as PDF, HTML, or Markdown in addition to copy-to-clipboard?
 - How much local history should be stored by default?
 - Do we need evidence citations or source traceability in the review UI from the start, or can that wait until later?
+- How should prompt/template artifacts be authored, approved, and promoted from development into production user apps?
+- Should artifact distribution happen by manual import, managed sync, or app-upgrade bundles?
 
 ## Recommended Build Order
 1. Release 1: Single Candidate Draft MVP
@@ -628,5 +706,6 @@ This separation reduces rework when the model provider, template system, or emai
 4. Release 4: Email Draft Handoff
 5. Release 5: Local Folder Intake and Job Workspace
 6. Release 6: Production Hardening
+7. Release 7: LLM Ops Artifact Registry and Promotion
 
 This order keeps the first shipped version simple, usable, and recruiter-visible while deferring higher-risk platform work until the core drafting loop is already working.

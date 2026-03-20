@@ -3,8 +3,9 @@
 ## Document Status
 - Owner: Product / Founding Team
 - Status: Draft v0.1
-- Last updated: 2026-03-19
+- Last updated: 2026-03-20
 - Product surface: Desktop app (Electron)
+- Maintenance rule: This spec should be updated alongside implemented behavior changes and agreed future design direction so it remains the working product/design record.
 
 ## Product Summary
 This product helps a headhunter turn raw recruitment documents into a high-quality candidate summary that can be reviewed and then shared with a hiring manager.
@@ -42,6 +43,7 @@ The product should:
 - Produce a recruiter-ready candidate summary from a CV and JD.
 - Keep a human review step mandatory before any outbound sharing.
 - Support named and anonymous outputs.
+- Support English and Chinese output for derived recruiter-facing and hiring-manager-facing artifacts.
 - Enforce a repeatable format based on a reference template.
 - Fit naturally into current recruiter workflows on a laptop.
 
@@ -72,6 +74,7 @@ As a headhunter, I want to load a candidate CV and a job description, generate a
 3. The app extracts the document text and shows the imported files.
 4. User selects:
    - named or anonymous output
+   - output language
    - a recruiter summary guidance template
    - a hiring-manager Word template
 5. User clicks `Generate Summary`.
@@ -84,11 +87,12 @@ As a headhunter, I want to load a candidate CV and a job description, generate a
    - the selected Markdown guidance template
    - the grounded structured briefing model
 8. User reviews and edits the draft in the app.
-9. User marks the draft as approved.
-10. User clicks `Save Word Draft` and/or `Share by Email`.
-11. The app renders the final Word document through the configured Word template.
-12. The app opens the system's default email client with a prepared draft when requested.
-13. User performs the final send manually.
+9. If the user switches output language after generation, the app should translate the current derived outputs instead of rerunning the full CV/JD assessment, and should reuse a cached language variant when already available.
+10. User marks the draft as approved.
+11. User clicks `Save Word Draft` and/or `Share by Email`.
+12. The app renders the final Word document through the configured Word template.
+13. The app opens the system's default email client with a prepared draft when requested.
+14. User performs the final send manually.
 
 ## Functional Requirements
 
@@ -185,6 +189,21 @@ Recommended output sections:
   - ranking or score metadata
   - evidence lineage used in generation
 - The product should later define how prompt/template artifacts move from development into production user installs, for example by approved import bundles, managed sync, or another governed promotion path.
+
+### 4B. Bilingual Output and Deterministic Translation
+- The app should support at least English and Chinese for derived outputs.
+- Output language should apply consistently to:
+  - `Candidate Summary Review`
+  - `Hiring Manager Briefing`
+  - email draft handoff
+  - generated hiring-manager Word briefing content
+- Raw source-document views such as imported CV and JD text should remain unchanged when the recruiter switches output language.
+- If the recruiter changes the output language after generation, the app should translate the current derived draft rather than rerunning the full CV/JD assessment.
+- If a draft variant for the target language already exists, the app should reuse that cached variant instead of invoking the LLM again.
+- Translation should be treated as a deterministic transformation step over the current approved/generated draft content, not as a fresh candidate assessment.
+- The app should keep the busy/progress indicator visible in a shared stage-level location while generation, translation, export, or email handoff is running.
+- The app should prevent repeated conflicting language-toggle actions while translation is in progress.
+- If translation output is malformed, the app should attempt a controlled repair or fall back gracefully rather than silently corrupting the draft.
 
 ### 5. Anonymous and Named Modes
 - The user can choose named or anonymous mode before generation.
@@ -535,7 +554,7 @@ Acceptance criteria:
 
 ### Release 5: Local Folder Intake and Job Workspace
 Value:
-- The recruiter spends less time repeatedly locating files and setting up each draft, while the app gains a stable workspace-level source model for retrieval and validation.
+- The recruiter spends less time repeatedly locating files and setting up each draft, while the app gains a stable workspace-level source model for retrieval and validation and supports bilingual recruiter/hiring-manager outputs across real-world fixture sets.
 
 Scope:
 - Select a source folder on local machine
@@ -548,12 +567,22 @@ Scope:
 - Build a workspace-scoped normalized source model for the chosen CV, JD, and active Markdown guidance template
 - Add ephemeral retrieval over the active workspace inputs instead of a global cross-candidate store
 - Re-open recent work
+- User-selectable English / Chinese output language
+- Post-generation language switching by translating current derived outputs rather than rerunning full assessment
+- Cached language variants so switching back to an already available language is immediate
+- Keep raw CV/JD source views unchanged while allowing bilingual derived outputs
+- Shared progress state for generation, translation, export, and email handoff
+- File-backed bilingual regression coverage over real recruiter CV/JD fixtures, including Chinese-language documents
+- Structured-briefing diagnostics and repair paths for mixed-language or malformed-output issues found in real fixtures
 
 Acceptance criteria:
 - User can select a folder and pick files from it.
 - User can resume recent work without re-importing everything manually.
 - Retrieval is limited to the active workspace and does not mix unrelated candidate or role documents.
 - Existing single-file workflow still works.
+- Recruiter-facing and hiring-manager-facing derived outputs can be produced in English or Chinese.
+- Switching between previously generated language variants does not re-trigger unnecessary LLM translation.
+- Mixed-language regression cases from real recruiter fixtures are covered by repeatable backend tests rather than only UI retesting.
 
 ### Release 6: Production Hardening
 Value:

@@ -14,6 +14,7 @@ const {
   renderHiringManagerWordDocument
 } = require('./services/hiring-manager-template-service');
 const {
+  applySummaryOverridesToBriefing,
   buildBriefingRequest,
   buildFallbackBriefing,
   mergeBriefingWithFallback,
@@ -37,6 +38,11 @@ const {
   finalizeEmailDraft,
   parseEmailDraftResponse
 } = require('./services/email-draft-service');
+const {
+  buildDraftTranslationRepairRequest,
+  buildDraftTranslationRequest,
+  parseTranslatedDraftResponse
+} = require('./services/draft-translation-service');
 const { normalizeOutputLanguage } = require('./services/output-language-service');
 
 let settingsStore;
@@ -739,6 +745,97 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     outputLanguage,
     modeLabel: preparedOutput.modeLabel,
     approvalWarnings: preparedOutput.warnings
+  };
+});
+
+ipcMain.handle('draft:translate-output', async (_event, payload) => {
+  const settings = await getSettingsStore().load();
+  const validation = validateSettings(settings);
+
+  if (!validation.isValid) {
+    throw new Error(validation.errors.join(' '));
+  }
+
+  const sourceLanguage = normalizeOutputLanguage(payload.sourceLanguage);
+  const targetLanguage = normalizeOutputLanguage(payload.targetLanguage);
+
+  if (sourceLanguage === targetLanguage) {
+    const composed = prepareHiringManagerBriefingOutput({
+      briefing: payload.briefing,
+      recruiterSummary: payload.summary,
+      outputLanguage: targetLanguage
+    });
+
+    return {
+      summary: payload.summary,
+      briefing: composed.briefing,
+      hiringManagerBriefingReview: composed.review,
+      outputLanguage: targetLanguage,
+      approvalWarnings: payload.approvalWarnings || []
+    };
+  }
+
+  const currentBriefing = payload.briefing
+    ? applySummaryOverridesToBriefing(payload.briefing, payload.summary)
+    : buildFallbackBriefing({
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument,
+      outputLanguage: sourceLanguage
+    });
+  const translationRequest = buildDraftTranslationRequest({
+    summary: payload.summary,
+    briefing: currentBriefing,
+    outputMode: payload.outputMode,
+    sourceLanguage,
+    targetLanguage
+  });
+  const translationSettings = {
+    ...settings,
+    temperature: 0,
+    maxTokens: Math.max(Number(settings.maxTokens) || 0, 2400)
+  };
+  const translationResult = await generateWithConfiguredProvider({
+    settings: translationSettings,
+    messages: translationRequest.messages,
+    fetchImpl: (...args) => net.fetch(...args)
+  });
+  let translated;
+
+  try {
+    translated = parseTranslatedDraftResponse(translationResult.text, currentBriefing);
+  } catch (error) {
+    const repairRequest = buildDraftTranslationRepairRequest({
+      malformedResponse: translationResult.text,
+      expectedPayload: translationRequest.payload
+    });
+    const repairedResult = await generateWithConfiguredProvider({
+      settings: translationSettings,
+      messages: repairRequest.messages,
+      fetchImpl: (...args) => net.fetch(...args)
+    });
+    translated = parseTranslatedDraftResponse(repairedResult.text, currentBriefing);
+  }
+
+  const composed = prepareHiringManagerBriefingOutput({
+    briefing: translated.briefing,
+    recruiterSummary: translated.summary,
+    outputLanguage: targetLanguage
+  });
+  const approvalWarnings = payload.outputMode === 'anonymous'
+    ? anonymizeDraftOutput({
+      recruiterSummary: translated.summary,
+      briefing: translated.briefing,
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    }).warnings
+    : [];
+
+  return {
+    summary: translated.summary,
+    briefing: composed.briefing,
+    hiringManagerBriefingReview: composed.review,
+    outputLanguage: targetLanguage,
+    approvalWarnings
   };
 });
 

@@ -1,3 +1,10 @@
+function createEmptyDraftLanguageVariants() {
+  return {
+    en: null,
+    zh: null
+  };
+}
+
 const state = {
   view: 'workbench',
   workbenchTab: 'summary',
@@ -17,11 +24,14 @@ const state = {
   summary: '',
   outputMode: 'named',
   outputLanguage: 'en',
+  pendingOutputLanguage: '',
+  draftLanguageVariants: createEmptyDraftLanguageVariants(),
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
   debugTrace: [],
   isGenerating: false,
+  isTranslating: false,
   isSavingWordDraft: false,
   isSharingEmail: false,
   progressLabel: 'Generating summary with the configured model...',
@@ -170,6 +180,58 @@ function normalizeRichText(text) {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function cloneDraftData(value) {
+  if (value == null) {
+    return value;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function cacheDraftLanguageVariant(language) {
+  const normalizedLanguage = language === 'zh' ? 'zh' : 'en';
+
+  if (!state.summary.trim()) {
+    state.draftLanguageVariants[normalizedLanguage] = null;
+    return;
+  }
+
+  state.draftLanguageVariants[normalizedLanguage] = {
+    summary: state.summary,
+    briefing: cloneDraftData(state.briefing),
+    briefingReview: state.briefingReview,
+    approvalWarnings: [...state.approvalWarnings]
+  };
+}
+
+function clearCachedDraftLanguageVariants() {
+  state.draftLanguageVariants = createEmptyDraftLanguageVariants();
+}
+
+function getCachedDraftLanguageVariant(language) {
+  const normalizedLanguage = language === 'zh' ? 'zh' : 'en';
+  return state.draftLanguageVariants[normalizedLanguage];
+}
+
+function applyCachedDraftLanguageVariant(language, snapshot) {
+  if (!snapshot) {
+    return;
+  }
+
+  state.summary = snapshot.summary || '';
+  state.briefing = cloneDraftData(snapshot.briefing);
+  state.briefingReview = snapshot.briefingReview || '';
+  state.outputLanguage = language === 'zh' ? 'zh' : 'en';
+  state.pendingOutputLanguage = '';
+  state.approvalWarnings = [...(snapshot.approvalWarnings || [])];
+  state.lastExportPath = '';
+  state.summaryStatus = 'Ready';
+  state.summaryMessage = state.outputLanguage === 'zh'
+    ? '已切换回已生成的中文草稿，无需重新翻译。'
+    : 'Switched back to the existing English draft without retranslation.';
+  state.generationError = '';
 }
 
 const CV_SECTION_TITLES = new Set([
@@ -848,15 +910,22 @@ function renderSettingsForm() {
 }
 
 function renderSummary() {
+  const activeOutputLanguage = state.pendingOutputLanguage || state.outputLanguage;
+  const busy = isGenerationWorkflowBusy();
+
   elements.summaryStatus.textContent = state.summaryStatus;
   elements.summaryNavStatus.textContent = state.summaryStatus;
   elements.summaryMessage.textContent = state.generationError || state.summaryMessage;
-  elements.generationProgress.classList.toggle('is-hidden', !isGenerationWorkflowBusy());
+  elements.generationProgress.classList.toggle('is-hidden', !busy);
   elements.generationProgressLabel.textContent = state.progressLabel;
   elements.setNamedModeButton.classList.toggle('is-active', state.outputMode === 'named');
   elements.setAnonymousModeButton.classList.toggle('is-active', state.outputMode === 'anonymous');
-  elements.setEnglishOutputButton.classList.toggle('is-active', state.outputLanguage === 'en');
-  elements.setChineseOutputButton.classList.toggle('is-active', state.outputLanguage === 'zh');
+  elements.setEnglishOutputButton.classList.toggle('is-active', activeOutputLanguage === 'en');
+  elements.setChineseOutputButton.classList.toggle('is-active', activeOutputLanguage === 'zh');
+  elements.setNamedModeButton.disabled = busy;
+  elements.setAnonymousModeButton.disabled = busy;
+  elements.setEnglishOutputButton.disabled = busy;
+  elements.setChineseOutputButton.disabled = busy;
   elements.draftModePill.textContent = state.outputMode === 'anonymous' ? 'Anonymous Draft' : 'Named Draft';
   elements.draftLifecyclePill.textContent = getDraftLifecycleLabel();
 
@@ -864,10 +933,10 @@ function renderSummary() {
     setRichDocumentContent(elements.summaryEditor, state.summary);
   }
 
-  elements.approveDraftButton.disabled = isGenerationWorkflowBusy() || !canApproveDraft();
-  elements.copySummaryButton.disabled = isGenerationWorkflowBusy() || !canCopySummary();
-  elements.shareByEmailButton.disabled = isGenerationWorkflowBusy() || !canShareByEmail();
-  elements.exportWordDraftButton.disabled = isGenerationWorkflowBusy() || !canExportWordDraft();
+  elements.approveDraftButton.disabled = busy || !canApproveDraft();
+  elements.copySummaryButton.disabled = busy || !canCopySummary();
+  elements.shareByEmailButton.disabled = busy || !canShareByEmail();
+  elements.exportWordDraftButton.disabled = busy || !canExportWordDraft();
   elements.revealWordDraftButton.disabled = !state.lastExportPath;
   elements.openWordDraftButton.disabled = !state.lastExportPath;
   elements.openWordDraftButton.classList.toggle('is-hidden', !state.lastExportPath);
@@ -896,7 +965,9 @@ function renderBriefing() {
   const hasBriefingReview = state.briefingReview.trim().length > 0;
   const briefingStatus = state.isGenerating
     ? 'Generating'
-    : (state.isSavingWordDraft ? 'Saving' : (hasBriefingReview ? 'Ready' : 'No Briefing'));
+    : (state.isTranslating
+      ? 'Translating'
+      : (state.isSavingWordDraft ? 'Saving' : (hasBriefingReview ? 'Ready' : 'No Briefing')));
   const briefingText = hasBriefingReview
     ? state.briefingReview
     : 'Generate the candidate summary to populate the hiring-manager briefing review.';
@@ -967,10 +1038,13 @@ function invalidateSummary(message) {
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
+  state.pendingOutputLanguage = '';
+  clearCachedDraftLanguageVariants();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
   state.debugTrace = [];
+  state.isTranslating = false;
   state.isSavingWordDraft = false;
   state.isSharingEmail = false;
   state.summaryStatus = 'No Draft';
@@ -1012,6 +1086,8 @@ function markDraftEdited() {
     return;
   }
 
+  clearCachedDraftLanguageVariants();
+
   if (state.draftLifecycle === 'generated' || state.draftLifecycle === 'approved') {
     state.draftLifecycle = 'edited';
     state.lastExportPath = '';
@@ -1051,19 +1127,84 @@ function setOutputLanguage(language) {
     return;
   }
 
-  state.outputLanguage = normalizedLanguage;
-  state.lastExportPath = '';
-  state.approvalWarnings = [];
-
-  if (state.summary.trim()) {
-    invalidateSummary(
-      normalizedLanguage === 'zh'
-        ? 'Output language changed to Chinese. Generate a fresh draft to refresh the summary, briefing, email, and Word output language.'
-        : 'Output language changed to English. Generate a fresh draft to refresh the summary, briefing, email, and Word output language.'
-    );
+  if (isGenerationWorkflowBusy()) {
+    return;
   }
 
+  if (!state.summary.trim()) {
+    state.outputLanguage = normalizedLanguage;
+    state.lastExportPath = '';
+    state.approvalWarnings = [];
+    render();
+    return;
+  }
+
+  const cachedVariant = getCachedDraftLanguageVariant(normalizedLanguage);
+
+  if (cachedVariant) {
+    applyCachedDraftLanguageVariant(normalizedLanguage, cachedVariant);
+    render();
+    return;
+  }
+
+  translateCurrentDraft(normalizedLanguage);
+}
+
+async function translateCurrentDraft(targetLanguage) {
+  const previousLanguage = state.outputLanguage;
+
+  state.summary = readSummaryEditorText();
+  state.lastExportPath = '';
+  state.isTranslating = true;
+  state.pendingOutputLanguage = targetLanguage;
+  state.generationError = '';
+  state.summaryStatus = 'Translating';
+  state.summaryMessage = targetLanguage === 'zh'
+    ? '正在将当前摘要与Hiring Manager Briefing翻译为中文，不重新执行CV/JD评估。'
+    : 'Translating the current summary and hiring-manager briefing without rerunning CV/JD assessment.';
+  state.progressLabel = targetLanguage === 'zh'
+    ? '正在翻译当前草稿...'
+    : 'Translating the current draft...';
   render();
+
+  try {
+    await syncBriefingReviewFromCurrentSummary();
+    cacheDraftLanguageVariant(previousLanguage);
+
+    const result = await window.recruitmentApi.translateDraftOutput({
+      summary: state.summary,
+      briefing: state.briefing,
+      outputMode: state.outputMode,
+      sourceLanguage: previousLanguage,
+      targetLanguage,
+      cvDocument: state.documents.cv,
+      jdDocument: state.documents.jd,
+      approvalWarnings: state.approvalWarnings
+    });
+
+    state.summary = result.summary || state.summary;
+    state.briefing = result.briefing || state.briefing;
+    state.briefingReview = result.hiringManagerBriefingReview || state.briefingReview;
+    state.outputLanguage = result.outputLanguage || targetLanguage;
+    state.pendingOutputLanguage = '';
+    state.approvalWarnings = result.approvalWarnings || [];
+    cacheDraftLanguageVariant(state.outputLanguage);
+    state.summaryStatus = 'Ready';
+    state.summaryMessage = targetLanguage === 'zh'
+      ? '当前草稿已翻译为中文。请复核译文后再复制、导出或发送。'
+      : 'The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.';
+  } catch (error) {
+    state.outputLanguage = previousLanguage;
+    state.pendingOutputLanguage = '';
+    state.summaryStatus = 'Failed';
+    state.generationError = error instanceof Error
+      ? error.message
+      : 'Unable to translate the current draft.';
+  } finally {
+    state.isTranslating = false;
+    state.progressLabel = 'Generating summary with the configured model...';
+    render();
+  }
 }
 
 function approveDraft() {
@@ -1343,6 +1484,7 @@ async function syncBriefingReviewFromCurrentSummary() {
   state.briefingReview = result.hiringManagerBriefingReview || '';
   state.summary = result.summary || state.summary;
   state.approvalWarnings = result.approvalWarnings || [];
+  cacheDraftLanguageVariant(state.outputLanguage);
 }
 
 async function refreshBriefingReview() {
@@ -1355,7 +1497,7 @@ async function refreshBriefingReview() {
 }
 
 function isGenerationWorkflowBusy() {
-  return state.isGenerating || state.isSavingWordDraft || state.isSharingEmail;
+  return state.isGenerating || state.isTranslating || state.isSavingWordDraft || state.isSharingEmail;
 }
 
 async function generateSummary() {
@@ -1401,6 +1543,8 @@ async function generateSummary() {
     state.outputMode = result.outputMode || state.outputMode;
     state.outputLanguage = result.outputLanguage || state.outputLanguage;
     state.approvalWarnings = result.approvalWarnings || [];
+    clearCachedDraftLanguageVariants();
+    cacheDraftLanguageVariant(state.outputLanguage);
     state.draftLifecycle = 'generated';
     state.templateLabel = result.templateLabel;
     state.workbenchTab = 'summary';
@@ -1621,11 +1765,14 @@ function resetWorkspace() {
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
+  state.pendingOutputLanguage = '';
+  clearCachedDraftLanguageVariants();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
   state.debugTrace = [];
   state.isGenerating = false;
+  state.isTranslating = false;
   state.isSavingWordDraft = false;
   state.isSharingEmail = false;
   state.progressLabel = 'Generating summary with the configured model...';

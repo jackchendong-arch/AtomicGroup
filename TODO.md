@@ -198,6 +198,9 @@ Mark a release complete only when the work is:
   - Hiring Manager Briefing
   - email draft handoff
   - generated Word briefing content
+- After a draft has already been generated, let the recruiter switch output language by translating the current derived summary and briefing outputs into the selected language instead of rerunning full CV/JD assessment.
+- Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.
+- Cache the current draft in both language variants when available so switching back to a previously translated language reuses the existing draft instead of re-triggering LLM translation.
 - Keep raw imported CV and JD source views unchanged while allowing bilingual derived outputs.
 - Add Chinese-language regression fixtures and unit tests for summary, briefing, email, and Word-draft generation.
 

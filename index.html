@@ -473,6 +473,10 @@
         min-height: 0;
       }
 
+      .stage-shell > .generation-progress {
+        margin: 0 12px 12px;
+      }
+
       .tab-strip {
         display: flex;
         flex-wrap: wrap;
@@ -1275,6 +1279,13 @@
               </button>
             </div>
 
+            <div class="generation-progress is-hidden" id="generation-progress">
+              <p class="generation-progress-label" id="generation-progress-label">Generating summary with the configured model...</p>
+              <div class="generation-progress-track" aria-hidden="true">
+                <div class="generation-progress-bar"></div>
+              </div>
+            </div>
+
             <section class="stage-panel summary-panel-tight" id="summary-panel">
               <div class="stage-header">
                 <div>
@@ -1305,13 +1316,6 @@
                 <div class="warning-panel is-hidden" id="approval-warning-panel">
                   <strong>Residual Privacy Review</strong>
                   <ul id="approval-warning-list"></ul>
-                </div>
-
-                <div class="generation-progress is-hidden" id="generation-progress">
-                  <p class="generation-progress-label" id="generation-progress-label">Generating summary with the configured model...</p>
-                  <div class="generation-progress-track" aria-hidden="true">
-                    <div class="generation-progress-bar"></div>
-                  </div>
                 </div>
 
                 <div

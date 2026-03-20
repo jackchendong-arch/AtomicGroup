@@ -288,6 +288,109 @@ This revealed another important principle:
 
 **privacy controls should be designed as part of generation architecture, not only as a post-processing patch.**
 
+## Bilingual Output Added Another Layer of Design
+Once Chinese CVs and JDs entered testing, the system design had to become more explicit about what exactly was being generated and what was only being translated.
+
+At first glance, “support English and Chinese” sounds like one feature. It was not. It exposed at least three different problems:
+- generation language
+- review-surface language
+- export and email language
+
+This made an important distinction much clearer:
+
+**changing the assessment language is not the same as rerunning the assessment.**
+
+If a recruiter has already generated and reviewed a draft, switching from English to Chinese should usually not trigger a fresh CV/JD evaluation. That would create avoidable drift:
+- wording might change for reasons unrelated to language
+- fit emphasis might move
+- the recruiter could lose confidence in whether the content itself changed
+
+So the better design became:
+- generate the summary and briefing once from CV + JD
+- keep those as the current derived outputs
+- translate the current derived outputs into the other language when the recruiter switches languages
+- keep the raw CV and JD unchanged
+
+That led to another useful product lesson:
+
+**translation should be a deterministic presentation step whenever the underlying assessment has not changed.**
+
+## Translation Is Not the Same as “Just Ask the Model Again”
+The first translation implementation used a large structured payload and asked the model to return a full translated draft object.
+
+That failed in a very practical way:
+- the payload became too large
+- the model occasionally returned malformed JSON
+- the UI could look stuck if translation state and visible progress were not handled carefully
+
+This pushed the design toward a more robust translation workflow:
+- translate only the fields that actually need language conversion
+- preserve the original structured briefing shape and evidence references
+- treat translation as a bounded transformation, not as a new reasoning pass
+- add a repair/fallback step when the returned JSON is malformed
+
+That reinforced a broader engineering principle:
+
+**LLM-based translation still needs strict contracts, bounded payloads, and recovery paths.**
+
+## UI State Was Part of the Product Logic
+The language-switch work also exposed something easy to underestimate: UI state is part of system correctness.
+
+When the recruiter clicked the language toggle multiple times, the interface had to answer clearly:
+- is translation running?
+- which language is being targeted?
+- can the user safely click again?
+- is this progress local to one tab or global to the workbench?
+
+That led to two simple but important UX rules:
+- busy progress belongs to the shared workbench stage, not buried inside one tab
+- controls that would create conflicting concurrent actions should be visibly disabled while the task is running
+
+This was another reminder that:
+
+**workflow clarity is not a cosmetic concern. In LLM products, it directly affects user trust.**
+
+## The Emerging LLM Ops Question
+As the application became more capable, another design issue became impossible to ignore:
+
+> how do we explain why a candidate was recommended, with which prompt, against which inputs, using which template or retrieval context?
+
+This did not become an immediate implementation change, but it did become a design requirement.
+
+The lesson was that prompts, templates, and future retrieval inputs cannot be treated as invisible implementation details. They are part of the product’s decision trail.
+
+That is why the design started moving toward:
+- versioned prompt artifacts
+- app-managed artifact registries
+- workspace-scoped source models
+- later retrieval manifests and run artifacts
+
+The key insight here was:
+
+**LLM features become product features only when they are governable, explainable, and traceable.**
+
+## Keeping the Story Current
+Another practical learning from the build process was documentation discipline.
+
+If story capture happens only at the end of the project, most of the useful design reasoning is lost:
+- why a decision was made
+- which dead ends were rejected
+- what changed after user testing
+- what the real lessons were behind a commit
+
+So `story.md` should be kept as a live narrative input during development, especially at commit checkpoints.
+
+That does not mean turning every commit into a diary entry. It means capturing:
+- what we learned
+- what changed in the design model
+- which tradeoff became clearer
+- what future blog-worthy insight emerged
+
+This is useful because:
+- the blog can be written later from real development artifacts
+- design reasoning remains anchored to actual implementation work
+- the product story becomes traceable instead of reconstructed from memory
+
 ## What the UI Taught Us
 A lot of the product learning did not come from backend logic. It came from the UI.
 

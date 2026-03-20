@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   renderBriefingReview(payload) {
     return ipcRenderer.invoke('briefing:render-review', payload);
   },
+  translateDraftOutput(payload) {
+    return ipcRenderer.invoke('draft:translate-output', payload);
+  },
   openPath(filePath) {
     return ipcRenderer.invoke('shell:open-path', filePath);
   },

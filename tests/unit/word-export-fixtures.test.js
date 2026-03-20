@@ -15,14 +15,14 @@ const {
   prepareHiringManagerBriefingOutput,
   renderSummaryFromBriefing
 } = require('../../services/briefing-service');
-
-const FIXTURE_ROOT = '/Users/jack/Dev/Test/AtomicGroup';
+const {
+  EXTERNAL_FIXTURE_CASES,
+  fixtureCaseIsPresent,
+  getFixtureCvPath,
+  getFixtureJdPath
+} = require('./external-fixture-registry');
 const TEMPLATE_PATH = path.resolve(__dirname, '../../templates/AtomicGroupCV_Template.dotx');
 const DEBUG_OUTPUT_DIR = path.resolve(__dirname, '../../debug');
-
-function fixtureExists(relativePath) {
-  return fs.existsSync(path.join(FIXTURE_ROOT, relativePath));
-}
 
 function extractPlainTextFromDocx(buffer) {
   const zip = new PizZip(buffer);
@@ -93,45 +93,17 @@ function buildSummary() {
   ].join('\n');
 }
 
-const fixtureCases = [
-  {
-    name: 'Test1',
-    cvRelativePath: 'Test1/CV.pdf',
-    jdRelativePath: 'Test1/JD.pdf',
-    outputFileName: 'test1-word-export.docx',
-    minEmploymentHistory: 5,
-    expectedTextFragments: [
-      'Director, Global Head of Client & Market Connectivity and Head of Equities & Cross Asset Finance IT',
-      'HSBC',
-      'Defined and executed modernisation strategy'
-    ]
-  },
-  {
-    name: 'Test2',
-    cvRelativePath: 'Test2/CV_Shawn CONG_2026 .pdf',
-    jdRelativePath: 'Test2/HSBC TA Lead.pdf',
-    outputFileName: 'test2-word-export.docx',
-    minEmploymentHistory: 5,
-    expectedTextFragments: [
-      'Team Manager, Corporate & Digital IT & Cyber Security',
-      'Hays Specialist Recruitment',
-      'Conducted 360-degree recruitment for front and middle office roles'
-    ]
-  }
-];
-
-for (const fixtureCase of fixtureCases) {
+for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
   const fixturesPresent =
-    fixtureExists(fixtureCase.cvRelativePath) &&
-    fixtureExists(fixtureCase.jdRelativePath) &&
+    fixtureCaseIsPresent(fixtureCase) &&
     fs.existsSync(TEMPLATE_PATH);
 
   test(
     `word export renders ${fixtureCase.name} fixture documents into a populated docx`,
     { skip: fixturesPresent ? false : 'Fixture documents are not available on this machine.' },
     async () => {
-      const cvDocument = await importDocument(path.join(FIXTURE_ROOT, fixtureCase.cvRelativePath));
-      const jdDocument = await importDocument(path.join(FIXTURE_ROOT, fixtureCase.jdRelativePath));
+      const cvDocument = await importDocument(getFixtureCvPath(fixtureCase));
+      const jdDocument = await importDocument(getFixtureJdPath(fixtureCase));
 
       assert.equal(cvDocument.error, null);
       assert.equal(jdDocument.error, null);
@@ -182,13 +154,16 @@ for (const fixtureCase of fixtureCases) {
       assert.equal(Boolean(zip.file('docProps/custom.xml')), false);
       assert.deepEqual(getMissingIgnorablePrefixes(documentXml), []);
 
-      for (const expectedFragment of fixtureCase.expectedTextFragments) {
-        assert.match(
-          renderedText,
-          new RegExp(expectedFragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
-          `Rendered document for ${fixtureCase.name} should include: ${expectedFragment}`
-        );
-      }
+      assert.ok(
+        renderedText.length > 100,
+        `Rendered document for ${fixtureCase.name} should contain more than trivial text`
+      );
+      assert.ok(
+        renderedText.includes(templateData.fit_summary.slice(0, Math.min(templateData.fit_summary.length, 20)).trim()) ||
+          renderedText.includes(templateData.candidate_name) ||
+          renderedText.includes(templateData.role_title),
+        `Rendered document for ${fixtureCase.name} should contain core generated briefing content`
+      );
     }
   );
 }

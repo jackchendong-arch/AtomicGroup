@@ -171,6 +171,9 @@ function buildDraftTranslationRequest({
     'Preserve the current section order, bullet structure, and level of detail.',
     'Keep names, company names, school names, product names, emails, phone numbers, URLs, dates, numbers, and other exact factual identifiers exactly as written unless simple localization of a common language/country term is required for readability.',
     'Translate narrative prose, headings, labels, bullets, and human-readable evidence phrasing into the target language while keeping the same meaning.',
+    'Translate all narrative content inside these fields: `summary`, `fit_summary`, `relevant_experience`, `match_requirements[].requirement`, `match_requirements[].evidence`, `potential_concerns`, `recommended_next_step`, `employment_history[].job_title`, and `employment_history[].responsibilities`.',
+    'Do not leave whole source-language sentences untranslated inside those fields when the target language is different.',
+    'For `employment_history`, keep company names, dates, and technical identifiers such as Go, Solana, RESTful API, SDK, or product names as-is when appropriate, but translate the surrounding role titles, role descriptions, and responsibility sentences.',
     'Return only valid JSON with this exact shape:',
     JSON.stringify(translatablePayload, null, 2),
     ...(outputMode === 'anonymous'

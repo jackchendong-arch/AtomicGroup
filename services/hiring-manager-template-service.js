@@ -110,7 +110,7 @@ const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b
 const COMPANY_HINT_PATTERN =
   /\b(group|company|corp|corporation|inc|inc\.|ltd|limited|llc|plc|pte|partners|solutions|technologies|technology|systems|bank|capital|consulting|advisors|advisory|recruitment|staffing|search|university|college|school)\b/i;
 const ROLE_TITLE_PATTERN =
-  /\b(head|director|manager|lead|principal|engineer|developer|architect|consultant|analyst|specialist|officer|president|vice president|vp|associate|recruiter|coordinator|administrator|designer|product owner|product manager|program manager|project manager)\b/i;
+  /\b(head|director|manager|lead|principal|engineer|developer|architect|consultant|analyst|specialist|officer|president|vice president|vp|associate|recruiter|coordinator|administrator|designer|product owner|product manager|program manager|project manager)\b|(?:软件|后端|前端|全栈|区块链|测试|运维|数据|算法|研发|系统)?(?:工程师|开发|架构师|经理|总监|负责人|顾问|分析师|研究员|实习生|产品经理|技术负责人)/i;
 const ORGANIZATION_ACRONYM_PATTERN = /^(?:[A-Z][A-Z0-9&.-]{1,}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})$/;
 const PDF_PAGE_ARTIFACT_PATTERN = /^(?:[-–—=\s]*)?(?:page\s+)?\d+\s+of\s+\d+(?:\s*[-–—=\s]*)?$/i;
 const DECORATION_LINE_PATTERN = /^[-–—=\s]+$/;
@@ -145,17 +145,32 @@ const KNOWN_LOCATION_LINE_SET = new Set([
   'united arab emirates',
   'united kingdom',
   'united states',
-  'usa'
+  'usa',
+  '上海',
+  '北京',
+  '深圳',
+  '广州',
+  '杭州',
+  '南京',
+  '苏州',
+  '成都',
+  '香港',
+  '香港特别行政区',
+  '新加坡',
+  '中国',
+  '英国',
+  '美国',
+  '日本'
 ]);
 const SECTION_NAME_TO_KEY = {
   experience: 'experience',
   'employment experience': 'experience',
   'professional experience': 'experience',
-  'project experience': 'experience',
+  'project experience': 'projects',
   工作经历: 'experience',
   工作经验: 'experience',
   职业经历: 'experience',
-  项目经历: 'experience',
+  项目经历: 'projects',
   education: 'education',
   教育背景: 'education',
   教育经历: 'education',
@@ -198,7 +213,7 @@ function escapeRegExp(value) {
 }
 
 function cleanBulletPrefix(value) {
-  return normalizeTextBlock(value).replace(/^[-*•–—]\s*/, '');
+  return normalizeTextBlock(value).replace(/^(?:[-*•–—]|l)\s*/i, '');
 }
 
 function isPdfArtifactLine(value) {
@@ -232,6 +247,11 @@ function looksLikeLocationLine(value) {
     return true;
   }
 
+  if (/^[\u4e00-\u9fff]{2,8}$/.test(normalized)) {
+    return KNOWN_LOCATION_LINE_SET.has(normalized) ||
+      /(?:市|省|区|县|国|特别行政区)$/.test(normalized);
+  }
+
   if (normalized.includes(',') && normalized.split(/\s+/).length <= 5) {
     return normalized
       .split(',')
@@ -254,7 +274,7 @@ function stripTrailingLocationSuffix(value) {
 }
 
 function isResponsibilityBulletLine(value) {
-  return /^[-*•–—]\s*/.test(normalizeTextBlock(value));
+  return /^(?:[-*•–—]|l)\s*/i.test(normalizeTextBlock(value));
 }
 
 function isLikelySectionSubheading(value) {
@@ -347,7 +367,7 @@ function extractEarlyLocation(lines, candidateName) {
       continue;
     }
 
-    if (line.split(/\s+/).length <= 6) {
+    if (looksLikeLocationLine(line)) {
       return line;
     }
   }
@@ -517,6 +537,66 @@ function splitRoleCompanyLine(value) {
   };
 }
 
+function looksLikeOrganizationText(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return looksLikeCompanyLine(normalized) ||
+    /[（(].+[)）]/.test(normalized) ||
+    /\b(?:team|department|lab|studio)\b/i.test(normalized) ||
+    /(?:公司|集团|大学|学院|研究所|科技|信息|银行|证券|招聘|工作室|部门|研发部)/.test(normalized) ||
+    /^[A-Za-z][A-Za-z0-9&._-]*(?:\s+[A-Za-z0-9&._-]+)*$/.test(normalized);
+}
+
+function splitInlineCompanyRoleRemainder(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return {
+      companyName: '',
+      jobTitle: ''
+    };
+  }
+
+  const chineseSuffixMatch = normalized.match(
+    /^(.*?)(软件工程师|后端工程师|前端工程师|全栈工程师|区块链工程师|开发工程师|测试工程师|运维工程师|数据工程师|算法工程师|工程师|架构师|产品经理|技术负责人|负责人|经理|总监|顾问|分析师|研究员|实习生)\s*$/
+  );
+
+  if (chineseSuffixMatch) {
+    const companyName = chineseSuffixMatch[1].trim();
+    const jobTitle = chineseSuffixMatch[2].trim();
+
+    if (looksLikeOrganizationText(companyName)) {
+      return {
+        companyName,
+        jobTitle
+      };
+    }
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+
+  for (let index = 1; index < tokens.length; index += 1) {
+    const companyName = tokens.slice(0, index).join(' ').trim();
+    const jobTitle = tokens.slice(index).join(' ').trim();
+
+    if (looksLikeOrganizationText(companyName) && looksLikeRoleTitleLine(jobTitle) && !looksLikeCompanyLine(jobTitle)) {
+      return {
+        companyName,
+        jobTitle
+      };
+    }
+  }
+
+  return {
+    companyName: '',
+    jobTitle: normalized
+  };
+}
+
 function looksLikeCompanyLine(value) {
   const normalized = normalizeTextBlock(value);
 
@@ -636,6 +716,14 @@ function detectExperienceEntry(lines, index) {
   const line = lines[index];
   const nextLine = lines[index + 1] || '';
   const nextNextLine = lines[index + 2] || '';
+  const datedInlineEntry = detectDatedInlineExperienceEntry(line);
+
+  if (datedInlineEntry) {
+    return {
+      ...datedInlineEntry,
+      cursor: index + 1
+    };
+  }
 
   if (!looksLikeExperienceEntryLine(line) || !looksLikeRoleTitleLine(line)) {
     return null;
@@ -710,6 +798,27 @@ function detectDatedRoleLine(value) {
   return datedLine;
 }
 
+function detectDatedInlineExperienceEntry(value) {
+  const datedLine = splitLeadingDateLine(value);
+
+  if (!datedLine || !datedLine.remainder) {
+    return null;
+  }
+
+  const splitHeading = splitInlineCompanyRoleRemainder(datedLine.remainder);
+
+  if (!splitHeading.jobTitle || !looksLikeRoleTitleLine(splitHeading.jobTitle)) {
+    return null;
+  }
+
+  return {
+    jobTitle: splitHeading.jobTitle,
+    companyName: splitHeading.companyName,
+    startDate: datedLine.startDate,
+    endDate: datedLine.endDate
+  };
+}
+
 function detectDatedCompanyRoleGroupStart(lines, index) {
   const companyLine = splitLeadingDateLine(lines[index]);
   const nextRoleLine = detectDatedRoleLine(lines[index + 1] || '');
@@ -732,6 +841,10 @@ function collectExperienceResponsibilities(lines, startIndex) {
     if (isPdfArtifactLine(currentLine)) {
       cursor += 1;
       continue;
+    }
+
+    if (isKnownCvSectionHeading(currentLine)) {
+      break;
     }
 
     if (

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildTemplateData } = require('../../services/hiring-manager-template-service');
+const { buildTemplateData, extractDocumentDerivedProfile } = require('../../services/hiring-manager-template-service');
 
 function buildEmploymentHistory(cvText) {
   const templateData = buildTemplateData({
@@ -289,6 +289,55 @@ test('employment history parses date-first company groups with multiple dated ro
       {
         responsibility: 'Focused on sourcing and recruiting software engineering talent.'
       }
+    ]
+  });
+});
+
+test('Chinese date-leading work history does not leak education lines into location and keeps responsibilities inside the work section', () => {
+  const cvText = [
+    'Noah Zhang',
+    '教育背景',
+    '2022.09-2024.06 Johns Hopkins University Electrical and Computer Engineering（GPA:3.7/4）| 硕士',
+    '2017.09–2022.06 中国科学院大学 电子信息工程（GPA:3.7/4）| 本科',
+    '工作经历',
+    '2024.07-2025.05 Sparksoft（ 技 术 研 发 部 ） 软件工程师',
+    'l 使用 Go 语言参与构建公司核心订单处理服务，负责设计与开发 RESTful API、业务逻辑层与后台任务模块；借助标准库',
+    '及第三方框架（如 Gin/go-zero）实现高并发请求处理，提高系统稳定性与代码可维护性。',
+    'l 在电商订单系统中主导实现订单创建、库存扣减与支付状态变更等功能；利用 Redis 缓存 优化热点数据访问并结合',
+    'Kafka 消息队列 解耦订单生命周期事件处理，确保在促销高峰期下单流程稳定且具备良好扩展性。',
+    'l 负责关系型数据库（MySQL/PostgreSQL）表结构设计、复杂 SQL 优化和事务控制，配合分布式锁机制确保订单与库存',
+    '一致性，并参与日志追踪、监控与 CI/CD 部署流程建设，提高系统可观测性与运维效率。',
+    '项目经历',
+    '基于 Solana 生态的 DEX 聚合器',
+    'l 交易解析: 使用 go-zero 框架构建 consumer 服务解析 Solana 链上交易。'
+  ].join('\n');
+
+  const profile = extractDocumentDerivedProfile({
+    cvDocument: {
+      text: cvText,
+      file: {
+        name: 'candidate-cv.pdf'
+      }
+    },
+    jdDocument: {
+      text: '职位：区块链开发工程师',
+      file: {
+        name: 'role-jd.docx'
+      }
+    }
+  });
+
+  assert.equal(profile.candidateLocation, '');
+  assert.equal(profile.employmentHistory.length, 1);
+  assert.deepEqual(profile.employmentHistory[0], {
+    jobTitle: '软件工程师',
+    companyName: 'Sparksoft（ 技 术 研 发 部 ）',
+    startDate: '2024',
+    endDate: '2025',
+    responsibilities: [
+      '使用 Go 语言参与构建公司核心订单处理服务，负责设计与开发 RESTful API、业务逻辑层与后台任务模块；借助标准库 及第三方框架（如 Gin/go-zero）实现高并发请求处理，提高系统稳定性与代码可维护性。',
+      '在电商订单系统中主导实现订单创建、库存扣减与支付状态变更等功能；利用 Redis 缓存 优化热点数据访问并结合 Kafka 消息队列 解耦订单生命周期事件处理，确保在促销高峰期下单流程稳定且具备良好扩展性。',
+      '负责关系型数据库（MySQL/PostgreSQL）表结构设计、复杂 SQL 优化和事务控制，配合分布式锁机制确保订单与库存 一致性，并参与日志追踪、监控与 CI/CD 部署流程建设，提高系统可观测性与运维效率。'
     ]
   });
 });

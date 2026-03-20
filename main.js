@@ -15,7 +15,9 @@ const {
 } = require('./services/hiring-manager-template-service');
 const {
   applySummaryOverridesToBriefing,
+  buildBriefingGenerationSettings,
   buildBriefingRequest,
+  buildBriefingRepairRequest,
   buildFallbackBriefing,
   mergeBriefingWithFallback,
   parseBriefingResponse,
@@ -74,6 +76,10 @@ function getExportDebugLogPath() {
   return path.join(getUserDataPath(), 'debug', 'word-draft-export.log');
 }
 
+function getSummaryGenerationDebugLogPath() {
+  return path.join(getUserDataPath(), 'debug', 'summary-generation.log');
+}
+
 function getManagedGeneratedBriefingsPath() {
   return path.join(getUserDataPath(), 'generated-briefings');
 }
@@ -129,6 +135,53 @@ async function appendExportDebugLog(lines) {
 
   await fs.mkdir(path.dirname(exportDebugLogPath), { recursive: true });
   await fs.appendFile(exportDebugLogPath, `${content}\n`, 'utf8');
+}
+
+async function appendSummaryGenerationDebugLog(lines) {
+  const summaryGenerationDebugLogPath = getSummaryGenerationDebugLogPath();
+  const content = [
+    `=== ${new Date().toISOString()} ===`,
+    ...lines,
+    ''
+  ].join('\n');
+
+  await fs.mkdir(path.dirname(summaryGenerationDebugLogPath), { recursive: true });
+  await fs.appendFile(summaryGenerationDebugLogPath, `${content}\n`, 'utf8');
+}
+
+function pushEmploymentHistoryDebugTrace(debugTrace, label, employmentHistory = []) {
+  debugTrace.push(`${label} employment history count: ${Array.isArray(employmentHistory) ? employmentHistory.length : 0}`);
+
+  if (!Array.isArray(employmentHistory)) {
+    return;
+  }
+
+  employmentHistory.forEach((entry, index) => {
+    debugTrace.push(
+      `${label} employment ${index + 1}: title="${entry.job_title || entry.jobTitle || ''}" company="${entry.company_name || entry.companyName || ''}" dates="${[entry.start_date || entry.startDate, entry.end_date || entry.endDate].filter(Boolean).join(' - ')}"`
+    );
+
+    const responsibilities = Array.isArray(entry.responsibilities)
+      ? entry.responsibilities
+      : [];
+
+    responsibilities.forEach((responsibility, responsibilityIndex) => {
+      const text = typeof responsibility === 'string'
+        ? responsibility
+        : responsibility?.responsibility || '';
+      debugTrace.push(`${label} employment ${index + 1} responsibility ${responsibilityIndex + 1}: ${text}`);
+    });
+  });
+}
+
+function pushBriefingDebugTrace(debugTrace, label, briefing = {}) {
+  const candidate = briefing?.candidate || {};
+  const role = briefing?.role || {};
+
+  debugTrace.push(`${label} candidate name: ${candidate.name || '(blank)'}`);
+  debugTrace.push(`${label} role title: ${role.title || '(blank)'}`);
+  debugTrace.push(`${label} candidate location: ${candidate.location || '(blank)'}`);
+  pushEmploymentHistoryDebugTrace(debugTrace, label, briefing?.employment_history);
 }
 
 function buildManagedGeneratedBriefingFilename(suggestedName) {
@@ -651,101 +704,161 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
 });
 
 ipcMain.handle('summary:generate', async (_event, payload) => {
-  const settings = await getSettingsStore().load();
-  const validation = validateSettings(settings);
-
-  if (!validation.isValid) {
-    throw new Error(validation.errors.join(' '));
-  }
-
-  const outputMode = normalizeOutputMode(payload.outputMode);
-  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
-  const generationInputs = outputMode === 'anonymous'
-    ? buildAnonymizedGenerationInputs({
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
-    })
-    : {
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
-    };
-  const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
-  const summaryRequest = buildSummaryRequest({
-    cvDocument: generationInputs.cvDocument,
-    jdDocument: generationInputs.jdDocument,
-    systemPrompt: settings.systemPrompt,
-    templateGuidance,
-    outputMode,
-    outputLanguage
-  });
-  const briefingRequest = buildBriefingRequest({
-    cvDocument: generationInputs.cvDocument,
-    jdDocument: generationInputs.jdDocument,
-    systemPrompt: settings.systemPrompt,
-    templateGuidance,
-    outputMode,
-    outputLanguage
-  });
-  const [summaryResult, structuredBriefingResult] = await Promise.all([
-    generateWithConfiguredProvider({
-      settings,
-      messages: summaryRequest.messages,
-      fetchImpl: (...args) => net.fetch(...args)
-    }),
-    generateWithConfiguredProvider({
-      settings,
-      messages: briefingRequest.messages,
-      fetchImpl: (...args) => net.fetch(...args)
-    })
-  ]);
-  const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
-
-  const fallbackBriefing = buildFallbackBriefing({
-    cvDocument: generationInputs.cvDocument,
-    jdDocument: generationInputs.jdDocument,
-    outputLanguage
-  });
-  let briefing;
+  const debugTrace = [
+    `Summary generation started at ${new Date().toISOString()}`
+  ];
 
   try {
-    briefing = mergeBriefingWithFallback(parseBriefingResponse(structuredBriefingResult.text), fallbackBriefing);
-  } catch (_error) {
-    briefing = fallbackBriefing;
+    const settings = await getSettingsStore().load();
+    const validation = validateSettings(settings);
+
+    if (!validation.isValid) {
+      debugTrace.push(`Settings validation failed: ${validation.errors.join(' | ')}`);
+      throw new Error(validation.errors.join(' '));
+    }
+
+    const outputMode = normalizeOutputMode(payload.outputMode);
+    const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
+    debugTrace.push(`Output mode: ${outputMode}`);
+    debugTrace.push(`Output language: ${outputLanguage}`);
+    debugTrace.push(`CV source file: ${payload.cvDocument?.file?.name || '(unknown)'}`);
+    debugTrace.push(`JD source file: ${payload.jdDocument?.file?.name || '(unknown)'}`);
+
+    const generationInputs = outputMode === 'anonymous'
+      ? buildAnonymizedGenerationInputs({
+        cvDocument: payload.cvDocument,
+        jdDocument: payload.jdDocument
+      })
+      : {
+        cvDocument: payload.cvDocument,
+        jdDocument: payload.jdDocument
+      };
+    const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
+    const summaryRequest = buildSummaryRequest({
+      cvDocument: generationInputs.cvDocument,
+      jdDocument: generationInputs.jdDocument,
+      systemPrompt: settings.systemPrompt,
+      templateGuidance,
+      outputMode,
+      outputLanguage
+    });
+    const briefingRequest = buildBriefingRequest({
+      cvDocument: generationInputs.cvDocument,
+      jdDocument: generationInputs.jdDocument,
+      systemPrompt: settings.systemPrompt,
+      templateGuidance,
+      outputMode,
+      outputLanguage
+    });
+    debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
+    debugTrace.push(`Briefing template label: ${briefingRequest.templateLabel}`);
+
+    const briefingGenerationSettings = buildBriefingGenerationSettings(settings);
+    debugTrace.push(`Structured briefing max tokens: ${briefingGenerationSettings.maxTokens}`);
+
+    const [summaryResult, structuredBriefingResult] = await Promise.all([
+      generateWithConfiguredProvider({
+        settings,
+        messages: summaryRequest.messages,
+        fetchImpl: (...args) => net.fetch(...args)
+      }),
+      generateWithConfiguredProvider({
+        settings: briefingGenerationSettings,
+        messages: briefingRequest.messages,
+        fetchImpl: (...args) => net.fetch(...args)
+      })
+    ]);
+    const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
+    debugTrace.push(`Recruiter summary length: ${recruiterSummary.length}`);
+    debugTrace.push(`Structured briefing raw response length: ${(structuredBriefingResult.text || '').trim().length}`);
+    debugTrace.push('Structured briefing raw response:');
+    debugTrace.push((structuredBriefingResult.text || '').trim() || '(empty)');
+
+    const fallbackBriefing = buildFallbackBriefing({
+      cvDocument: generationInputs.cvDocument,
+      jdDocument: generationInputs.jdDocument,
+      outputLanguage
+    });
+    pushBriefingDebugTrace(debugTrace, 'Fallback briefing', fallbackBriefing);
+
+    let briefing;
+
+    try {
+      const parsedStructuredBriefing = parseBriefingResponse(structuredBriefingResult.text);
+      pushBriefingDebugTrace(debugTrace, 'Parsed structured briefing', parsedStructuredBriefing);
+      briefing = mergeBriefingWithFallback(parsedStructuredBriefing, fallbackBriefing);
+    } catch (error) {
+      debugTrace.push(`Structured briefing parse failed: ${error instanceof Error ? error.message : 'Unknown parsing failure.'}`);
+      try {
+        const repairRequest = buildBriefingRepairRequest({
+          malformedResponse: structuredBriefingResult.text,
+          expectedBriefing: fallbackBriefing
+        });
+        const repairedResult = await generateWithConfiguredProvider({
+          settings: {
+            ...briefingGenerationSettings,
+            temperature: 0
+          },
+          messages: repairRequest.messages,
+          fetchImpl: (...args) => net.fetch(...args)
+        });
+        debugTrace.push(`Structured briefing repair response length: ${(repairedResult.text || '').trim().length}`);
+        const repairedStructuredBriefing = parseBriefingResponse(repairedResult.text);
+        pushBriefingDebugTrace(debugTrace, 'Repaired structured briefing', repairedStructuredBriefing);
+        briefing = mergeBriefingWithFallback(repairedStructuredBriefing, fallbackBriefing);
+      } catch (repairError) {
+        debugTrace.push(`Structured briefing repair failed: ${repairError instanceof Error ? repairError.message : 'Unknown repair failure.'}`);
+        briefing = fallbackBriefing;
+      }
+    }
+
+    pushBriefingDebugTrace(debugTrace, 'Merged briefing', briefing);
+
+    const briefingValidation = validateBriefing(briefing);
+
+    if (!briefingValidation.isValid) {
+      debugTrace.push(`Structured briefing validation failed: ${briefingValidation.errors.join(' | ')}`);
+      throw new Error(briefingValidation.errors.join(' '));
+    }
+
+    const validatedBriefing = briefingValidation.briefing;
+    const preparedOutput = applyDraftOutputMode({
+      outputMode,
+      recruiterSummary,
+      briefing: validatedBriefing,
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    });
+    pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
+
+    const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
+      briefing: preparedOutput.briefing,
+      recruiterSummary: preparedOutput.summary,
+      outputLanguage
+    });
+    debugTrace.push('Prepared hiring-manager briefing review successfully.');
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
+
+    return {
+      templateLabel: summaryRequest.templateLabel,
+      summary: preparedOutput.summary,
+      hiringManagerBriefingReview: hiringManagerBriefing.review,
+      prompt: summaryRequest.prompt,
+      providerLabel: settings.providerLabel,
+      model: settings.model,
+      briefing: preparedOutput.briefing,
+      outputMode: preparedOutput.outputMode,
+      outputLanguage,
+      modeLabel: preparedOutput.modeLabel,
+      approvalWarnings: preparedOutput.warnings
+    };
+  } catch (error) {
+    debugTrace.push(`Summary generation failed: ${error instanceof Error ? error.message : 'Unknown summary generation failure.'}`);
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
+    throw error;
   }
-
-  const briefingValidation = validateBriefing(briefing);
-
-  if (!briefingValidation.isValid) {
-    throw new Error(briefingValidation.errors.join(' '));
-  }
-
-  const validatedBriefing = briefingValidation.briefing;
-  const preparedOutput = applyDraftOutputMode({
-    outputMode,
-    recruiterSummary,
-    briefing: validatedBriefing,
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
-  });
-  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
-    briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary,
-    outputLanguage
-  });
-
-  return {
-    templateLabel: summaryRequest.templateLabel,
-    summary: preparedOutput.summary,
-    hiringManagerBriefingReview: hiringManagerBriefing.review,
-    prompt: summaryRequest.prompt,
-    providerLabel: settings.providerLabel,
-    model: settings.model,
-    briefing: preparedOutput.briefing,
-    outputMode: preparedOutput.outputMode,
-    outputLanguage,
-    modeLabel: preparedOutput.modeLabel,
-    approvalWarnings: preparedOutput.warnings
-  };
 });
 
 ipcMain.handle('draft:translate-output', async (_event, payload) => {

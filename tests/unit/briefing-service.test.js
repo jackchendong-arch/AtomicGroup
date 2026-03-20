@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 
 const {
   applySummaryOverridesToBriefing,
+  buildBriefingGenerationSettings,
+  buildBriefingRequest,
+  buildBriefingRepairRequest,
   mergeBriefingWithFallback,
   normalizeBriefing,
   parseBriefingResponse,
@@ -53,6 +56,52 @@ test('parseBriefingResponse accepts fenced JSON and normalizes the structured br
   assert.equal(briefing.role.title, 'Head of Technology');
   assert.equal(briefing.match_requirements[0].evidence, 'Led a regional engineering function');
   assert.equal(briefing.employment_history[0].company_name, 'HSBC');
+});
+
+test('parseBriefingResponse normalizes alias employment and education keys from structured briefing responses', () => {
+  const briefing = parseBriefingResponse([
+    '```json',
+    JSON.stringify({
+      candidate: {
+        name: 'Noah Zhang',
+        education: [
+          {
+            institution: 'Johns Hopkins University',
+            degree: 'Master of Science',
+            dates: '2022.09-2024.06'
+          }
+        ]
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Strong alignment with the target role.',
+      recommended_next_step: 'Proceed to review.',
+      employment_history: [
+        {
+          employer: 'Sparksoft',
+          title: 'Software Engineer',
+          dates: '2024.07 - 2025.05',
+          responsibilities: [
+            'Built core order-processing services in Go.'
+          ]
+        }
+      ]
+    }, null, 2),
+    '```'
+  ].join('\n'));
+
+  assert.equal(briefing.candidate.education[0].degree_name, 'Master of Science');
+  assert.equal(briefing.candidate.education[0].university, 'Johns Hopkins University');
+  assert.equal(briefing.candidate.education[0].start_year, '2022');
+  assert.equal(briefing.candidate.education[0].end_year, '2024');
+  assert.equal(briefing.employment_history[0].job_title, 'Software Engineer');
+  assert.equal(briefing.employment_history[0].company_name, 'Sparksoft');
+  assert.equal(briefing.employment_history[0].start_date, '2024');
+  assert.equal(briefing.employment_history[0].end_date, '2025');
+  assert.deepEqual(briefing.employment_history[0].responsibilities, [
+    'Built core order-processing services in Go.'
+  ]);
 });
 
 test('mergeBriefingWithFallback fills missing structured fields from fallback data', () => {
@@ -178,6 +227,111 @@ test('mergeBriefingWithFallback keeps fuller grounded fallback arrays when the L
     merged.employment_history[0].responsibilities,
     ['Led transformation strategy', 'Managed a 60-person engineering organization']
   );
+});
+
+test('mergeBriefingWithFallback prefers primary employment responsibilities when fallback text is in a different language', () => {
+  const merged = mergeBriefingWithFallback(
+    normalizeBriefing({
+      candidate: {
+        name: 'Noah Zhang'
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Strong alignment with the target role.',
+      recommended_next_step: 'Proceed to review.',
+      employment_history: [
+        {
+          job_title: 'Software Engineer',
+          company_name: 'Sparksoft',
+          start_date: '2024',
+          end_date: '2025',
+          responsibilities: [
+            'Built core order-processing services in Go and delivered RESTful API modules.'
+          ]
+        }
+      ]
+    }),
+    normalizeBriefing({
+      candidate: {
+        name: 'Noah Zhang'
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Fallback summary',
+      recommended_next_step: 'Fallback next step',
+      employment_history: [
+        {
+          job_title: 'Software Engineer',
+          company_name: 'Sparksoft',
+          start_date: '2024',
+          end_date: '2025',
+          responsibilities: [
+            '使用 Go 语言参与构建公司核心订单处理服务，负责设计与开发 RESTful API。'
+          ]
+        }
+      ]
+    })
+  );
+
+  assert.deepEqual(merged.employment_history[0].responsibilities, [
+    'Built core order-processing services in Go and delivered RESTful API modules.'
+  ]);
+});
+
+test('mergeBriefingWithFallback dedupes the same employment entry across localized title and decorated company variants', () => {
+  const merged = mergeBriefingWithFallback(
+    normalizeBriefing({
+      candidate: {
+        name: 'Noah Zhang'
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Strong alignment with the target role.',
+      recommended_next_step: 'Proceed to review.',
+      employment_history: [
+        {
+          job_title: 'Software Engineer',
+          company_name: 'Sparksoft',
+          start_date: '2024',
+          end_date: '2025',
+          responsibilities: [
+            'Built core order-processing services in Go and delivered RESTful API modules.'
+          ]
+        }
+      ]
+    }),
+    normalizeBriefing({
+      candidate: {
+        name: 'Noah Zhang'
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Fallback summary',
+      recommended_next_step: 'Fallback next step',
+      employment_history: [
+        {
+          job_title: '软件工程师',
+          company_name: 'Sparksoft（ 技 术 研 发 部 ）',
+          start_date: '2024',
+          end_date: '2025',
+          responsibilities: [
+            '使用 Go 语言参与构建公司核心订单处理服务，负责设计与开发 RESTful API。'
+          ]
+        }
+      ]
+    })
+  );
+
+  assert.equal(merged.employment_history.length, 1);
+  assert.equal(merged.employment_history[0].job_title, 'Software Engineer');
+  assert.equal(merged.employment_history[0].company_name, 'Sparksoft');
+  assert.deepEqual(merged.employment_history[0].responsibilities, [
+    'Built core order-processing services in Go and delivered RESTful API modules.'
+  ]);
 });
 
 test('applySummaryOverridesToBriefing keeps structured facts but updates recruiter-facing narrative sections', () => {
@@ -482,4 +636,66 @@ test('extractCandidateName recognizes uppercase surnames and parenthetical nickn
   );
 
   assert.equal(candidateName, 'Xiaoshen CONG (Shawn)');
+});
+
+test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {
+  const request = buildBriefingRequest({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        '工作经历',
+        '2024.07-2025.05 Sparksoft 软件工程师',
+        'l 使用 Go 语言参与构建公司核心订单处理服务'
+      ].join('\n'),
+      file: {
+        name: 'candidate-cv.pdf'
+      }
+    },
+    jdDocument: {
+      text: '职位：区块链开发工程师',
+      file: {
+        name: 'role-jd.docx'
+      }
+    },
+    systemPrompt: 'You are a structured briefing assistant.',
+    outputLanguage: 'en'
+  });
+
+  assert.match(
+    request.prompt,
+    /translate source-language prose into English while preserving proper nouns, employer names, and technical identifiers/i
+  );
+  assert.match(
+    request.prompt,
+    /employment-history titles, and employment-history responsibilities/i
+  );
+});
+
+test('buildBriefingGenerationSettings raises the structured briefing token budget above the general default', () => {
+  const settings = buildBriefingGenerationSettings({
+    providerId: 'deepseek',
+    maxTokens: 1200,
+    temperature: 0.2
+  });
+
+  assert.equal(settings.maxTokens, 3200);
+  assert.equal(settings.temperature, 0.2);
+});
+
+test('buildBriefingRepairRequest creates a JSON-repair prompt for malformed structured briefing output', () => {
+  const request = buildBriefingRepairRequest({
+    malformedResponse: '{"candidate":{"name":"Noah Zhang"}',
+    expectedBriefing: {
+      candidate: {
+        name: 'Noah Zhang'
+      },
+      role: {
+        title: 'Blockchain Developer'
+      }
+    }
+  });
+
+  assert.match(request.messages[0].content, /repair malformed structured briefing json/i);
+  assert.match(request.messages[1].content, /Malformed JSON response:/i);
+  assert.match(request.messages[1].content, /Blockchain Developer/);
 });

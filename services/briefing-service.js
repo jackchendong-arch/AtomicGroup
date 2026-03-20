@@ -21,6 +21,7 @@ const {
 } = require('./hiring-manager-template-service');
 
 const BRIEFING_SCHEMA_VERSION = 1;
+const MIN_BRIEFING_MAX_TOKENS = 3200;
 
 function cleanLine(value) {
   return String(value || '')
@@ -133,6 +134,31 @@ function formatDateRange(startDate, endDate, outputLanguage = 'en') {
   return `${start}${copy.dateSeparator}${end}`;
 }
 
+function parseLooseDateRange(value) {
+  const cleaned = cleanLine(value);
+
+  if (!cleaned) {
+    return {
+      startDate: '',
+      endDate: ''
+    };
+  }
+
+  const match = cleaned.match(/((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–-]\s*((?:19|20)\d{2}|Present|Current|Now)(?:[./-]\d{1,2})?/i);
+
+  if (!match) {
+    return {
+      startDate: '',
+      endDate: ''
+    };
+  }
+
+  return {
+    startDate: cleanLine(match[1]),
+    endDate: cleanLine(match[2])
+  };
+}
+
 function createEmptyBriefing() {
   return {
     schema_version: BRIEFING_SCHEMA_VERSION,
@@ -158,6 +184,13 @@ function createEmptyBriefing() {
     recommended_next_step: '',
     employment_history: [],
     evidence_refs: []
+  };
+}
+
+function buildBriefingGenerationSettings(settings = {}) {
+  return {
+    ...settings,
+    maxTokens: Math.max(Number(settings.maxTokens) || 0, MIN_BRIEFING_MAX_TOKENS)
   };
 }
 
@@ -199,10 +232,10 @@ function normalizeEducationArray(values) {
 
   return values
     .map((entry) => ({
-      degree_name: cleanLine(entry?.degree_name || entry?.degreeName),
-      university: cleanLine(entry?.university),
-      start_year: cleanLine(entry?.start_year || entry?.startYear),
-      end_year: cleanLine(entry?.end_year || entry?.endYear)
+      degree_name: cleanLine(entry?.degree_name || entry?.degreeName || entry?.degree),
+      university: cleanLine(entry?.university || entry?.institution),
+      start_year: cleanLine(entry?.start_year || entry?.startYear || parseLooseDateRange(entry?.dates).startDate),
+      end_year: cleanLine(entry?.end_year || entry?.endYear || parseLooseDateRange(entry?.dates).endDate)
     }))
     .filter((entry) => entry.degree_name || entry.university || entry.start_year || entry.end_year);
 }
@@ -275,14 +308,18 @@ function normalizeEmploymentHistory(values) {
   }
 
   return values
-    .map((entry) => ({
-      job_title: cleanLine(entry?.job_title || entry?.jobTitle),
-      company_name: cleanLine(entry?.company_name || entry?.companyName),
-      start_date: cleanLine(entry?.start_date || entry?.startDate),
-      end_date: cleanLine(entry?.end_date || entry?.endDate),
-      responsibilities: normalizeStringArray(entry?.responsibilities || []),
-      evidence_refs: normalizeEvidenceRefs(entry?.evidence_refs || entry?.evidenceRefs)
-    }))
+    .map((entry) => {
+      const parsedDates = parseLooseDateRange(entry?.dates);
+
+      return {
+        job_title: cleanLine(entry?.job_title || entry?.jobTitle || entry?.title),
+        company_name: cleanLine(entry?.company_name || entry?.companyName || entry?.employer),
+        start_date: cleanLine(entry?.start_date || entry?.startDate || parsedDates.startDate),
+        end_date: cleanLine(entry?.end_date || entry?.endDate || parsedDates.endDate),
+        responsibilities: normalizeStringArray(entry?.responsibilities || []),
+        evidence_refs: normalizeEvidenceRefs(entry?.evidence_refs || entry?.evidenceRefs)
+      };
+    })
     .filter((entry) => {
       return entry.job_title || entry.company_name || entry.start_date || entry.end_date || entry.responsibilities.length > 0;
     });
@@ -420,11 +457,66 @@ function mergeMatchRequirementsValue(primary, fallback) {
   return merged;
 }
 
+function detectArrayLanguage(values) {
+  const text = normalizeStringArray(values).join(' ');
+
+  if (!text) {
+    return 'unknown';
+  }
+
+  const cjkCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
+  const latinCount = (text.match(/[A-Za-z]/g) || []).length;
+
+  if (cjkCount >= 4 && cjkCount > latinCount) {
+    return 'cjk';
+  }
+
+  if (latinCount >= 4 && cjkCount === 0) {
+    return 'latin';
+  }
+
+  return 'mixed';
+}
+
+function mergeEmploymentResponsibilitiesValue(primary, fallback) {
+  const normalizedPrimary = normalizeStringArray(primary);
+  const normalizedFallback = normalizeStringArray(fallback);
+
+  if (normalizedPrimary.length === 0) {
+    return normalizedFallback;
+  }
+
+  if (normalizedFallback.length === 0) {
+    return normalizedPrimary;
+  }
+
+  const primaryLanguage = detectArrayLanguage(normalizedPrimary);
+  const fallbackLanguage = detectArrayLanguage(normalizedFallback);
+
+  if (
+    primaryLanguage !== 'unknown' &&
+    fallbackLanguage !== 'unknown' &&
+    primaryLanguage !== fallbackLanguage
+  ) {
+    return normalizedPrimary;
+  }
+
+  return mergeStringArrayValue(normalizedPrimary, normalizedFallback);
+}
+
 function mergeEmploymentHistoryValue(primary, fallback) {
   const primaryEntries = normalizeEmploymentHistory(primary);
   const fallbackEntries = normalizeEmploymentHistory(fallback);
   const merged = [];
   const indexByKey = new Map();
+  const indexByLooseKey = new Map();
+
+  function normalizeOrganizationKey(value) {
+    return cleanLine(value)
+      .replace(/[（(].*?[)）]/g, '')
+      .replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, '')
+      .toLowerCase();
+  }
 
   function buildEntryKey(entry) {
     return [
@@ -435,15 +527,35 @@ function mergeEmploymentHistoryValue(primary, fallback) {
     ].join('|');
   }
 
+  function buildLooseEntryKey(entry) {
+    const companyKey = normalizeOrganizationKey(entry.company_name);
+    const startDate = cleanLine(entry.start_date).toLowerCase();
+    const endDate = cleanLine(entry.end_date).toLowerCase();
+
+    if (!companyKey || !startDate || !endDate) {
+      return '';
+    }
+
+    return [companyKey, startDate, endDate].join('|');
+  }
+
   function upsert(entry) {
     const key = buildEntryKey(entry);
+    const looseKey = buildLooseEntryKey(entry);
+    const existingIndex = indexByKey.has(key)
+      ? indexByKey.get(key)
+      : (looseKey && indexByLooseKey.has(looseKey) ? indexByLooseKey.get(looseKey) : -1);
 
     if (!key.replace(/\|/g, '')) {
       return;
     }
 
-    if (!indexByKey.has(key)) {
-      indexByKey.set(key, merged.length);
+    if (existingIndex < 0) {
+      const mergedIndex = merged.length;
+      indexByKey.set(key, mergedIndex);
+      if (looseKey) {
+        indexByLooseKey.set(looseKey, mergedIndex);
+      }
       merged.push({
         job_title: cleanLine(entry.job_title),
         company_name: cleanLine(entry.company_name),
@@ -455,14 +567,18 @@ function mergeEmploymentHistoryValue(primary, fallback) {
       return;
     }
 
-    const existing = merged[indexByKey.get(key)];
+    const existing = merged[existingIndex];
+    indexByKey.set(key, existingIndex);
+    if (looseKey) {
+      indexByLooseKey.set(looseKey, existingIndex);
+    }
 
-    merged[indexByKey.get(key)] = {
+    merged[existingIndex] = {
       job_title: existing.job_title || cleanLine(entry.job_title),
       company_name: existing.company_name || cleanLine(entry.company_name),
       start_date: existing.start_date || cleanLine(entry.start_date),
       end_date: existing.end_date || cleanLine(entry.end_date),
-      responsibilities: mergeStringArrayValue(existing.responsibilities, entry.responsibilities),
+      responsibilities: mergeEmploymentResponsibilitiesValue(existing.responsibilities, entry.responsibilities),
       evidence_refs: mergeEvidenceRefsValue(existing.evidence_refs, entry.evidence_refs)
     };
   }
@@ -956,6 +1072,33 @@ function parseBriefingResponse(responseText) {
   return normalizeBriefing(parsed);
 }
 
+function buildBriefingRepairRequest({ malformedResponse, expectedBriefing = createEmptyBriefing() }) {
+  const prompt = [
+    'Repair the following malformed structured briefing JSON.',
+    'Do not change wording, meaning, or structure beyond what is required to make it valid JSON.',
+    'Return only valid JSON.',
+    'Expected JSON shape:',
+    JSON.stringify(normalizeBriefing(expectedBriefing), null, 2),
+    '',
+    'Malformed JSON response:',
+    String(malformedResponse || '')
+  ].join('\n');
+
+  return {
+    prompt,
+    messages: [
+      {
+        role: 'system',
+        content: 'You repair malformed structured briefing JSON. Return only valid JSON.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ]
+  };
+}
+
 function buildBriefingRequest({
   cvDocument,
   jdDocument,
@@ -994,6 +1137,9 @@ function buildBriefingRequest({
     isChineseOutputLanguage(normalizedOutputLanguage)
       ? 'Write narrative and human-readable text fields in Simplified Chinese.'
       : 'Write narrative and human-readable text fields in English.',
+    isChineseOutputLanguage(normalizedOutputLanguage)
+      ? 'For human-readable fields such as candidate snapshot values, education entries, employment-history titles, and employment-history responsibilities, translate source-language prose into Simplified Chinese while preserving proper nouns, employer names, and technical identifiers where appropriate.'
+      : 'For human-readable fields such as candidate snapshot values, education entries, employment-history titles, and employment-history responsibilities, translate source-language prose into English while preserving proper nouns, employer names, and technical identifiers where appropriate.',
     'Preserve exact names, employers, qualifications, and other source facts in their original form when appropriate.',
     'The recruiter summary is generated separately. This structured object should preserve exact candidate facts and grounded hiring-manager briefing content.',
     'The `fit_summary` field should align with the recruiter summary key points and be suitable for the hiring-manager briefing summary section.',
@@ -1088,7 +1234,9 @@ function applySummaryOverridesToBriefing(briefing, summary) {
 module.exports = {
   BRIEFING_SCHEMA_VERSION,
   applySummaryOverridesToBriefing,
+  buildBriefingGenerationSettings,
   buildBriefingRequest,
+  buildBriefingRepairRequest,
   buildFallbackBriefing,
   buildTemplateDataFromBriefing,
   composeHiringManagerBriefing,

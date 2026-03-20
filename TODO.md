@@ -203,6 +203,10 @@ Mark a release complete only when the work is:
 - Cache the current draft in both language variants when available so switching back to a previously translated language reuses the existing draft instead of re-triggering LLM translation.
 - Keep raw imported CV and JD source views unchanged while allowing bilingual derived outputs.
 - Add Chinese-language regression fixtures and unit tests for summary, briefing, email, and Word-draft generation.
+- Add file-backed bilingual translation regressions for real Chinese CV/JD fixtures so employment-history and briefing sections can be validated against actual recruiter test documents.
+- Expand file-backed regression coverage across the external `Test1` to `Test8` CV/JD fixture set for document import, recruiter summary, hiring-manager briefing, translation payloads, and Word export smoke validation.
+- Fix Chinese CV fallback extraction for real fixtures like `Test4` so English hiring-manager briefing output does not leak untranslated education/location lines or misclassify Chinese work-experience sentences as job titles.
+- Add targeted structured-briefing generation diagnostics and unit regressions so mixed-language hiring-manager briefing issues can be traced at the fallback/parsed/merged employment-history level without relying on UI-only retesting.
 
 ## Release 6: Production Hardening
 - [ ] Release 6 shipped, completed, and tested.

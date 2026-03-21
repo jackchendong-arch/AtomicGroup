@@ -626,7 +626,7 @@ test('prepareHiringManagerBriefingOutput keeps briefing review and Word template
 });
 
 test('extractCandidateName recognizes uppercase surnames and parenthetical nicknames from CV text', () => {
-  const candidateName = extractCandidateName(
+  const uppercaseSurnameName = extractCandidateName(
     [
       'Xiaoshen CONG (Shawn)',
       'Shanghai, China',
@@ -635,7 +635,17 @@ test('extractCandidateName recognizes uppercase surnames and parenthetical nickn
     'CV_Shawn_CONG_2026.pdf'
   );
 
-  assert.equal(candidateName, 'Xiaoshen CONG (Shawn)');
+  const middleNicknameName = extractCandidateName(
+    [
+      'Jimmy(Feiyang) Tan',
+      'tan.feiyang@yahoo.com',
+      'CTO / Founding Engineer with strong hands-on experience in backend systems and smart contract architecture.'
+    ].join('\n'),
+    'CV4-6.pdf'
+  );
+
+  assert.equal(uppercaseSurnameName, 'Xiaoshen CONG (Shawn)');
+  assert.equal(middleNicknameName, 'Jimmy(Feiyang) Tan');
 });
 
 test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {

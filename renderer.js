@@ -1,7 +1,13 @@
-function createEmptyDraftLanguageVariants() {
+function createEmptyDraftVariants() {
   return {
-    en: null,
-    zh: null
+    named: {
+      en: null,
+      zh: null
+    },
+    anonymous: {
+      en: null,
+      zh: null
+    }
   };
 }
 
@@ -19,6 +25,7 @@ function createEmptySourceFolderState() {
 const state = {
   view: 'workbench',
   workbenchTab: 'summary',
+  contextTab: 'workspace',
   settingsTab: 'llm',
   providers: [],
   settings: null,
@@ -31,6 +38,7 @@ const state = {
     jd: createEmptyDocumentSlot('jd')
   },
   sourceFolder: createEmptySourceFolderState(),
+  currentContextProfile: null,
   recentWorkspaces: [],
   currentWorkspaceId: '',
   briefing: null,
@@ -39,7 +47,7 @@ const state = {
   outputMode: 'named',
   outputLanguage: 'en',
   pendingOutputLanguage: '',
-  draftLanguageVariants: createEmptyDraftLanguageVariants(),
+  draftVariants: createEmptyDraftVariants(),
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
@@ -47,6 +55,7 @@ const state = {
   isLoadingWorkspace: false,
   isGenerating: false,
   isTranslating: false,
+  isSwitchingMode: false,
   isSavingWordDraft: false,
   isSharingEmail: false,
   progressLabel: 'Generating summary with the configured model...',
@@ -55,6 +64,8 @@ const state = {
   generationError: '',
   templateLabel: 'Default Recruiter Profile Template'
 };
+
+let currentContextProfileRequestId = 0;
 
 const elements = {
   workbenchView: document.getElementById('workbench-view'),
@@ -105,17 +116,30 @@ const elements = {
   briefingOutputFolderName: document.getElementById('briefing-output-folder-name'),
   briefingOutputFolderPath: document.getElementById('briefing-output-folder-path'),
   templateConfigNote: document.getElementById('template-config-note'),
-  sourcePanelStatus: document.getElementById('source-panel-status'),
+  currentContextPanel: document.getElementById('current-context-panel'),
+  currentWorkspaceNote: document.getElementById('current-workspace-note'),
+  currentContextStatus: document.getElementById('current-context-status'),
+  currentRoleField: document.getElementById('current-role-field'),
+  currentRoleName: document.getElementById('current-role-name'),
+  currentCandidateField: document.getElementById('current-candidate-field'),
+  currentCandidateName: document.getElementById('current-candidate-name'),
+  currentJdField: document.getElementById('current-jd-field'),
+  currentJdFile: document.getElementById('current-jd-file'),
+  currentCvField: document.getElementById('current-cv-field'),
+  currentCvFile: document.getElementById('current-cv-file'),
   dropzone: document.getElementById('dropzone'),
+  openWorkspaceContextTab: document.getElementById('open-workspace-context-tab'),
+  openManualContextTab: document.getElementById('open-manual-context-tab'),
+  openRecentContextTab: document.getElementById('open-recent-context-tab'),
+  workspaceContextPanel: document.getElementById('workspace-context-panel'),
+  manualContextPanel: document.getElementById('manual-context-panel'),
+  recentContextPanel: document.getElementById('recent-context-panel'),
   swapSourceButton: document.getElementById('swap-source-button'),
   chooseSourceFolderButton: document.getElementById('choose-source-folder-button'),
   refreshSourceFolderButton: document.getElementById('refresh-source-folder-button'),
   sourceFolderName: document.getElementById('source-folder-name'),
   sourceFolderPath: document.getElementById('source-folder-path'),
-  sourceFolderStats: document.getElementById('source-folder-stats'),
   sourceFolderWorkspace: document.getElementById('source-folder-workspace'),
-  sourceFolderJdSelected: document.getElementById('source-folder-jd-selected'),
-  sourceFolderCvSelected: document.getElementById('source-folder-cv-selected'),
   sourceFolderJdSelect: document.getElementById('source-folder-jd-select'),
   sourceFolderCvSelect: document.getElementById('source-folder-cv-select'),
   loadSourceFolderJdButton: document.getElementById('load-source-folder-jd-button'),
@@ -152,18 +176,12 @@ const elements = {
   briefingStatus: document.getElementById('briefing-status'),
   briefingPreview: document.getElementById('briefing-preview'),
   cv: {
-    card: document.getElementById('cv-card'),
     chooseButton: document.getElementById('choose-cv-button'),
-    filePill: document.getElementById('cv-file-pill'),
-    note: document.getElementById('cv-picker-note'),
     previewStatus: document.getElementById('cv-preview-status'),
     previewText: document.getElementById('cv-preview-text')
   },
   jd: {
-    card: document.getElementById('jd-card'),
     chooseButton: document.getElementById('choose-jd-button'),
-    filePill: document.getElementById('jd-file-pill'),
-    note: document.getElementById('jd-picker-note'),
     previewStatus: document.getElementById('jd-preview-status'),
     previewText: document.getElementById('jd-preview-text')
   }
@@ -236,32 +254,59 @@ function cloneDraftData(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function cacheDraftLanguageVariant(language) {
-  const normalizedLanguage = language === 'zh' ? 'zh' : 'en';
+function normalizeDraftVariantMode(mode) {
+  return mode === 'anonymous' ? 'anonymous' : 'named';
+}
 
-  if (!state.summary.trim()) {
-    state.draftLanguageVariants[normalizedLanguage] = null;
-    return;
-  }
+function normalizeDraftVariantLanguage(language) {
+  return language === 'zh' ? 'zh' : 'en';
+}
 
-  state.draftLanguageVariants[normalizedLanguage] = {
-    summary: state.summary,
-    briefing: cloneDraftData(state.briefing),
-    briefingReview: state.briefingReview,
-    approvalWarnings: [...state.approvalWarnings]
+function normalizeCurrentContextProfile(profile = {}) {
+  return {
+    candidateName: String(profile.candidateName || '').trim(),
+    roleTitle: String(profile.roleTitle || '').trim(),
+    candidateLocation: String(profile.candidateLocation || '').trim(),
+    candidatePreferredLocation: String(profile.candidatePreferredLocation || '').trim(),
+    candidateNationality: String(profile.candidateNationality || '').trim(),
+    candidateLanguages: Array.isArray(profile.candidateLanguages)
+      ? profile.candidateLanguages.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [],
+    noticePeriod: String(profile.noticePeriod || '').trim(),
+    jobTitle: String(profile.jobTitle || '').trim(),
+    companyName: String(profile.companyName || '').trim()
   };
 }
 
-function clearCachedDraftLanguageVariants() {
-  state.draftLanguageVariants = createEmptyDraftLanguageVariants();
+function cacheDraftVariant(mode = state.outputMode, language = state.outputLanguage) {
+  const normalizedMode = normalizeDraftVariantMode(mode);
+  const normalizedLanguage = normalizeDraftVariantLanguage(language);
+
+  if (!state.summary.trim()) {
+    state.draftVariants[normalizedMode][normalizedLanguage] = null;
+    return;
+  }
+
+  state.draftVariants[normalizedMode][normalizedLanguage] = {
+    summary: state.summary,
+    briefing: cloneDraftData(state.briefing),
+    briefingReview: state.briefingReview,
+    approvalWarnings: [...state.approvalWarnings],
+    draftLifecycle: state.draftLifecycle
+  };
 }
 
-function getCachedDraftLanguageVariant(language) {
-  const normalizedLanguage = language === 'zh' ? 'zh' : 'en';
-  return state.draftLanguageVariants[normalizedLanguage];
+function clearCachedDraftVariants() {
+  state.draftVariants = createEmptyDraftVariants();
 }
 
-function applyCachedDraftLanguageVariant(language, snapshot) {
+function getCachedDraftVariant(mode, language) {
+  const normalizedMode = normalizeDraftVariantMode(mode);
+  const normalizedLanguage = normalizeDraftVariantLanguage(language);
+  return state.draftVariants[normalizedMode][normalizedLanguage];
+}
+
+function applyCachedDraftVariant(mode, language, snapshot, message) {
   if (!snapshot) {
     return;
   }
@@ -269,14 +314,14 @@ function applyCachedDraftLanguageVariant(language, snapshot) {
   state.summary = snapshot.summary || '';
   state.briefing = cloneDraftData(snapshot.briefing);
   state.briefingReview = snapshot.briefingReview || '';
-  state.outputLanguage = language === 'zh' ? 'zh' : 'en';
+  state.outputMode = normalizeDraftVariantMode(mode);
+  state.outputLanguage = normalizeDraftVariantLanguage(language);
   state.pendingOutputLanguage = '';
   state.approvalWarnings = [...(snapshot.approvalWarnings || [])];
+  state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
   state.lastExportPath = '';
   state.summaryStatus = 'Ready';
-  state.summaryMessage = state.outputLanguage === 'zh'
-    ? '已切换回已生成的中文草稿，无需重新翻译。'
-    : 'Switched back to the existing English draft without retranslation.';
+  state.summaryMessage = message || 'Restored the existing draft variant without regeneration.';
   state.generationError = '';
 }
 
@@ -772,6 +817,162 @@ function getSlotStatusChip(slotState) {
   return 'Ready';
 }
 
+function stripFileExtension(filename) {
+  return String(filename || '').replace(/\.[^.]+$/, '');
+}
+
+function getActiveWorkspaceMeta() {
+  return state.recentWorkspaces.find((workspace) => workspace.workspaceId === state.currentWorkspaceId) || null;
+}
+
+function getCurrentRoleLabel() {
+  const derivedRoleTitle = String(state.currentContextProfile?.roleTitle || '').trim();
+
+  if (derivedRoleTitle) {
+    return derivedRoleTitle;
+  }
+
+  const briefingRoleTitle = String(state.briefing?.role?.title || '').trim();
+
+  if (briefingRoleTitle) {
+    return briefingRoleTitle;
+  }
+
+  const workspaceRoleTitle = String(getActiveWorkspaceMeta()?.roleTitle || '').trim();
+
+  if (workspaceRoleTitle) {
+    return workspaceRoleTitle;
+  }
+
+  if (state.documents.jd.file?.name) {
+    return stripFileExtension(state.documents.jd.file.name);
+  }
+
+  return 'No role loaded';
+}
+
+function getCurrentCandidateLabel() {
+  const derivedCandidateName = String(state.currentContextProfile?.candidateName || '').trim();
+
+  if (derivedCandidateName) {
+    return derivedCandidateName;
+  }
+
+  const briefingCandidateName = String(state.briefing?.candidate?.name || '').trim();
+
+  if (briefingCandidateName) {
+    return briefingCandidateName;
+  }
+
+  const workspaceCandidateName = String(getActiveWorkspaceMeta()?.candidateName || '').trim();
+
+  if (workspaceCandidateName) {
+    return workspaceCandidateName;
+  }
+
+  if (state.documents.cv.file?.name) {
+    return stripFileExtension(state.documents.cv.file.name);
+  }
+
+  return 'No candidate loaded';
+}
+
+function setContextValue(element, value, emptyLabel) {
+  const normalized = String(value || '').trim() || emptyLabel;
+  const isEmpty = normalized === emptyLabel;
+  element.textContent = normalized;
+  element.classList.toggle('is-empty', isEmpty);
+  return !isEmpty;
+}
+
+function getCurrentContextStatus() {
+  const importedCount = ['cv', 'jd'].filter((slot) => state.documents[slot].file).length;
+
+  if (state.summary.trim()) {
+    return getDraftLifecycleLabel();
+  }
+
+  if (importedCount === 2) {
+    return 'Ready';
+  }
+
+  if (importedCount === 1) {
+    return '1 Source Missing';
+  }
+
+  return 'Load Sources';
+}
+
+function renderCurrentContext() {
+  const hasWorkspace = Boolean(state.sourceFolder.name);
+  const hasCandidateLoaded = Boolean(state.documents.cv.file);
+
+  elements.currentContextPanel.classList.toggle('is-hidden', !hasCandidateLoaded);
+
+  if (!hasCandidateLoaded) {
+    elements.currentWorkspaceNote.textContent = '';
+    return;
+  }
+
+  const hasRole = setContextValue(elements.currentRoleName, getCurrentRoleLabel(), 'No role loaded');
+  const hasCandidate = setContextValue(elements.currentCandidateName, getCurrentCandidateLabel(), 'No candidate loaded');
+  const hasJd = setContextValue(
+    elements.currentJdFile,
+    state.documents.jd.file?.name || '',
+    'No JD loaded'
+  );
+  const hasCv = setContextValue(
+    elements.currentCvFile,
+    state.documents.cv.file?.name || '',
+    'No CV loaded'
+  );
+
+  elements.currentRoleField.classList.toggle('is-hidden', !hasRole);
+  elements.currentCandidateField.classList.toggle('is-hidden', !hasCandidate);
+  elements.currentJdField.classList.toggle('is-hidden', !hasJd);
+  elements.currentCvField.classList.toggle('is-hidden', !hasCv);
+  elements.currentContextStatus.textContent = getCurrentContextStatus();
+  elements.currentWorkspaceNote.textContent = hasWorkspace
+    ? `Workspace: ${state.sourceFolder.name}`
+    : 'Manual import workflow active.';
+}
+
+function buildCurrentContextProfilePayload() {
+  return {
+    cvDocument: state.documents.cv.file ? state.documents.cv : null,
+    jdDocument: state.documents.jd.file ? state.documents.jd : null
+  };
+}
+
+async function refreshCurrentContextProfile() {
+  const hasLoadedSource = Boolean(state.documents.cv.file || state.documents.jd.file);
+  const requestId = ++currentContextProfileRequestId;
+
+  if (!hasLoadedSource) {
+    state.currentContextProfile = null;
+    renderCurrentContext();
+    return;
+  }
+
+  try {
+    const result = await window.recruitmentApi.deriveWorkspaceProfile(buildCurrentContextProfilePayload());
+
+    if (requestId !== currentContextProfileRequestId) {
+      return;
+    }
+
+    state.currentContextProfile = normalizeCurrentContextProfile(result?.profile || {});
+  } catch (_error) {
+    if (requestId !== currentContextProfileRequestId) {
+      return;
+    }
+
+    state.currentContextProfile = null;
+  }
+
+  renderCurrentContext();
+}
+
 function getTemplateDisplayName() {
   if (!state.settings?.outputTemplateName) {
     return 'No Word template selected';
@@ -874,10 +1075,29 @@ function setSettingsTab(tab) {
   elements.wordTemplateSettingsPanel.classList.toggle('is-hidden', tab !== 'word-template');
 }
 
-function updateSourcePanelStatus() {
-  const importedCount = ['cv', 'jd'].filter((slot) => state.documents[slot].file).length;
-  elements.sourcePanelStatus.textContent = importedCount === 2 ? 'Ready' : `${importedCount} / 2 Loaded`;
-  elements.swapSourceButton.disabled = !(state.documents.cv.file && state.documents.jd.file);
+function setContextTab(tab) {
+  state.contextTab = tab;
+
+  const buttonMap = {
+    workspace: elements.openWorkspaceContextTab,
+    manual: elements.openManualContextTab,
+    recent: elements.openRecentContextTab
+  };
+
+  const panelMap = {
+    workspace: elements.workspaceContextPanel,
+    manual: elements.manualContextPanel,
+    recent: elements.recentContextPanel
+  };
+
+  Object.entries(buttonMap).forEach(([entryTab, button]) => {
+    button.classList.toggle('is-active', entryTab === tab);
+    button.setAttribute('aria-selected', entryTab === tab ? 'true' : 'false');
+  });
+
+  Object.entries(panelMap).forEach(([entryTab, panel]) => {
+    panel.classList.toggle('is-hidden', entryTab !== tab);
+  });
 }
 
 const JD_FILENAME_PATTERN = /\b(jd|job[\s._-]*description|role)\b/i;
@@ -983,18 +1203,16 @@ function renderSourceFolder() {
   elements.chooseSourceFolderButton.disabled = busy;
   elements.refreshSourceFolderButton.disabled = busy || !hasSourceFolder;
   elements.sourceFolderName.textContent = hasSourceFolder
-    ? `${state.sourceFolder.name} · ${state.sourceFolder.files.length} supported files`
-    : 'No source folder selected';
+    ? state.sourceFolder.name
+    : 'No workspace selected';
   elements.sourceFolderName.classList.toggle('is-empty', !hasSourceFolder);
   elements.sourceFolderPath.textContent = state.sourceFolder.error
     ? state.sourceFolder.error
     : (hasSourceFolder
-      ? state.sourceFolder.path
-      : 'Choose a local folder to browse supported CV and JD files in the workbench.');
-
-  elements.sourceFolderStats.innerHTML = '';
+      ? ''
+      : 'Choose one role folder with the JD and candidate CVs.');
   elements.sourceFolderWorkspace.classList.add('is-hidden');
-  elements.sourceFolderEmptyNote.textContent = 'Browse a local role workspace folder here and choose one active JD plus one candidate CV.';
+  elements.sourceFolderEmptyNote.textContent = 'Load one JD and switch candidate CVs here.';
 
   if (!hasSourceFolder) {
     return;
@@ -1017,19 +1235,10 @@ function renderSourceFolder() {
     : chooseDefaultCvPath(cvFiles);
   state.sourceFolder.selectedCvPath = selectedCvPath;
 
-  const likelyJdCount = state.sourceFolder.files.filter((file) => getLikelyJdScore(file, state.sourceFolder.files) > 0).length;
-  const likelyCvCount = state.sourceFolder.files.filter((file) => getLikelyCvScore(file) > 0).length;
-
-  elements.sourceFolderStats.innerHTML = [
-    `<span class="status-chip">${state.sourceFolder.files.length} Supported Files</span>`,
-    `<span class="status-chip">${cvFiles.length} Candidate CV Options</span>`,
-    `<span class="status-chip">${jdFiles.length} JD Options</span>`,
-    likelyJdCount > 0 ? `<span class="status-chip">${likelyJdCount} Likely JD${likelyJdCount === 1 ? '' : 's'}</span>` : '',
-    likelyCvCount > 0 ? `<span class="status-chip">${likelyCvCount} Likely CV${likelyCvCount === 1 ? '' : 's'}</span>` : ''
-  ].filter(Boolean).join('');
-
   elements.sourceFolderWorkspace.classList.remove('is-hidden');
-  elements.sourceFolderEmptyNote.textContent = '';
+  elements.sourceFolderEmptyNote.textContent = cvFiles.length === 0 && jdFiles.length === 0
+    ? 'No supported JD or CV files were found in this workspace.'
+    : '';
 
   elements.sourceFolderJdSelect.disabled = busy || jdFiles.length === 0;
   elements.sourceFolderCvSelect.disabled = busy || cvFiles.length === 0;
@@ -1044,16 +1253,6 @@ function renderSourceFolder() {
 
   elements.sourceFolderJdSelect.value = jdFiles.length > 0 ? selectedJdPath : '';
   elements.sourceFolderCvSelect.value = cvFiles.length > 0 ? selectedCvPath : '';
-
-  const selectedJdFile = jdFiles.find((file) => file.path === selectedJdPath);
-  const selectedCvFile = cvFiles.find((file) => file.path === selectedCvPath);
-
-  elements.sourceFolderJdSelected.textContent = selectedJdFile
-    ? `Active: ${selectedJdFile.name}`
-    : 'No JD selected';
-  elements.sourceFolderCvSelected.textContent = selectedCvFile
-    ? `Active: ${selectedCvFile.name}`
-    : 'No CV selected';
 }
 
 function formatRecentWorkspaceUpdatedAt(value) {
@@ -1089,11 +1288,12 @@ function renderRecentWork() {
   }
 
   elements.recentWorkList.innerHTML = state.recentWorkspaces
+    .slice(0, 3)
     .map((workspace) => {
       const isActive = workspace.workspaceId === state.currentWorkspaceId;
       const summaryStatus = workspace.hasDraft
-        ? `${workspace.draftLifecycle === 'approved' ? 'Approved' : 'Draft Ready'} · ${workspace.outputLanguage === 'zh' ? '中文' : 'English'}`
-        : 'Sources only';
+        ? `${workspace.draftLifecycle === 'approved' ? 'Approved' : 'Draft'} · ${workspace.outputLanguage === 'zh' ? '中文' : 'English'}`
+        : 'Sources';
       const candidateLabel = workspace.candidateName || workspace.loadedCvName || 'No candidate loaded yet';
       const roleLabel = workspace.roleTitle || workspace.loadedJdName || workspace.sourceFolderName || 'No role loaded yet';
 
@@ -1121,9 +1321,15 @@ function renderSlot(slot) {
   const helperText = slotState.error || slotState.warnings[0] || (!hasFile ? defaultNote : '');
   const fileLabel = hasFile ? slotState.file.name : 'No file selected';
 
-  slotElements.filePill.textContent = fileLabel;
-  slotElements.filePill.classList.toggle('is-empty', !hasFile);
-  slotElements.note.textContent = helperText;
+  if (slotElements.filePill) {
+    slotElements.filePill.textContent = fileLabel;
+    slotElements.filePill.classList.toggle('is-empty', !hasFile);
+  }
+
+  if (slotElements.note) {
+    slotElements.note.textContent = helperText;
+  }
+
   slotElements.previewStatus.textContent = getSlotStatusChip(slotState);
   setRichDocumentContent(
     slotElements.previewText,
@@ -1192,6 +1398,7 @@ function renderSummary() {
   const activeOutputLanguage = state.pendingOutputLanguage || state.outputLanguage;
   const busy = isGenerationWorkflowBusy();
 
+  renderCurrentContext();
   elements.summaryStatus.textContent = state.summaryStatus;
   elements.summaryNavStatus.textContent = state.summaryStatus;
   elements.summaryMessage.textContent = state.generationError || state.summaryMessage;
@@ -1205,7 +1412,7 @@ function renderSummary() {
   elements.setAnonymousModeButton.disabled = busy;
   elements.setEnglishOutputButton.disabled = busy;
   elements.setChineseOutputButton.disabled = busy;
-  elements.draftModePill.textContent = state.outputMode === 'anonymous' ? 'Anonymous Draft' : 'Named Draft';
+  elements.draftModePill.textContent = state.outputMode === 'anonymous' ? 'Anonymous Output' : 'Named Output';
   elements.draftLifecyclePill.textContent = getDraftLifecycleLabel();
 
   if (document.activeElement !== elements.summaryEditor) {
@@ -1246,11 +1453,13 @@ function renderBriefing() {
     ? 'Loading'
     : (state.isGenerating
       ? 'Generating'
+      : (state.isSwitchingMode
+        ? 'Updating'
       : (state.isTranslating
         ? 'Translating'
         : (state.isSavingWordDraft
           ? 'Saving'
-          : (state.isSharingEmail ? 'Preparing Email' : (hasBriefingReview ? 'Ready' : 'No Briefing')))));
+          : (state.isSharingEmail ? 'Preparing Email' : (hasBriefingReview ? 'Ready' : 'No Briefing'))))));
   const briefingText = hasBriefingReview
     ? state.briefingReview
     : 'Generate the candidate summary to populate the hiring-manager briefing review.';
@@ -1274,11 +1483,12 @@ function render() {
   renderRecentWork();
   renderSettingsForm();
   renderSettingsStatus();
-  updateSourcePanelStatus();
+  renderCurrentContext();
   renderSummary();
   renderBriefing();
   setView(state.view);
   setWorkbenchTab(state.workbenchTab);
+  setContextTab(state.contextTab);
   setSettingsTab(state.settingsTab);
 }
 
@@ -1324,11 +1534,12 @@ function invalidateSummary(message) {
   state.briefingReview = '';
   state.summary = '';
   state.pendingOutputLanguage = '';
-  clearCachedDraftLanguageVariants();
+  clearCachedDraftVariants();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
   state.debugTrace = [];
+  state.isSwitchingMode = false;
   state.isTranslating = false;
   state.isSavingWordDraft = false;
   state.isSharingEmail = false;
@@ -1371,39 +1582,99 @@ function markDraftEdited() {
     return;
   }
 
-  clearCachedDraftLanguageVariants();
+  clearCachedDraftVariants();
 
   if (state.draftLifecycle === 'generated' || state.draftLifecycle === 'approved') {
     state.draftLifecycle = 'edited';
     state.lastExportPath = '';
     state.summaryMessage = state.outputMode === 'anonymous'
-      ? 'Anonymous draft updated. Re-review masking and approve again before copying or exporting.'
+      ? 'Candidate summary updated. Re-review the anonymous hiring-manager output and approve it again before export or email handoff.'
       : 'Draft updated. Approve again before copying or exporting.';
     state.generationError = '';
   }
 }
 
-function setOutputMode(mode) {
+async function setOutputMode(mode) {
   const normalizedMode = mode === 'anonymous' ? 'anonymous' : 'named';
 
   if (state.outputMode === normalizedMode) {
     return;
   }
 
-  state.outputMode = normalizedMode;
-  state.lastExportPath = '';
-  state.approvalWarnings = [];
-
-  if (state.summary.trim()) {
-    invalidateSummary(
-      normalizedMode === 'anonymous'
-        ? 'Draft mode changed to anonymous. Generate a fresh draft to apply anonymization.'
-        : 'Draft mode changed to named. Generate a fresh draft to restore named output.'
-    );
+  if (isGenerationWorkflowBusy()) {
+    return;
   }
 
+  if (!state.summary.trim()) {
+    state.outputMode = normalizedMode;
+    state.lastExportPath = '';
+    state.approvalWarnings = [];
+    render();
+    persistCurrentWorkspaceSnapshot();
+    return;
+  }
+
+  cacheDraftVariant(state.outputMode, state.outputLanguage);
+
+  const cachedVariant = getCachedDraftVariant(normalizedMode, state.outputLanguage);
+
+  if (cachedVariant) {
+    applyCachedDraftVariant(
+      normalizedMode,
+      state.outputLanguage,
+      cachedVariant,
+      normalizedMode === 'anonymous'
+        ? 'Restored the existing anonymous hiring-manager output without regeneration.'
+        : 'Restored the existing named hiring-manager output without regeneration.'
+    );
+    state.lastExportPath = '';
+    render();
+    await persistCurrentWorkspaceSnapshot();
+    return;
+  }
+
+  state.summary = readSummaryEditorText();
+  state.isSwitchingMode = true;
+  state.lastExportPath = '';
+  state.summaryStatus = 'Updating';
+  state.summaryMessage = normalizedMode === 'anonymous'
+    ? 'Applying anonymous mode to the hiring-manager output without rerunning candidate assessment.'
+    : 'Restoring the named hiring-manager output without rerunning candidate assessment.';
+  state.progressLabel = 'Switching draft mode...';
   render();
-  persistCurrentWorkspaceSnapshot();
+
+  try {
+    const result = await window.recruitmentApi.renderBriefingReview({
+      briefing: state.briefing,
+      summary: state.summary,
+      outputMode: normalizedMode,
+      outputLanguage: state.outputLanguage,
+      cvDocument: state.documents.cv,
+      jdDocument: state.documents.jd
+    });
+
+    state.outputMode = normalizedMode;
+    state.summary = result.summary || state.summary;
+    state.briefing = result.briefing || state.briefing;
+    state.briefingReview = result.hiringManagerBriefingReview || '';
+    state.approvalWarnings = result.approvalWarnings || [];
+    state.draftLifecycle = 'generated';
+    state.summaryStatus = 'Ready';
+    state.summaryMessage = normalizedMode === 'anonymous'
+      ? 'Anonymous hiring-manager output is ready without rerunning candidate assessment. The consultant summary stays named.'
+      : 'Named hiring-manager output restored without rerunning candidate assessment.';
+    cacheDraftVariant(state.outputMode, state.outputLanguage);
+    await persistCurrentWorkspaceSnapshot();
+  } catch (error) {
+    state.summaryStatus = 'Failed';
+    state.generationError = error instanceof Error
+      ? error.message
+      : 'Unable to switch the hiring-manager output mode for the current draft.';
+  } finally {
+    state.isSwitchingMode = false;
+    state.progressLabel = 'Generating summary with the configured model...';
+    render();
+  }
 }
 
 function setOutputLanguage(language) {
@@ -1426,10 +1697,17 @@ function setOutputLanguage(language) {
     return;
   }
 
-  const cachedVariant = getCachedDraftLanguageVariant(normalizedLanguage);
+  const cachedVariant = getCachedDraftVariant(state.outputMode, normalizedLanguage);
 
   if (cachedVariant) {
-    applyCachedDraftLanguageVariant(normalizedLanguage, cachedVariant);
+    applyCachedDraftVariant(
+      state.outputMode,
+      normalizedLanguage,
+      cachedVariant,
+      normalizedLanguage === 'zh'
+        ? 'Switched to the existing Chinese draft without retranslation.'
+        : 'Switched back to the existing English draft without retranslation.'
+    );
     render();
     persistCurrentWorkspaceSnapshot();
     return;
@@ -1457,7 +1735,7 @@ async function translateCurrentDraft(targetLanguage) {
 
   try {
     await syncBriefingReviewFromCurrentSummary();
-    cacheDraftLanguageVariant(previousLanguage);
+    cacheDraftVariant(state.outputMode, previousLanguage);
 
     const result = await window.recruitmentApi.translateDraftOutput({
       summary: state.summary,
@@ -1476,7 +1754,7 @@ async function translateCurrentDraft(targetLanguage) {
     state.outputLanguage = result.outputLanguage || targetLanguage;
     state.pendingOutputLanguage = '';
     state.approvalWarnings = result.approvalWarnings || [];
-    cacheDraftLanguageVariant(state.outputLanguage);
+    cacheDraftVariant(state.outputMode, state.outputLanguage);
     state.summaryStatus = 'Ready';
     state.summaryMessage = targetLanguage === 'zh'
       ? '当前草稿已翻译为中文。请复核译文后再复制、导出或发送。'
@@ -1504,8 +1782,8 @@ function approveDraft() {
   state.draftLifecycle = 'approved';
   state.summaryStatus = 'Ready';
   state.summaryMessage = state.outputMode === 'anonymous'
-    ? 'Anonymous draft approved. Copy and Word export are now enabled.'
-    : 'Draft approved. Copy and Word export are now enabled.';
+    ? 'Anonymous hiring-manager output approved. Summary copy, email handoff, and Word export are now enabled.'
+    : 'Draft approved. Summary copy, email handoff, and Word export are now enabled.';
   state.generationError = '';
   renderSummary();
   persistCurrentWorkspaceSnapshot();
@@ -1674,8 +1952,8 @@ function clearWordTemplate() {
 }
 
 function buildWorkspaceSnapshotPayload() {
-  const candidateName = String(state.briefing?.candidate?.name || '').trim();
-  const roleTitle = String(state.briefing?.role?.title || '').trim();
+  const candidateName = String(state.currentContextProfile?.candidateName || state.briefing?.candidate?.name || '').trim();
+  const roleTitle = String(state.currentContextProfile?.roleTitle || state.briefing?.role?.title || '').trim();
 
   return {
     sourceFolderPath: state.sourceFolder.path,
@@ -1730,6 +2008,7 @@ async function openRecentWorkspace(workspaceId) {
   state.summaryMessage = 'Reopening the saved role workspace.';
   state.progressLabel = 'Loading the saved role workspace...';
   state.workbenchTab = 'summary';
+  state.contextTab = 'workspace';
   render();
 
   try {
@@ -1818,10 +2097,10 @@ async function openRecentWorkspace(workspaceId) {
     state.lastExportPath = snapshot.lastExportPath || '';
     state.templateLabel = snapshot.templateLabel || 'Default Recruiter Profile Template';
     state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
-    clearCachedDraftLanguageVariants();
+    clearCachedDraftVariants();
 
     if (state.summary.trim()) {
-      cacheDraftLanguageVariant(state.outputLanguage);
+      cacheDraftVariant(state.outputMode, state.outputLanguage);
     }
 
     state.summaryStatus = state.summary.trim() ? 'Ready' : 'No Draft';
@@ -1830,6 +2109,7 @@ async function openRecentWorkspace(workspaceId) {
       : (state.summary.trim()
         ? 'Saved role workspace reopened.'
         : 'Saved role workspace reopened. Load or generate as needed.');
+    await refreshCurrentContextProfile();
   } catch (error) {
     state.summaryStatus = 'Failed';
     state.generationError = error instanceof Error
@@ -1855,7 +2135,7 @@ async function clearRecentWorkspaces() {
 
 async function importDocumentIntoSlot(filePath, slot) {
   const result = await window.recruitmentApi.importDocument({ filePath });
-  applyImportedDocument(result, slot);
+  await applyImportedDocument(result, slot);
 }
 
 function setDocumentSlotFromImportResult(result, slot, { invalidate = true } = {}) {
@@ -1926,6 +2206,7 @@ async function chooseSourceFolder() {
   }
 
   try {
+    state.contextTab = 'workspace';
     const result = await window.recruitmentApi.pickSourceFolder();
 
     if (!result) {
@@ -1952,6 +2233,7 @@ async function refreshSourceFolder() {
   }
 
   try {
+    state.contextTab = 'workspace';
     const result = await window.recruitmentApi.listSourceFolder({
       folderPath: state.sourceFolder.path
     });
@@ -1974,6 +2256,7 @@ async function loadSelectedWorkspaceJd() {
     return;
   }
 
+  state.contextTab = 'workspace';
   await importDocumentIntoSlot(state.sourceFolder.selectedJdPath, 'jd');
 }
 
@@ -1982,26 +2265,30 @@ async function loadSelectedWorkspaceCv() {
     return;
   }
 
+  state.contextTab = 'workspace';
   await importDocumentIntoSlot(state.sourceFolder.selectedCvPath, 'cv');
 }
 
-function applyImportedDocument(result, slot) {
+async function applyImportedDocument(result, slot) {
   setDocumentSlotFromImportResult(result, slot);
   render();
-  persistCurrentWorkspaceSnapshot();
+  await refreshCurrentContextProfile();
+  await persistCurrentWorkspaceSnapshot();
 }
 
 async function chooseDocument(slot) {
+  state.contextTab = 'manual';
   const result = await window.recruitmentApi.pickDocument({ slot });
 
   if (!result) {
     return;
   }
 
-  applyImportedDocument(result, slot);
+  await applyImportedDocument(result, slot);
 }
 
-function swapDocumentAssignments() {
+async function swapDocumentAssignments() {
+  state.contextTab = 'manual';
   const fromState = state.documents.cv;
   const toState = state.documents.jd;
 
@@ -2010,7 +2297,8 @@ function swapDocumentAssignments() {
 
   invalidateSummary('Document assignment updated. Generate a fresh draft to reflect the new slot mapping.');
   render();
-  persistCurrentWorkspaceSnapshot();
+  await refreshCurrentContextProfile();
+  await persistCurrentWorkspaceSnapshot();
 }
 
 function canGenerateSummary() {
@@ -2069,7 +2357,7 @@ async function syncBriefingReviewFromCurrentSummary() {
   state.briefingReview = result.hiringManagerBriefingReview || '';
   state.summary = result.summary || state.summary;
   state.approvalWarnings = result.approvalWarnings || [];
-  cacheDraftLanguageVariant(state.outputLanguage);
+  cacheDraftVariant(state.outputMode, state.outputLanguage);
 }
 
 async function refreshBriefingReview() {
@@ -2082,7 +2370,7 @@ async function refreshBriefingReview() {
 }
 
 function isGenerationWorkflowBusy() {
-  return state.isLoadingWorkspace || state.isGenerating || state.isTranslating || state.isSavingWordDraft || state.isSharingEmail;
+  return state.isLoadingWorkspace || state.isGenerating || state.isTranslating || state.isSwitchingMode || state.isSavingWordDraft || state.isSharingEmail;
 }
 
 async function generateSummary() {
@@ -2128,16 +2416,16 @@ async function generateSummary() {
     state.outputMode = result.outputMode || state.outputMode;
     state.outputLanguage = result.outputLanguage || state.outputLanguage;
     state.approvalWarnings = result.approvalWarnings || [];
-    clearCachedDraftLanguageVariants();
-    cacheDraftLanguageVariant(state.outputLanguage);
+    clearCachedDraftVariants();
+    cacheDraftVariant(state.outputMode, state.outputLanguage);
     state.draftLifecycle = 'generated';
     state.templateLabel = result.templateLabel;
     state.workbenchTab = 'summary';
     state.summaryStatus = 'Ready';
     state.summaryMessage = state.outputMode === 'anonymous'
       ? (state.approvalWarnings.length > 0
-        ? 'Anonymous draft is ready. Review the residual privacy warnings and approve it before export.'
-        : 'Anonymous draft is ready. Review and approve it before copying or exporting.')
+        ? 'Candidate summary is ready. Hiring-manager outputs are anonymous; review the residual privacy warnings before approval.'
+        : 'Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.')
       : 'Candidate summary and hiring-manager briefing are ready for review and approval.';
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
@@ -2348,15 +2636,17 @@ async function openWordDraft() {
 }
 
 function resetWorkspace() {
+  currentContextProfileRequestId += 1;
   state.documents.cv = createEmptyDocumentSlot('cv');
   state.documents.jd = createEmptyDocumentSlot('jd');
   state.sourceFolder = createEmptySourceFolderState();
+  state.currentContextProfile = null;
   state.currentWorkspaceId = '';
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
   state.pendingOutputLanguage = '';
-  clearCachedDraftLanguageVariants();
+  clearCachedDraftVariants();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
@@ -2442,6 +2732,10 @@ async function handleDroppedFiles(event, preferredSlot) {
 }
 
 function bindDropTarget(element, preferredSlot) {
+  if (!element) {
+    return;
+  }
+
   element.addEventListener('dragover', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -2493,6 +2787,21 @@ elements.openBriefingTab.addEventListener('click', async () => {
     }
   }
 
+  render();
+});
+
+elements.openWorkspaceContextTab.addEventListener('click', () => {
+  state.contextTab = 'workspace';
+  render();
+});
+
+elements.openManualContextTab.addEventListener('click', () => {
+  state.contextTab = 'manual';
+  render();
+});
+
+elements.openRecentContextTab.addEventListener('click', () => {
+  state.contextTab = 'recent';
   render();
 });
 
@@ -2602,8 +2911,6 @@ elements.summaryEditor.addEventListener('blur', async () => {
 });
 
 bindDropTarget(elements.dropzone, null);
-bindDropTarget(elements.cv.card, 'cv');
-bindDropTarget(elements.jd.card, 'jd');
 
 Promise.all([
   loadConfiguration(),

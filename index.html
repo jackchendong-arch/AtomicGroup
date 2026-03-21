@@ -264,22 +264,6 @@
         line-height: 1.6;
       }
 
-      .intake-header {
-        align-items: center;
-      }
-
-      .intake-heading {
-        display: flex;
-        align-items: center;
-        min-width: 0;
-      }
-
-      .intake-heading h2 {
-        font-size: 1.12rem;
-        line-height: 1.1;
-        white-space: nowrap;
-      }
-
       .status-chip {
         display: inline-flex;
         align-items: center;
@@ -296,8 +280,8 @@
       }
 
       .dropzone {
-        margin: 18px 0 16px;
-        padding: 22px 18px;
+        margin: 12px 0 10px;
+        padding: 14px 14px;
         border: 1.5px dashed rgba(23, 32, 51, 0.2);
         border-radius: 24px;
         background:
@@ -308,34 +292,34 @@
 
       .dropzone strong {
         display: block;
-        margin-bottom: 6px;
-        font-size: 1rem;
+        margin-bottom: 4px;
+        font-size: 0.96rem;
       }
 
       .dropzone p {
         margin: 0;
         color: var(--muted);
-        font-size: 0.88rem;
-        line-height: 1.45;
+        font-size: 0.82rem;
+        line-height: 1.35;
       }
 
       .source-stack {
         display: grid;
-        gap: 12px;
-        margin-top: 14px;
+        gap: 10px;
+        margin-top: 12px;
       }
 
       .source-card,
       .template-card {
-        padding: 14px 15px;
+        padding: 11px 12px;
         border: 1px solid var(--line);
-        border-radius: 20px;
+        border-radius: 18px;
         background: rgba(255, 255, 255, 0.74);
       }
 
       .source-title {
         display: block;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
 
       .source-title-block {
@@ -361,14 +345,14 @@
       .source-file-row {
         display: grid;
         gap: 0;
-        margin-top: 2px;
+        margin-top: 1px;
       }
 
       .source-file-name {
-        font-size: 0.95rem;
+        font-size: 0.91rem;
         font-weight: 700;
         color: var(--ink);
-        line-height: 1.35;
+        line-height: 1.3;
         word-break: break-word;
       }
 
@@ -381,7 +365,7 @@
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
-        margin-top: 14px;
+        margin-top: 12px;
       }
 
       .primary-import-actions .btn-primary,
@@ -390,50 +374,149 @@
       }
 
       .source-folder-card {
-        margin-top: 14px;
+        margin-top: 10px;
       }
 
-      .source-folder-head {
+      .current-context-card {
+        margin-top: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .current-context-card.is-hidden {
+        display: none;
+      }
+
+      .current-context-head {
         display: flex;
         justify-content: space-between;
-        gap: 12px;
+        gap: 10px;
         align-items: flex-start;
       }
 
-      .source-folder-head h3 {
+      .current-context-head h3 {
+        margin: 0;
+        font-size: 0.98rem;
+      }
+
+      .current-context-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .current-context-field {
+        display: grid;
+        gap: 2px;
+      }
+
+      .current-context-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .current-context-value {
+        font-size: 0.96rem;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.35;
+        word-break: break-word;
+      }
+
+      .current-context-files {
+        display: grid;
+        gap: 6px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(23, 32, 51, 0.08);
+      }
+
+      .current-context-file {
+        display: grid;
+        gap: 2px;
+      }
+
+      .current-context-meta {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        color: var(--muted);
+        word-break: break-word;
+      }
+
+      .context-panel {
+        margin-top: 10px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .context-panel-head h3 {
         margin: 0;
         font-size: 0.96rem;
       }
 
-      .source-folder-head .field-note {
-        margin-top: 4px;
-        font-size: 0.84rem;
+      .context-tabs {
+        display: flex;
+        gap: 6px;
+        padding: 4px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+        overflow-x: auto;
       }
 
-      .source-folder-name {
-        margin-top: 10px;
-        font-size: 0.92rem;
+      .context-tab-button {
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 11px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .context-tab-button.is-active {
+        background: rgba(187, 91, 52, 0.12);
+        color: var(--accent-deep);
+      }
+
+      .context-tab-panel {
+        display: grid;
+        gap: 10px;
+      }
+
+      .context-tab-panel.is-hidden {
+        display: none;
+      }
+
+      .workspace-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .workspace-name {
+        font-size: 0.9rem;
         font-weight: 700;
         color: var(--ink);
         word-break: break-word;
       }
 
-      .source-folder-name.is-empty {
+      .workspace-name.is-empty {
         color: var(--muted);
         font-weight: 600;
       }
 
-      .source-folder-stats {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 10px;
-      }
-
       .source-folder-workspace {
         display: grid;
-        gap: 12px;
-        margin-top: 12px;
+        gap: 8px;
+        margin-top: 2px;
       }
 
       .source-folder-workspace.is-hidden {
@@ -442,8 +525,8 @@
 
       .source-folder-workspace-row {
         display: grid;
-        gap: 8px;
-        padding: 12px;
+        gap: 6px;
+        padding: 8px 9px;
         border: 1px solid rgba(23, 32, 51, 0.08);
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.74);
@@ -461,32 +544,18 @@
         font-size: 0.9rem;
       }
 
-      .source-folder-workspace-help {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.8rem;
-        line-height: 1.45;
-      }
-
-      .source-folder-selected {
-        font-weight: 700;
-        font-size: 0.84rem;
-        color: var(--accent-deep);
-        word-break: break-word;
-      }
-
       .source-folder-empty-note {
         margin: 0;
         color: var(--muted);
-        font-size: 0.84rem;
-        line-height: 1.45;
+        font-size: 0.79rem;
+        line-height: 1.35;
       }
 
       .recent-work-section {
         display: grid;
-        gap: 10px;
-        margin-top: 14px;
-        padding-top: 14px;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
         border-top: 1px solid rgba(23, 32, 51, 0.08);
       }
 
@@ -508,14 +577,14 @@
 
       .recent-work-list {
         display: grid;
-        gap: 8px;
+        gap: 5px;
       }
 
       .recent-work-item {
         display: grid;
-        gap: 3px;
+        gap: 2px;
         width: 100%;
-        padding: 11px 12px;
+        padding: 8px 9px;
         border: 1px solid rgba(23, 32, 51, 0.1);
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.7);
@@ -535,38 +604,58 @@
       }
 
       .recent-work-title {
-        font-size: 0.88rem;
+        font-size: 0.84rem;
         font-weight: 700;
       }
 
       .recent-work-meta {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: var(--muted);
-        line-height: 1.45;
+        line-height: 1.3;
         word-break: break-word;
       }
 
       .recent-work-empty {
-        margin: 12px 0 0;
+        margin: 8px 0 0;
         color: var(--muted);
-        font-size: 0.82rem;
-        line-height: 1.45;
+        font-size: 0.76rem;
+        line-height: 1.3;
       }
 
       .source-management {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
+        display: grid;
         gap: 8px;
         margin-top: 10px;
+      }
+
+      .draft-options-card {
+        margin-top: 10px;
+      }
+
+      .draft-options-card h3 {
+        margin: 0 0 8px;
+        font-size: 0.96rem;
+      }
+
+      .draft-options-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .draft-options-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--muted);
       }
 
       .mode-toggle {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 4px;
+        padding: 3px;
         border: 1px solid rgba(23, 32, 51, 0.08);
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.78);
@@ -575,11 +664,11 @@
       .mode-toggle-button {
         border: 0;
         border-radius: 999px;
-        padding: 7px 12px;
+        padding: 5px 10px;
         background: transparent;
         color: var(--muted);
         font: inherit;
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 700;
         cursor: pointer;
         transition: background 140ms ease, color 140ms ease, transform 140ms ease;
@@ -619,7 +708,9 @@
         line-height: 1.45;
       }
 
-      .field-note:empty {
+      .field-note:empty,
+      .source-folder-empty-note:empty,
+      .recent-work-empty:empty {
         display: none;
       }
 
@@ -1358,116 +1449,125 @@
         <section class="workbench-layout" id="workbench-view">
           <aside class="intake-rail">
             <section class="sidebar-panel">
-              <div class="intake-header">
-                <div class="intake-heading">
-                  <h2>Load Sources</h2>
-                </div>
-                <span class="status-chip" id="source-panel-status">0 / 2 Loaded</span>
-              </div>
-
-              <div class="dropzone" id="dropzone">
-                <strong>Drop CV + JD</strong>
-                <p>Drop two files here, or drop one file onto a card.</p>
-              </div>
-
-              <div class="primary-import-actions">
-                <button class="btn-primary" id="choose-cv-button" type="button">Choose CV</button>
-                <button class="btn-secondary" id="choose-jd-button" type="button">Choose JD</button>
-              </div>
-
-              <section class="template-card source-folder-card">
-                <div class="source-folder-head">
+              <section class="source-card current-context-card is-hidden" id="current-context-panel">
+                <div class="current-context-head">
                   <div>
-                    <h3>Source Folder</h3>
-                    <p class="field-note" id="source-folder-path">Choose a local folder to browse supported CV and JD files in the workbench.</p>
+                    <h3>Current Candidate</h3>
+                    <p class="field-note" id="current-workspace-note"></p>
                   </div>
-                  <div class="source-actions">
-                    <button class="btn-ghost btn-inline" id="choose-source-folder-button" type="button">Choose Folder</button>
-                    <button class="btn-ghost btn-inline" id="refresh-source-folder-button" type="button" disabled>Refresh</button>
+                  <span class="status-chip" id="current-context-status">Ready</span>
+                </div>
+                <div class="current-context-grid">
+                  <div class="current-context-field" id="current-role-field">
+                    <span class="current-context-label">Role</span>
+                    <div class="current-context-value" id="current-role-name"></div>
+                  </div>
+                  <div class="current-context-field" id="current-candidate-field">
+                    <span class="current-context-label">Candidate</span>
+                    <div class="current-context-value" id="current-candidate-name"></div>
                   </div>
                 </div>
-                <div class="source-folder-name is-empty" id="source-folder-name">No source folder selected</div>
-                <div class="source-folder-stats" id="source-folder-stats"></div>
-                <div class="source-folder-workspace is-hidden" id="source-folder-workspace">
-                  <div class="source-folder-workspace-row">
-                    <div class="source-folder-workspace-head">
-                      <strong>Workspace JD</strong>
-                      <div class="source-actions">
-                        <span class="source-folder-selected" id="source-folder-jd-selected">No JD selected</span>
-                        <button class="btn-ghost btn-inline" id="load-source-folder-jd-button" type="button">Load JD</button>
-                      </div>
-                    </div>
-                    <div class="field">
-                      <select id="source-folder-jd-select"></select>
-                    </div>
-                    <p class="source-folder-workspace-help">Choose the active JD for this role workspace, then load it into the workbench when needed.</p>
+                <div class="current-context-files">
+                  <div class="current-context-file" id="current-jd-field">
+                    <span class="current-context-label">Active JD</span>
+                    <div class="current-context-value" id="current-jd-file"></div>
                   </div>
-                  <div class="source-folder-workspace-row">
-                    <div class="source-folder-workspace-head">
-                      <strong>Candidate CV</strong>
-                      <div class="source-actions">
-                        <span class="source-folder-selected" id="source-folder-cv-selected">No CV selected</span>
-                        <button class="btn-ghost btn-inline" id="load-source-folder-cv-button" type="button">Load CV</button>
-                      </div>
-                    </div>
-                    <div class="field">
-                      <select id="source-folder-cv-select"></select>
-                    </div>
-                    <p class="source-folder-workspace-help">Switch candidate here while keeping the same role workspace context.</p>
+                  <div class="current-context-file" id="current-cv-field">
+                    <span class="current-context-label">Active CV</span>
+                    <div class="current-context-value" id="current-cv-file"></div>
                   </div>
                 </div>
-                <p class="source-folder-empty-note" id="source-folder-empty-note">Browse a local role workspace folder here and choose one active JD plus one candidate CV.</p>
-                <div class="recent-work-section is-hidden" id="recent-work-section">
-                  <div class="recent-work-head">
-                    <strong>Recent Work</strong>
-                    <button class="btn-ghost btn-inline" id="clear-recent-workspaces-button" type="button">Clear</button>
-                  </div>
-                  <div class="recent-work-list" id="recent-work-list"></div>
-                </div>
-                <p class="recent-work-empty" id="recent-work-empty">Saved role workspaces will appear here once you start loading candidates and generating drafts.</p>
               </section>
 
-              <div class="source-stack">
-                <article class="source-card" id="cv-card">
-                  <div class="source-title">
-                    <div class="source-title-block">
-                      <h3>Candidate CV</h3>
+              <section class="template-card context-panel">
+                <div class="context-panel-head">
+                  <h3>Context</h3>
+                </div>
+                <div class="context-tabs" role="tablist" aria-label="Context navigation">
+                  <button class="context-tab-button is-active" id="open-workspace-context-tab" type="button" role="tab" aria-selected="true">Role Workspace</button>
+                  <button class="context-tab-button" id="open-manual-context-tab" type="button" role="tab" aria-selected="false">Import Manually</button>
+                  <button class="context-tab-button" id="open-recent-context-tab" type="button" role="tab" aria-selected="false">Recent Work</button>
+                </div>
+
+                <div class="context-tab-panel" id="workspace-context-panel" role="tabpanel">
+                  <div class="workspace-toolbar">
+                    <div class="workspace-name is-empty" id="source-folder-name">No workspace selected</div>
+                    <div class="source-actions">
+                      <button class="btn-ghost btn-inline" id="choose-source-folder-button" type="button">Choose Folder</button>
+                      <button class="btn-ghost btn-inline" id="refresh-source-folder-button" type="button" disabled>Refresh</button>
                     </div>
                   </div>
-                  <div class="source-file-row">
-                    <div class="source-file-name is-empty" id="cv-file-pill">No file selected</div>
-                  </div>
-                  <p class="field-note" id="cv-picker-note">
-                    Drop or choose a file.
-                  </p>
-                </article>
-
-                <article class="source-card" id="jd-card">
-                  <div class="source-title">
-                    <div class="source-title-block">
-                      <h3>Job Description</h3>
+                  <p class="field-note" id="source-folder-path">Choose one folder with the role JD and candidate CVs.</p>
+                  <div class="source-folder-workspace is-hidden" id="source-folder-workspace">
+                    <div class="source-folder-workspace-row">
+                      <div class="source-folder-workspace-head">
+                        <strong>Workspace JD</strong>
+                        <button class="btn-ghost btn-inline" id="load-source-folder-jd-button" type="button">Load JD</button>
+                      </div>
+                      <div class="field">
+                        <select id="source-folder-jd-select"></select>
+                      </div>
+                    </div>
+                    <div class="source-folder-workspace-row">
+                      <div class="source-folder-workspace-head">
+                        <strong>Candidate CV</strong>
+                        <button class="btn-ghost btn-inline" id="load-source-folder-cv-button" type="button">Load Candidate</button>
+                      </div>
+                      <div class="field">
+                        <select id="source-folder-cv-select"></select>
+                      </div>
                     </div>
                   </div>
-                  <div class="source-file-row">
-                    <div class="source-file-name is-empty" id="jd-file-pill">No file selected</div>
-                  </div>
-                  <p class="field-note" id="jd-picker-note">
-                    Drop or choose a file.
-                  </p>
-                </article>
-              </div>
+                  <p class="source-folder-empty-note" id="source-folder-empty-note">Choose a workspace folder to switch between candidates for one role.</p>
+                </div>
 
-              <div class="source-management">
-                <div class="mode-toggle" aria-label="Draft mode">
-                  <button class="mode-toggle-button is-active" id="set-named-mode-button" type="button">Named</button>
-                  <button class="mode-toggle-button" id="set-anonymous-mode-button" type="button">Anonymous</button>
+                <div class="context-tab-panel is-hidden" id="manual-context-panel" role="tabpanel">
+                  <div class="dropzone" id="dropzone">
+                    <strong>Drop CV + JD</strong>
+                    <p>Drop two files here, or replace one source with the file picker.</p>
+                  </div>
+
+                  <div class="primary-import-actions">
+                    <button class="btn-primary" id="choose-cv-button" type="button">Choose CV</button>
+                    <button class="btn-secondary" id="choose-jd-button" type="button">Choose JD</button>
+                  </div>
+
+                  <div class="source-actions">
+                    <button class="btn-ghost btn-inline" id="swap-source-button" type="button">Swap CV / JD</button>
+                  </div>
                 </div>
-                <div class="mode-toggle" aria-label="Output language">
-                  <button class="mode-toggle-button is-active" id="set-english-output-button" type="button">English</button>
-                  <button class="mode-toggle-button" id="set-chinese-output-button" type="button">中文</button>
+
+                <div class="context-tab-panel is-hidden" id="recent-context-panel" role="tabpanel">
+                  <div class="recent-work-section is-hidden" id="recent-work-section">
+                    <div class="recent-work-head">
+                      <strong>Recent Work</strong>
+                      <button class="btn-ghost btn-inline" id="clear-recent-workspaces-button" type="button">Clear</button>
+                    </div>
+                    <div class="recent-work-list" id="recent-work-list"></div>
+                  </div>
+                  <p class="recent-work-empty" id="recent-work-empty">Saved role workspaces will appear here once you start loading candidates and generating drafts.</p>
                 </div>
-                <button class="btn-ghost btn-inline" id="swap-source-button" type="button">Swap CV / JD</button>
-              </div>
+              </section>
+
+              <section class="template-card draft-options-card">
+                <h3>Draft Options</h3>
+                <div class="source-management">
+                  <div class="draft-options-group">
+                    <span class="draft-options-label">Identity</span>
+                    <div class="mode-toggle" aria-label="Draft mode">
+                      <button class="mode-toggle-button is-active" id="set-named-mode-button" type="button">Named</button>
+                      <button class="mode-toggle-button" id="set-anonymous-mode-button" type="button">Anonymous</button>
+                    </div>
+                  </div>
+                  <div class="draft-options-group">
+                    <span class="draft-options-label">Language</span>
+                    <div class="mode-toggle" aria-label="Output language">
+                      <button class="mode-toggle-button is-active" id="set-english-output-button" type="button">English</button>
+                      <button class="mode-toggle-button" id="set-chinese-output-button" type="button">中文</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
               <div class="intake-actions">
                 <button class="btn-primary" id="generate-summary-button" type="button">Generate Summary</button>

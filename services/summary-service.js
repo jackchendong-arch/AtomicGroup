@@ -155,10 +155,16 @@ function extractCandidateName(cvText, fileName) {
   }
 
   for (const line of lines.slice(0, 6)) {
+    const normalizedLine = cleanLine(
+      line
+        .replace(/([A-Za-z])\(/g, '$1 (')
+        .replace(/\)([A-Za-z])/g, ') $1')
+    );
+
     if (
-      /^[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){1,4}(?: \([A-Za-z][A-Za-z\s'-]*\))?$/.test(line) &&
-      !line.includes('@') &&
-      !/\d/.test(line)
+      /^[A-Z][A-Za-z]+(?:\s*\([A-Za-z][A-Za-z\s'-]*\))?(?: [A-Z][A-Za-z]+(?:\s*\([A-Za-z][A-Za-z\s'-]*\))?){1,4}$/.test(normalizedLine) &&
+      !normalizedLine.includes('@') &&
+      !/\d/.test(normalizedLine)
     ) {
       return line;
     }

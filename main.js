@@ -13,6 +13,7 @@ const { RoleWorkspaceStore } = require('./services/role-workspace-service');
 const {
   buildSuggestedOutputFilename,
   describeEmploymentExtraction,
+  extractDocumentDerivedProfile,
   renderHiringManagerWordDocument
 } = require('./services/hiring-manager-template-service');
 const {
@@ -33,7 +34,6 @@ const {
   normalizeGeneratedSummary
 } = require('./services/summary-service');
 const {
-  buildAnonymizedGenerationInputs,
   anonymizeDraftOutput
 } = require('./services/anonymization-service');
 const {
@@ -395,6 +395,25 @@ function applyDraftOutputMode({ outputMode, recruiterSummary, briefing, cvDocume
   };
 }
 
+function buildWorkspaceDerivedProfilePayload({ cvDocument, jdDocument }) {
+  const profile = extractDocumentDerivedProfile({
+    cvDocument: cvDocument || null,
+    jdDocument: jdDocument || null
+  });
+
+  return {
+    candidateName: String(profile.candidateName || '').trim(),
+    roleTitle: String(profile.roleTitle || '').trim(),
+    candidateLocation: String(profile.candidateLocation || '').trim(),
+    candidatePreferredLocation: String(profile.candidatePreferredLocation || '').trim(),
+    candidateNationality: String(profile.candidateNationality || '').trim(),
+    candidateLanguages: Array.isArray(profile.candidateLanguages) ? profile.candidateLanguages.filter(Boolean) : [],
+    noticePeriod: String(profile.noticePeriod || '').trim(),
+    jobTitle: String(profile.jobTitle || '').trim(),
+    companyName: String(profile.companyName || '').trim()
+  };
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1440,
@@ -455,6 +474,15 @@ ipcMain.handle('workspace:list-source-folder', async (_event, { folderPath }) =>
   }
 
   return listSourceFolderDocuments(folderPath);
+});
+
+ipcMain.handle('workspace:derive-profile', async (_event, payload = {}) => {
+  return {
+    profile: buildWorkspaceDerivedProfilePayload({
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    })
+  };
 });
 
 ipcMain.handle('workspace:list-recent', async () => {
@@ -787,23 +815,19 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     debugTrace.push(`Output language: ${outputLanguage}`);
     debugTrace.push(`CV source file: ${payload.cvDocument?.file?.name || '(unknown)'}`);
     debugTrace.push(`JD source file: ${payload.jdDocument?.file?.name || '(unknown)'}`);
+    debugTrace.push('Recruiter summary generation is always grounded on the named CV/JD inputs.');
 
-    const generationInputs = outputMode === 'anonymous'
-      ? buildAnonymizedGenerationInputs({
-        cvDocument: payload.cvDocument,
-        jdDocument: payload.jdDocument
-      })
-      : {
-        cvDocument: payload.cvDocument,
-        jdDocument: payload.jdDocument
-      };
+    const generationInputs = {
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    };
     const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
     const summaryRequest = buildSummaryRequest({
       cvDocument: generationInputs.cvDocument,
       jdDocument: generationInputs.jdDocument,
       systemPrompt: settings.systemPrompt,
       templateGuidance,
-      outputMode,
+      outputMode: 'named',
       outputLanguage
     });
     const briefingRequest = buildBriefingRequest({
@@ -811,7 +835,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       jdDocument: generationInputs.jdDocument,
       systemPrompt: settings.systemPrompt,
       templateGuidance,
-      outputMode,
+      outputMode: 'named',
       outputLanguage
     });
     debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
@@ -908,13 +932,13 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 
     return {
       templateLabel: summaryRequest.templateLabel,
-      summary: preparedOutput.summary,
+      summary: recruiterSummary,
       hiringManagerBriefingReview: hiringManagerBriefing.review,
       prompt: summaryRequest.prompt,
       providerLabel: settings.providerLabel,
       model: settings.model,
-      briefing: preparedOutput.briefing,
-      outputMode: preparedOutput.outputMode,
+      briefing: validatedBriefing,
+      outputMode,
       outputLanguage,
       modeLabel: preparedOutput.modeLabel,
       approvalWarnings: preparedOutput.warnings
@@ -939,18 +963,25 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const targetLanguage = normalizeOutputLanguage(payload.targetLanguage);
 
   if (sourceLanguage === targetLanguage) {
-    const composed = prepareHiringManagerBriefingOutput({
-      briefing: payload.briefing,
+    const preparedOutput = applyDraftOutputMode({
+      outputMode: payload.outputMode,
       recruiterSummary: payload.summary,
+      briefing: payload.briefing,
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    });
+    const composed = prepareHiringManagerBriefingOutput({
+      briefing: preparedOutput.briefing,
+      recruiterSummary: preparedOutput.summary,
       outputLanguage: targetLanguage
     });
 
     return {
       summary: payload.summary,
-      briefing: composed.briefing,
+      briefing: payload.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
-      approvalWarnings: payload.approvalWarnings || []
+      approvalWarnings: preparedOutput.warnings
     };
   }
 
@@ -964,7 +995,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const translationRequest = buildDraftTranslationRequest({
     summary: payload.summary,
     briefing: currentBriefing,
-    outputMode: payload.outputMode,
+    outputMode: 'named',
     sourceLanguage,
     targetLanguage
   });
@@ -995,26 +1026,25 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     translated = parseTranslatedDraftResponse(repairedResult.text, currentBriefing);
   }
 
-  const composed = prepareHiringManagerBriefingOutput({
-    briefing: translated.briefing,
+  const preparedOutput = applyDraftOutputMode({
+    outputMode: payload.outputMode,
     recruiterSummary: translated.summary,
+    briefing: translated.briefing,
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const composed = prepareHiringManagerBriefingOutput({
+    briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary,
     outputLanguage: targetLanguage
   });
-  const approvalWarnings = payload.outputMode === 'anonymous'
-    ? anonymizeDraftOutput({
-      recruiterSummary: translated.summary,
-      briefing: translated.briefing,
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
-    }).warnings
-    : [];
 
   return {
     summary: translated.summary,
-    briefing: composed.briefing,
+    briefing: translated.briefing,
     hiringManagerBriefingReview: composed.review,
     outputLanguage: targetLanguage,
-    approvalWarnings
+    approvalWarnings: preparedOutput.warnings
   };
 });
 
@@ -1042,9 +1072,9 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
   });
 
   return {
-    briefing: composed.briefing,
+    briefing: requestedBriefing,
     hiringManagerBriefingReview: composed.review,
-    summary: preparedOutput.summary,
+    summary: payload.summary,
     modeLabel: preparedOutput.modeLabel,
     approvalWarnings: preparedOutput.warnings
   };

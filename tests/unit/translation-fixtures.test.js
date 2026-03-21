@@ -137,3 +137,22 @@ test(
     assert.doesNotMatch(englishReview, /技能\/优势及其他/u);
   }
 );
+
+test(
+  'Role4 CV4-6 and JD4 derive the correct current-context candidate name and role title for workspace navigation',
+  {
+    skip: fixtureExists('Role4/CV4-6.pdf') && fixtureExists('Role4/JD4.docx')
+      ? false
+      : 'Role4 fixture documents are not available on this machine.'
+  },
+  async () => {
+    const fixtureRoot = path.join(FIXTURE_ROOT, 'Role4');
+    const cvDocument = await importDocument(path.join(fixtureRoot, 'CV4-6.pdf'));
+    const jdDocument = await importDocument(path.join(fixtureRoot, 'JD4.docx'));
+
+    const profile = extractDocumentDerivedProfile({ cvDocument, jdDocument });
+
+    assert.equal(profile.candidateName, 'Jimmy(Feiyang) Tan');
+    assert.equal(profile.roleTitle, '区块链开发工程师 (Blockchain Developer)');
+  }
+);

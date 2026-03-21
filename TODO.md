@@ -140,7 +140,7 @@ Mark a release complete only when the work is:
 ## Release 3: Approval Gate and Anonymous Mode
 - [x] Release 3 shipped, completed, and tested.
 - Add a recruiter control to choose named mode or anonymous mode before generation.
-- Make anonymous mode apply to recruiter and hiring-manager derived outputs at generation time instead of relying only on late-stage regex cleanup.
+- Make anonymous mode apply to hiring-manager-facing derived outputs and outward sharing while keeping recruiter-facing candidate summary and current-candidate context named.
 - Keep raw CV and JD source views unchanged while applying anonymization to `Candidate Summary Review`, `Hiring Manager Briefing`, and Word export output.
 - Implement masking for candidate full name in anonymous mode.
 - Expand name masking beyond exact full-name matches so common first-name, surname, and filename-derived variants are redacted more reliably.
@@ -185,9 +185,18 @@ Mark a release complete only when the work is:
   - one role workspace folder treated as one active JD plus many candidate CVs
   - compact JD/CV selectors instead of long stacked file cards
   - direct file picker workflow kept alongside folder-based intake
+  - tabbed context panel for role workspace, manual import, and recent work
+  - `Role Workspace` as the default context tab, with manual import and recent work demoted to secondary navigation tabs
+  - current candidate panel that only appears when a candidate is loaded
+  - current candidate panel driven from deterministic CV/JD extraction as soon as source documents are loaded, without waiting for LLM generation
+  - current candidate label extraction hardened for nickname-style candidate names and bilingual JD headings used in role-workspace fixtures
+  - redundant outer left-rail wrapper removed so the rail starts directly with working sections
+  - recent work labels driven by candidate name and role title when draft content is available
   - user-selectable English / Chinese output language across summary, briefing, email, and Word output
   - post-generation language switching that translates the current derived draft instead of rerunning full CV/JD assessment
   - cached language variants so switching back to an already available language avoids another LLM translation call
+  - in-session named/anonymous draft variant caching for the same candidate-role workspace
+  - deterministic named/anonymous hiring-manager output switching without rerunning full summary generation for the current candidate-role draft
   - file-backed bilingual regression coverage across the external `Test1` to `Test8` recruiter fixture set
   - local role-workspace snapshots for the selected folder, active JD, current candidate CV, and latest draft
   - recent work list with reopen flow
@@ -199,6 +208,7 @@ Mark a release complete only when the work is:
 - Remaining:
   - add dedicated reopen / rehydration regression coverage around saved role workspaces
   - extend retrieval manifests into richer evidence tracing surfaced for recruiter review rather than only backend diagnostics
+- Keep `UserGuide.md` updated as the workflow changes so the shipped behavior and user guidance stay aligned.
 - After a draft has already been generated, let the recruiter switch output language by translating the current derived summary and briefing outputs into the selected language instead of rerunning full CV/JD assessment.
 - Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.
 - Cache the current draft in both language variants when available so switching back to a previously translated language reuses the existing draft instead of re-triggering LLM translation.
@@ -228,7 +238,7 @@ Mark a release complete only when the work is:
 - Add a strict renderer Content Security Policy and remove any need for unsafe script execution.
 - Block unexpected navigation and window creation in the main app surface; do not allow remote URLs to load inside the main app window.
 - Review preload-exposed IPC methods and narrow them to validated, least-privilege operations only.
-- Preserve anonymous-before-send behavior so anonymized runs mask data before LLM prompt assembly, not after the API call.
+- Preserve minimum-necessary content rules for LLM calls and apply anonymous mode consistently to hiring-manager-facing briefing, email, and export outputs before sharing.
 - Add explicit clearing of in-memory workspace source content on workspace reset / close and when loading a new candidate.
 - Add structured error states for file import, extraction, generation, anonymization, and email handoff.
 - Add recruiter-friendly retry actions for recoverable failures.
@@ -284,7 +294,7 @@ Mark a release complete only when the work is:
 - Use the grounded structured briefing model as the shared content source of truth for hiring-manager briefing review and Word export.
 - Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.
 - Never persist raw CV/JD text or generated candidate content to logs by default; use hashes, metadata, and explicit opt-in retention instead.
-- Treat the LLM API call as the primary PII egress point and keep anonymous-before-send plus minimum-necessary content as baseline controls.
+- Treat the LLM API call as the primary PII egress point and keep minimum-necessary source retrieval plus explicit output-scoped anonymization as baseline controls.
 - Manage prompts, Markdown guidance templates, and Word templates through one app-managed artifact registry with type-specific metadata and versioning.
 - Replace consultant-edited free-form prompts with selection/import of approved prompt artifacts.
 - Persist generation run artifacts with prompt/template versions, input hashes, model settings, and later retrieval manifests so decisions remain traceable.

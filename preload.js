@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   listSourceFolder(payload) {
     return ipcRenderer.invoke('workspace:list-source-folder', payload);
   },
+  deriveWorkspaceProfile(payload) {
+    return ipcRenderer.invoke('workspace:derive-profile', payload);
+  },
   listRecentWorkspaces() {
     return ipcRenderer.invoke('workspace:list-recent');
   },

@@ -1112,9 +1112,35 @@ function extractHiringManagerTarget(jdText) {
 
 function extractRoleTitleFromJd(jdText, fileName) {
   const lines = splitNonEmptyLines(jdText);
-  const labeledTitle = extractLabeledValue(lines, ['Job title', 'Role', 'Position', 'Title', '职位', '岗位', '职位名称']);
+  const labels = ['Job title', 'Role', 'Position', 'Title', '职位', '岗位', '职位名称'];
+  let labeledTitle = '';
 
-  if (labeledTitle && !/^(about the job|job description|job summary|overview|responsibilities|requirements)$/i.test(labeledTitle)) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    for (const label of labels) {
+      const inlineMatch = line.match(new RegExp(`^${escapeRegExp(label)}\\s*[:：]\\s*(.+)$`, 'i'));
+
+      if (inlineMatch?.[1]) {
+        labeledTitle = inlineMatch[1].trim();
+        break;
+      }
+
+      if (normalizeHeadingKey(line) === normalizeHeadingKey(label) && lines[index + 1]) {
+        labeledTitle = lines[index + 1].trim();
+        break;
+      }
+    }
+
+    if (labeledTitle) {
+      break;
+    }
+  }
+
+  if (
+    labeledTitle &&
+    !/^(about the job|job description|job summary|overview|responsibilities|requirements|信息|概述|说明)$/i.test(labeledTitle)
+  ) {
     return labeledTitle;
   }
 

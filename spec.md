@@ -43,7 +43,7 @@ Deliver a desktop workflow that reduces recruiter effort while preserving recrui
 The product should:
 - Produce a recruiter-ready candidate summary from a CV and JD.
 - Keep a human review step mandatory before any outbound sharing.
-- Support named and anonymous outputs.
+- Support named and anonymous hiring-manager-facing outputs while keeping recruiter-facing review named.
 - Support English and Chinese output for derived recruiter-facing and hiring-manager-facing artifacts.
 - Enforce a repeatable format based on a reference template.
 - Fit naturally into current recruiter workflows on a laptop.
@@ -69,31 +69,36 @@ As a headhunter, I want to load a candidate CV and a job description, generate a
 
 ## End-to-End Workflow
 1. User opens the desktop app.
-2. User adds one CV and one JD via:
-   - file picker, or
-   - drag and drop.
-3. The app extracts the document text and shows the imported files.
-4. User selects:
-   - named or anonymous output
+2. User establishes the current working context by either:
+   - opening a role workspace folder that contains one role JD and many candidate CVs, or
+   - manually importing one CV and one JD via file picker or drag and drop.
+3. The app shows the current role and current candidate as the primary left-rail context.
+4. The app lets the user switch candidate or JD context without losing sight of the currently loaded files.
+5. User selects:
+   - named or anonymous hiring-manager output
    - output language
    - a recruiter summary guidance template
    - a hiring-manager Word template
-5. User clicks `Generate Summary`.
-6. The app produces:
+6. User clicks `Generate Summary`.
+7. The app produces:
    - `Candidate Summary Review` for the recruiter, and
    - `Hiring Manager Briefing` for consultant validation before export
-7. These outputs are based on:
+8. These outputs are based on:
    - CV content
    - JD content
    - the selected Markdown guidance template
    - the grounded structured briefing model
-8. User reviews and edits the draft in the app.
-9. If the user switches output language after generation, the app should translate the current derived outputs instead of rerunning the full CV/JD assessment, and should reuse a cached language variant when already available.
-10. User marks the draft as approved.
-11. User clicks `Save Word Draft` and/or `Share by Email`.
-12. The app renders the final Word document through the configured Word template.
-13. The app opens the system's default email client with a prepared draft when requested.
-14. User performs the final send manually.
+9. User reviews and edits the draft in the app.
+10. If the user switches output language after generation, the app should translate the current derived outputs instead of rerunning the full CV/JD assessment, and should reuse a cached language variant when already available.
+11. If the user switches output identity mode after generation:
+   - the app should reuse a cached named/anonymous variant when already available for the current candidate-role draft
+   - the app may apply deterministic anonymization to the hiring-manager-facing outputs from the current named draft without rerunning full LLM generation
+   - recruiter-facing candidate summary and current-candidate context remain named
+12. User marks the draft as approved.
+13. User clicks `Save Word Draft` and/or `Share by Email`.
+14. The app renders the final Word document through the configured Word template.
+15. The app opens the system's default email client with a prepared draft when requested.
+16. User performs the final send manually.
 
 ## Functional Requirements
 
@@ -109,6 +114,24 @@ Initial recommended file support:
 - PDF
 - DOCX
 - TXT
+
+### 1A. Left Rail Interaction Model
+- The left rail should foreground the current working context:
+  - current role
+  - current candidate
+  - currently loaded JD and CV
+- The left rail should separate current context from context-switching controls.
+- The current-candidate panel should only appear when a candidate is actually loaded, and should avoid empty placeholder text when no candidate is active.
+- The current-candidate panel should prefer deterministic CV/JD-derived profile fields as soon as source documents are loaded, instead of waiting for LLM generation.
+- Role workspace navigation should be the primary intake model for recruiter workflows:
+  - one role workspace folder
+  - one active JD
+  - many candidate CVs
+- Role workspace, manual import, and recent work should share one context-navigation panel with tabbed navigation.
+- Manual single-file import and drag/drop should remain available, but should read as fallback utilities rather than the primary workflow.
+- Recent work should be treated as secondary navigation, not as part of the active intake card.
+- Output options such as named/anonymous and English/Chinese should be grouped as draft options, not mixed with source-loading mechanics.
+- Output identity and output language switching should avoid unnecessary repeat model calls when a safe cached or deterministic draft variant is available.
 
 ### 2. Text Extraction and Validation
 - The app extracts raw text from the uploaded CV and JD.
@@ -223,7 +246,7 @@ Tier 1 priorities should be addressed before lower-priority production polish wo
 - Store the LLM API key in the OS credential store only.
 - Do not allow plaintext API-key fallback in config files or other app-managed files.
 - Treat the LLM API call as the primary PII egress point.
-- Apply anonymous mode before prompt assembly so anonymized runs do not send direct identifiers to the LLM provider.
+- Keep recruiter-facing candidate summary and current-candidate context named, while applying anonymous mode to hiring-manager-facing briefing, email, and Word outputs.
 - Send only the minimum necessary CV/JD content for the generation task, with workspace-scoped retrieval reducing prompt size later.
 - Explicitly harden Electron renderer security with:
   - `nodeIntegration: false`
@@ -573,8 +596,8 @@ Scope:
 - Draft status tracking
 
 Acceptance criteria:
-- User can generate both named and anonymous versions.
-- Anonymous mode masks the defined core PII set.
+- User can review a named recruiter summary while switching hiring-manager-facing outputs between named and anonymous variants.
+- Anonymous mode masks the defined core PII set in the hiring-manager briefing, email, and Word document outputs.
 - User must explicitly approve a draft before share actions are available.
 - User can still edit the output after generation and before approval.
 
@@ -621,6 +644,17 @@ Scope:
 - Structured-briefing diagnostics and repair paths for mixed-language or malformed-output issues found in real fixtures
 
 Current implemented slices inside Release 5:
+- left rail centered on current candidate-in-role context instead of a generic intake stack
+- tabbed context panel for:
+  - role workspace
+  - manual import
+  - recent work
+- conditional current-candidate summary card that appears only when a candidate is loaded
+- current-candidate panel populated from deterministic CV/JD extraction immediately after source load
+- in-session draft-variant caching across:
+  - named / anonymous
+  - English / Chinese
+- deterministic named/anonymous hiring-manager output switching without rerunning full summary generation
 - selector-based role workspace intake in the sidebar
 - resumable local workspace snapshots and recent-work reopen flow
 - bilingual derived outputs with translation-only language switching and cached variants
@@ -640,10 +674,13 @@ Remaining Release 5 work:
 Acceptance criteria:
 - User can select a role workspace folder, choose one active JD, and review many candidate CVs against that same role context.
 - User can resume recent role work without re-importing everything manually.
+- The left rail makes it immediately clear which candidate is currently loaded for which role.
+- The user can switch candidate context without losing visibility of the current active role/candidate state.
 - Retrieval is limited to the active role workspace and does not mix unrelated candidate or role documents.
 - Existing single-file workflow still works.
 - Recruiter-facing and hiring-manager-facing derived outputs can be produced in English or Chinese.
 - Switching between previously generated language variants does not re-trigger unnecessary LLM translation.
+- Switching between previously available named/anonymous variants does not re-trigger unnecessary full summary generation.
 - Mixed-language regression cases from real recruiter fixtures are covered by repeatable backend tests rather than only UI retesting.
 
 ### Release 6: Production Hardening

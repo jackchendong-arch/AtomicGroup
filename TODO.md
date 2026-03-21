@@ -180,29 +180,24 @@ Mark a release complete only when the work is:
 
 ## Release 5: Local Folder Intake and Job Workspace
 - [-] Release 5 shipped, completed, and tested.
-- Add a folder picker so the recruiter can choose a local role workspace folder.
-- Treat one selected folder as one role workspace containing:
-  - one primary JD
-  - many candidate CVs
-  - optional supporting recruiter files later
-- Show browsable supported files from the selected role workspace folder inside the app.
-- Let the recruiter choose the active JD for the role workspace and then switch between multiple candidate CVs within that same workspace.
-- Present role-workspace file navigation through compact JD/CV selectors rather than long stacked file cards so recruiters can move between candidates quickly.
-- Save a local workspace containing the selected role folder, active JD, current candidate CV, selected template, and latest draft.
-- Build a workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template.
-- Segment JD and CV content into section-aware source blocks with metadata that can be used for validation and retrieval.
-- Add ephemeral per-workspace retrieval over the active JD, current candidate CV, and guidance inputs instead of relying on a global cross-candidate document store.
-- Use workspace-level retrieval to select relevant source blocks for recruiter summary generation, structured briefing extraction, and evidence tracing within the active role workspace.
-- Show a recent work list so the recruiter can reopen prior work.
-- Rehydrate the prior draft, active JD, current candidate CV, and folder selections when a saved role workspace is reopened.
-- Keep the existing direct file picker workflow working alongside folder-based intake.
-- Test reopening a saved role workspace from local history.
-- Add user-selectable output language support for English and Chinese.
-- Apply the selected output language consistently to:
-  - Candidate Summary Review
-  - Hiring Manager Briefing
-  - email draft handoff
-  - generated Word briefing content
+- Implemented so far:
+  - folder picker for a local role workspace folder
+  - one role workspace folder treated as one active JD plus many candidate CVs
+  - compact JD/CV selectors instead of long stacked file cards
+  - direct file picker workflow kept alongside folder-based intake
+  - user-selectable English / Chinese output language across summary, briefing, email, and Word output
+  - post-generation language switching that translates the current derived draft instead of rerunning full CV/JD assessment
+  - cached language variants so switching back to an already available language avoids another LLM translation call
+  - file-backed bilingual regression coverage across the external `Test1` to `Test8` recruiter fixture set
+  - local role-workspace snapshots for the selected folder, active JD, current candidate CV, and latest draft
+  - recent work list with reopen flow
+  - rehydration of the saved folder context, active JD, current candidate CV, and latest draft when reopening recent work
+- Remaining:
+  - build a workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
+  - segment JD and CV content into section-aware source blocks with metadata that can be used for validation and retrieval
+  - add ephemeral per-workspace retrieval over the active JD, current candidate CV, and guidance inputs instead of relying on a global cross-candidate document store
+  - use workspace-level retrieval to select relevant source blocks for recruiter summary generation, structured briefing extraction, and evidence tracing within the active role workspace
+  - add dedicated reopen / rehydration regression coverage around saved role workspaces
 - After a draft has already been generated, let the recruiter switch output language by translating the current derived summary and briefing outputs into the selected language instead of rerunning full CV/JD assessment.
 - Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.
 - Cache the current draft in both language variants when available so switching back to a previously translated language reuses the existing draft instead of re-triggering LLM translation.

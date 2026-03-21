@@ -9,6 +9,7 @@ const {
   SUPPORTED_EXTENSIONS
 } = require('./services/document-service');
 const { listSourceFolderDocuments } = require('./services/source-folder-service');
+const { RoleWorkspaceStore } = require('./services/role-workspace-service');
 const {
   buildSuggestedOutputFilename,
   describeEmploymentExtraction,
@@ -49,6 +50,7 @@ const {
 const { normalizeOutputLanguage } = require('./services/output-language-service');
 
 let settingsStore;
+let roleWorkspaceStore;
 
 function expandHomeDirectory(filePath) {
   if (typeof filePath !== 'string') {
@@ -91,6 +93,16 @@ function getConfiguredBriefingOutputFolder(settings) {
   }
 
   return path.join(app.getPath('documents'), 'AtomicGroup Briefings');
+}
+
+function getRoleWorkspaceStore() {
+  if (!roleWorkspaceStore) {
+    roleWorkspaceStore = new RoleWorkspaceStore({
+      userDataPath: getUserDataPath()
+    });
+  }
+
+  return roleWorkspaceStore;
 }
 
 async function pathPointsToDirectory(filePath) {
@@ -429,6 +441,22 @@ ipcMain.handle('workspace:list-source-folder', async (_event, { folderPath }) =>
   }
 
   return listSourceFolderDocuments(folderPath);
+});
+
+ipcMain.handle('workspace:list-recent', async () => {
+  return getRoleWorkspaceStore().list();
+});
+
+ipcMain.handle('workspace:save-snapshot', async (_event, payload) => {
+  return getRoleWorkspaceStore().save(payload);
+});
+
+ipcMain.handle('workspace:load-snapshot', async (_event, { workspaceId }) => {
+  return getRoleWorkspaceStore().load(workspaceId);
+});
+
+ipcMain.handle('workspace:clear-recent', async () => {
+  return getRoleWorkspaceStore().clear();
 });
 
 ipcMain.handle('llm:get-providers', async () => {

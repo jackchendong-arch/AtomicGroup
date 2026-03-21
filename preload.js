@@ -13,6 +13,18 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   listSourceFolder(payload) {
     return ipcRenderer.invoke('workspace:list-source-folder', payload);
   },
+  listRecentWorkspaces() {
+    return ipcRenderer.invoke('workspace:list-recent');
+  },
+  saveWorkspaceSnapshot(payload) {
+    return ipcRenderer.invoke('workspace:save-snapshot', payload);
+  },
+  loadWorkspaceSnapshot(payload) {
+    return ipcRenderer.invoke('workspace:load-snapshot', payload);
+  },
+  clearRecentWorkspaces() {
+    return ipcRenderer.invoke('workspace:clear-recent');
+  },
   getLlmProviders() {
     return ipcRenderer.invoke('llm:get-providers');
   },

@@ -31,6 +31,8 @@ const state = {
     jd: createEmptyDocumentSlot('jd')
   },
   sourceFolder: createEmptySourceFolderState(),
+  recentWorkspaces: [],
+  currentWorkspaceId: '',
   briefing: null,
   briefingReview: '',
   summary: '',
@@ -42,6 +44,7 @@ const state = {
   approvalWarnings: [],
   lastExportPath: '',
   debugTrace: [],
+  isLoadingWorkspace: false,
   isGenerating: false,
   isTranslating: false,
   isSavingWordDraft: false,
@@ -118,6 +121,10 @@ const elements = {
   loadSourceFolderJdButton: document.getElementById('load-source-folder-jd-button'),
   loadSourceFolderCvButton: document.getElementById('load-source-folder-cv-button'),
   sourceFolderEmptyNote: document.getElementById('source-folder-empty-note'),
+  recentWorkSection: document.getElementById('recent-work-section'),
+  recentWorkList: document.getElementById('recent-work-list'),
+  recentWorkEmpty: document.getElementById('recent-work-empty'),
+  clearRecentWorkspacesButton: document.getElementById('clear-recent-workspaces-button'),
   setNamedModeButton: document.getElementById('set-named-mode-button'),
   setAnonymousModeButton: document.getElementById('set-anonymous-mode-button'),
   setEnglishOutputButton: document.getElementById('set-english-output-button'),
@@ -1049,6 +1056,63 @@ function renderSourceFolder() {
     : 'No CV selected';
 }
 
+function formatRecentWorkspaceUpdatedAt(value) {
+  if (!value) {
+    return 'Updated recently';
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Updated recently';
+  }
+
+  return parsed.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function renderRecentWork() {
+  const busy = isGenerationWorkflowBusy();
+  const hasRecentWork = state.recentWorkspaces.length > 0;
+
+  elements.recentWorkSection.classList.toggle('is-hidden', !hasRecentWork);
+  elements.recentWorkEmpty.classList.toggle('is-hidden', hasRecentWork);
+  elements.clearRecentWorkspacesButton.disabled = busy || !hasRecentWork;
+
+  if (!hasRecentWork) {
+    elements.recentWorkList.innerHTML = '';
+    return;
+  }
+
+  elements.recentWorkList.innerHTML = state.recentWorkspaces
+    .map((workspace) => {
+      const isActive = workspace.workspaceId === state.currentWorkspaceId;
+      const summaryStatus = workspace.hasDraft
+        ? `${workspace.draftLifecycle === 'approved' ? 'Approved' : 'Draft Ready'} · ${workspace.outputLanguage === 'zh' ? '中文' : 'English'}`
+        : 'Sources only';
+      const candidateLabel = workspace.candidateName || workspace.loadedCvName || 'No candidate loaded yet';
+      const roleLabel = workspace.roleTitle || workspace.loadedJdName || workspace.sourceFolderName || 'No role loaded yet';
+
+      return `
+        <button
+          class="recent-work-item${isActive ? ' is-active' : ''}"
+          type="button"
+          data-workspace-id="${escapeHtml(workspace.workspaceId)}"
+          ${busy ? 'disabled' : ''}
+        >
+          <span class="recent-work-title">${escapeHtml(roleLabel)}</span>
+          <span class="recent-work-meta">${escapeHtml(candidateLabel)}</span>
+          <span class="recent-work-meta">${escapeHtml(summaryStatus)} · ${escapeHtml(formatRecentWorkspaceUpdatedAt(workspace.updatedAt))}</span>
+        </button>
+      `;
+    })
+    .join('');
+}
+
 function renderSlot(slot) {
   const slotState = state.documents[slot];
   const slotElements = elements[slot];
@@ -1178,11 +1242,15 @@ function renderSummary() {
 
 function renderBriefing() {
   const hasBriefingReview = state.briefingReview.trim().length > 0;
-  const briefingStatus = state.isGenerating
-    ? 'Generating'
-    : (state.isTranslating
-      ? 'Translating'
-      : (state.isSavingWordDraft ? 'Saving' : (hasBriefingReview ? 'Ready' : 'No Briefing')));
+  const briefingStatus = state.isLoadingWorkspace
+    ? 'Loading'
+    : (state.isGenerating
+      ? 'Generating'
+      : (state.isTranslating
+        ? 'Translating'
+        : (state.isSavingWordDraft
+          ? 'Saving'
+          : (state.isSharingEmail ? 'Preparing Email' : (hasBriefingReview ? 'Ready' : 'No Briefing')))));
   const briefingText = hasBriefingReview
     ? state.briefingReview
     : 'Generate the candidate summary to populate the hiring-manager briefing review.';
@@ -1203,6 +1271,7 @@ function render() {
   renderSlot('cv');
   renderSlot('jd');
   renderSourceFolder();
+  renderRecentWork();
   renderSettingsForm();
   renderSettingsStatus();
   updateSourcePanelStatus();
@@ -1334,6 +1403,7 @@ function setOutputMode(mode) {
   }
 
   render();
+  persistCurrentWorkspaceSnapshot();
 }
 
 function setOutputLanguage(language) {
@@ -1352,6 +1422,7 @@ function setOutputLanguage(language) {
     state.lastExportPath = '';
     state.approvalWarnings = [];
     render();
+    persistCurrentWorkspaceSnapshot();
     return;
   }
 
@@ -1360,6 +1431,7 @@ function setOutputLanguage(language) {
   if (cachedVariant) {
     applyCachedDraftLanguageVariant(normalizedLanguage, cachedVariant);
     render();
+    persistCurrentWorkspaceSnapshot();
     return;
   }
 
@@ -1409,6 +1481,7 @@ async function translateCurrentDraft(targetLanguage) {
     state.summaryMessage = targetLanguage === 'zh'
       ? '当前草稿已翻译为中文。请复核译文后再复制、导出或发送。'
       : 'The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.';
+    await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.outputLanguage = previousLanguage;
     state.pendingOutputLanguage = '';
@@ -1435,6 +1508,7 @@ function approveDraft() {
     : 'Draft approved. Copy and Word export are now enabled.';
   state.generationError = '';
   renderSummary();
+  persistCurrentWorkspaceSnapshot();
 }
 
 function buildSettingsPayloadFromForm() {
@@ -1599,9 +1673,218 @@ function clearWordTemplate() {
   render();
 }
 
+function buildWorkspaceSnapshotPayload() {
+  const candidateName = String(state.briefing?.candidate?.name || '').trim();
+  const roleTitle = String(state.briefing?.role?.title || '').trim();
+
+  return {
+    sourceFolderPath: state.sourceFolder.path,
+    sourceFolderName: state.sourceFolder.name,
+    candidateName,
+    roleTitle,
+    selectedJdPath: state.sourceFolder.selectedJdPath,
+    selectedCvPath: state.sourceFolder.selectedCvPath,
+    loadedJdPath: state.documents.jd.file?.path || '',
+    loadedCvPath: state.documents.cv.file?.path || '',
+    outputMode: state.outputMode,
+    outputLanguage: state.outputLanguage,
+    draftLifecycle: state.draftLifecycle,
+    summary: state.summary,
+    briefing: state.briefing,
+    briefingReview: state.briefingReview,
+    approvalWarnings: state.approvalWarnings,
+    lastExportPath: state.lastExportPath,
+    templateLabel: state.templateLabel
+  };
+}
+
+async function persistCurrentWorkspaceSnapshot() {
+  try {
+    const result = await window.recruitmentApi.saveWorkspaceSnapshot(buildWorkspaceSnapshotPayload());
+    state.recentWorkspaces = result?.recentWorkspaces || [];
+    state.currentWorkspaceId = result?.workspace?.workspaceId || '';
+    renderRecentWork();
+  } catch (_error) {
+    // Keep persistence failures local so they do not interrupt drafting.
+  }
+}
+
+async function loadRecentWorkspaces() {
+  try {
+    const result = await window.recruitmentApi.listRecentWorkspaces();
+    state.recentWorkspaces = result?.recentWorkspaces || [];
+  } catch (_error) {
+    state.recentWorkspaces = [];
+  }
+}
+
+async function openRecentWorkspace(workspaceId) {
+  if (!workspaceId || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  state.isLoadingWorkspace = true;
+  state.view = 'workbench';
+  state.summaryStatus = 'Loading';
+  state.generationError = '';
+  state.summaryMessage = 'Reopening the saved role workspace.';
+  state.progressLabel = 'Loading the saved role workspace...';
+  state.workbenchTab = 'summary';
+  render();
+
+  try {
+    const result = await window.recruitmentApi.loadWorkspaceSnapshot({ workspaceId });
+    const snapshot = result?.workspace;
+
+    if (!snapshot) {
+      throw new Error('The selected recent workspace could not be loaded.');
+    }
+
+    state.recentWorkspaces = result?.recentWorkspaces || state.recentWorkspaces;
+    state.currentWorkspaceId = snapshot.workspaceId || '';
+
+    if (snapshot.sourceFolderPath) {
+      try {
+        const folderResult = await window.recruitmentApi.listSourceFolder({
+          folderPath: snapshot.sourceFolderPath
+        });
+        applySourceFolderListing(folderResult);
+      } catch (error) {
+        state.sourceFolder = {
+          ...createEmptySourceFolderState(),
+          path: snapshot.sourceFolderPath,
+          name: snapshot.sourceFolderName || '',
+          error: error instanceof Error
+            ? error.message
+            : 'Unable to refresh the saved role workspace folder.',
+          selectedJdPath: snapshot.selectedJdPath || '',
+          selectedCvPath: snapshot.selectedCvPath || ''
+        };
+      }
+    } else {
+      state.sourceFolder = createEmptySourceFolderState();
+    }
+
+    if (snapshot.selectedJdPath) {
+      setSelectedSourceFolderJdPath(snapshot.selectedJdPath);
+    }
+
+    if (snapshot.selectedCvPath) {
+      setSelectedSourceFolderCvPath(snapshot.selectedCvPath);
+    }
+
+    state.documents.cv = createEmptyDocumentSlot('cv');
+    state.documents.jd = createEmptyDocumentSlot('jd');
+
+    const slotErrors = [];
+    const hydrateDocument = async (slot, filePath) => {
+      if (!filePath) {
+        return;
+      }
+
+      try {
+        const importResult = await window.recruitmentApi.importDocument({ filePath });
+        setDocumentSlotFromImportResult(importResult, slot, { invalidate: false });
+
+        if (importResult.error) {
+          slotErrors.push(`${slot.toUpperCase()}: ${importResult.error}`);
+        }
+      } catch (error) {
+        state.documents[slot] = {
+          ...createEmptyDocumentSlot(slot),
+          file: {
+            path: filePath,
+            name: filePath.split(/[\\/]/).pop() || filePath,
+            extension: filePath.includes('.') ? filePath.slice(filePath.lastIndexOf('.')).toLowerCase() : 'unknown',
+            sizeBytes: 0,
+            importStatus: 'error'
+          },
+          error: error instanceof Error ? error.message : 'Unable to load the saved source file.'
+        };
+        slotErrors.push(`${slot.toUpperCase()}: ${state.documents[slot].error}`);
+      }
+    };
+
+    await hydrateDocument('jd', snapshot.loadedJdPath);
+    await hydrateDocument('cv', snapshot.loadedCvPath);
+
+    state.briefing = snapshot.briefing || null;
+    state.briefingReview = snapshot.briefingReview || '';
+    state.summary = snapshot.summary || '';
+    state.outputMode = snapshot.outputMode === 'anonymous' ? 'anonymous' : 'named';
+    state.outputLanguage = snapshot.outputLanguage === 'zh' ? 'zh' : 'en';
+    state.pendingOutputLanguage = '';
+    state.approvalWarnings = snapshot.approvalWarnings || [];
+    state.lastExportPath = snapshot.lastExportPath || '';
+    state.templateLabel = snapshot.templateLabel || 'Default Recruiter Profile Template';
+    state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
+    clearCachedDraftLanguageVariants();
+
+    if (state.summary.trim()) {
+      cacheDraftLanguageVariant(state.outputLanguage);
+    }
+
+    state.summaryStatus = state.summary.trim() ? 'Ready' : 'No Draft';
+    state.summaryMessage = slotErrors.length > 0
+      ? `Saved workspace reopened with source-file issues: ${slotErrors.join(' | ')}`
+      : (state.summary.trim()
+        ? 'Saved role workspace reopened.'
+        : 'Saved role workspace reopened. Load or generate as needed.');
+  } catch (error) {
+    state.summaryStatus = 'Failed';
+    state.generationError = error instanceof Error
+      ? error.message
+      : 'Unable to reopen the selected recent workspace.';
+  } finally {
+    state.isLoadingWorkspace = false;
+    state.progressLabel = 'Generating summary with the configured model...';
+    render();
+  }
+}
+
+async function clearRecentWorkspaces() {
+  if (isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  const result = await window.recruitmentApi.clearRecentWorkspaces();
+  state.recentWorkspaces = result?.recentWorkspaces || [];
+  state.currentWorkspaceId = '';
+  render();
+}
+
 async function importDocumentIntoSlot(filePath, slot) {
   const result = await window.recruitmentApi.importDocument({ filePath });
   applyImportedDocument(result, slot);
+}
+
+function setDocumentSlotFromImportResult(result, slot, { invalidate = true } = {}) {
+  state.documents[slot] = {
+    slot,
+    file: result.file,
+    text: result.text,
+    previewText: result.previewText,
+    warnings: result.warnings,
+    error: result.error
+  };
+
+  if (result?.file?.path && state.sourceFolder.files.some((file) => file.path === result.file.path)) {
+    if (slot === 'jd') {
+      setSelectedSourceFolderJdPath(result.file.path);
+    } else {
+      setSelectedSourceFolderCvPath(result.file.path);
+    }
+  }
+
+  if (!invalidate) {
+    return;
+  }
+
+  if (result.error) {
+    invalidateSummary('Fix the import issue before generating the summary.');
+  } else {
+    invalidateSummary('Document imported. Load the other source or generate the summary.');
+  }
 }
 
 function applySourceFolderListing(result) {
@@ -1651,6 +1934,7 @@ async function chooseSourceFolder() {
 
     applySourceFolderListing(result);
     render();
+    await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.sourceFolder = {
       ...createEmptySourceFolderState(),
@@ -1673,6 +1957,7 @@ async function refreshSourceFolder() {
     });
     applySourceFolderListing(result);
     render();
+    await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.sourceFolder = {
       ...state.sourceFolder,
@@ -1701,30 +1986,9 @@ async function loadSelectedWorkspaceCv() {
 }
 
 function applyImportedDocument(result, slot) {
-  state.documents[slot] = {
-    slot,
-    file: result.file,
-    text: result.text,
-    previewText: result.previewText,
-    warnings: result.warnings,
-    error: result.error
-  };
-
-  if (result?.file?.path && state.sourceFolder.files.some((file) => file.path === result.file.path)) {
-    if (slot === 'jd') {
-      setSelectedSourceFolderJdPath(result.file.path);
-    } else {
-      setSelectedSourceFolderCvPath(result.file.path);
-    }
-  }
-
-  if (result.error) {
-    invalidateSummary('Fix the import issue before generating the summary.');
-  } else {
-    invalidateSummary('Document imported. Load the other source or generate the summary.');
-  }
-
+  setDocumentSlotFromImportResult(result, slot);
   render();
+  persistCurrentWorkspaceSnapshot();
 }
 
 async function chooseDocument(slot) {
@@ -1746,6 +2010,7 @@ function swapDocumentAssignments() {
 
   invalidateSummary('Document assignment updated. Generate a fresh draft to reflect the new slot mapping.');
   render();
+  persistCurrentWorkspaceSnapshot();
 }
 
 function canGenerateSummary() {
@@ -1817,7 +2082,7 @@ async function refreshBriefingReview() {
 }
 
 function isGenerationWorkflowBusy() {
-  return state.isGenerating || state.isTranslating || state.isSavingWordDraft || state.isSharingEmail;
+  return state.isLoadingWorkspace || state.isGenerating || state.isTranslating || state.isSavingWordDraft || state.isSharingEmail;
 }
 
 async function generateSummary() {
@@ -1877,6 +2142,7 @@ async function generateSummary() {
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
     state.workbenchTab = 'summary';
+    await persistCurrentWorkspaceSnapshot();
     renderSummary();
   } catch (error) {
     state.isGenerating = false;
@@ -1953,6 +2219,7 @@ async function shareByEmail() {
     }
 
     state.workbenchTab = 'summary';
+    await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     const parsed = splitErrorMessageAndTrace(
       error instanceof Error ? error.message : 'Unable to prepare the email draft.'
@@ -2020,6 +2287,7 @@ async function exportWordDraft() {
     state.summaryStatus = 'Saved';
     state.summaryMessage = `Hiring-manager Word draft saved to ${result.filePath}. This same draft can be reused for future email attachment handoff.`;
     state.workbenchTab = 'briefing';
+    await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     const parsed = splitErrorMessageAndTrace(
       error instanceof Error ? error.message : 'Unable to export the hiring-manager Word draft.'
@@ -2083,6 +2351,7 @@ function resetWorkspace() {
   state.documents.cv = createEmptyDocumentSlot('cv');
   state.documents.jd = createEmptyDocumentSlot('jd');
   state.sourceFolder = createEmptySourceFolderState();
+  state.currentWorkspaceId = '';
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
@@ -2273,13 +2542,25 @@ elements.refreshSourceFolderButton.addEventListener('click', refreshSourceFolder
 elements.sourceFolderJdSelect.addEventListener('change', () => {
   setSelectedSourceFolderJdPath(elements.sourceFolderJdSelect.value);
   render();
+  persistCurrentWorkspaceSnapshot();
 });
 elements.sourceFolderCvSelect.addEventListener('change', () => {
   setSelectedSourceFolderCvPath(elements.sourceFolderCvSelect.value);
   render();
+  persistCurrentWorkspaceSnapshot();
 });
 elements.loadSourceFolderJdButton.addEventListener('click', loadSelectedWorkspaceJd);
 elements.loadSourceFolderCvButton.addEventListener('click', loadSelectedWorkspaceCv);
+elements.recentWorkList.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-workspace-id]');
+
+  if (!trigger) {
+    return;
+  }
+
+  openRecentWorkspace(trigger.dataset.workspaceId);
+});
+elements.clearRecentWorkspacesButton.addEventListener('click', clearRecentWorkspaces);
 elements.swapSourceButton.addEventListener('click', swapDocumentAssignments);
 elements.setNamedModeButton.addEventListener('click', () => setOutputMode('named'));
 elements.setAnonymousModeButton.addEventListener('click', () => setOutputMode('anonymous'));
@@ -2317,13 +2598,19 @@ elements.summaryEditor.addEventListener('blur', async () => {
   setRichDocumentContent(elements.summaryEditor, state.summary);
   renderBriefing();
   renderSummary();
+  await persistCurrentWorkspaceSnapshot();
 });
 
 bindDropTarget(elements.dropzone, null);
 bindDropTarget(elements.cv.card, 'cv');
 bindDropTarget(elements.jd.card, 'jd');
 
-loadConfiguration().catch((error) => {
+Promise.all([
+  loadConfiguration(),
+  loadRecentWorkspaces()
+]).then(() => {
+  render();
+}).catch((error) => {
   state.generationError = error instanceof Error ? error.message : 'Unable to load configuration.';
   state.view = 'settings';
   render();

@@ -482,6 +482,77 @@
         line-height: 1.45;
       }
 
+      .recent-work-section {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(23, 32, 51, 0.08);
+      }
+
+      .recent-work-section.is-hidden,
+      .recent-work-empty.is-hidden {
+        display: none;
+      }
+
+      .recent-work-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .recent-work-head strong {
+        font-size: 0.92rem;
+      }
+
+      .recent-work-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .recent-work-item {
+        display: grid;
+        gap: 3px;
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid rgba(23, 32, 51, 0.1);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.7);
+        text-align: left;
+        color: var(--ink);
+        cursor: pointer;
+      }
+
+      .recent-work-item.is-active {
+        border-color: rgba(180, 86, 38, 0.35);
+        background: rgba(255, 245, 237, 0.92);
+      }
+
+      .recent-work-item:disabled {
+        cursor: default;
+        opacity: 0.7;
+      }
+
+      .recent-work-title {
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .recent-work-meta {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.45;
+        word-break: break-word;
+      }
+
+      .recent-work-empty {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+
       .source-management {
         display: flex;
         justify-content: space-between;
@@ -1346,6 +1417,14 @@
                   </div>
                 </div>
                 <p class="source-folder-empty-note" id="source-folder-empty-note">Browse a local role workspace folder here and choose one active JD plus one candidate CV.</p>
+                <div class="recent-work-section is-hidden" id="recent-work-section">
+                  <div class="recent-work-head">
+                    <strong>Recent Work</strong>
+                    <button class="btn-ghost btn-inline" id="clear-recent-workspaces-button" type="button">Clear</button>
+                  </div>
+                  <div class="recent-work-list" id="recent-work-list"></div>
+                </div>
+                <p class="recent-work-empty" id="recent-work-empty">Saved role workspaces will appear here once you start loading candidates and generating drafts.</p>
               </section>
 
               <div class="source-stack">

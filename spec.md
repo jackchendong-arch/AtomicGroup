@@ -599,15 +599,15 @@ Scope:
 - Browse supported files from that role workspace inside the app
 - Choose the active JD for the role workspace
 - Switch between candidate CVs within the same role workspace
-- Save a simple workspace containing:
+- Save a simple local workspace snapshot containing:
   - selected role folder
   - active JD
   - current candidate CV
-  - selected template
   - latest generated draft
+- Show a recent work list so the recruiter can reopen saved role workspaces
+- Rehydrate the saved role folder, active JD, current candidate CV, and latest draft when recent work is reopened
 - Build a workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
 - Add ephemeral retrieval over the active role workspace inputs instead of a global cross-candidate store
-- Re-open recent work
 - User-selectable English / Chinese output language
 - Post-generation language switching by translating current derived outputs rather than rerunning full assessment
 - Cached language variants so switching back to an already available language is immediate
@@ -615,6 +615,18 @@ Scope:
 - Shared progress state for generation, translation, export, and email handoff
 - File-backed bilingual regression coverage over real recruiter CV/JD fixtures, including Chinese-language documents
 - Structured-briefing diagnostics and repair paths for mixed-language or malformed-output issues found in real fixtures
+
+Current implemented slices inside Release 5:
+- selector-based role workspace intake in the sidebar
+- resumable local workspace snapshots and recent-work reopen flow
+- bilingual derived outputs with translation-only language switching and cached variants
+- expanded real-fixture regression coverage over English and Chinese recruiter test packs
+
+Remaining Release 5 work:
+- normalized workspace source model
+- section-aware source blocks with metadata
+- ephemeral workspace-scoped retrieval
+- retrieval-backed generation/evidence selection
 
 Acceptance criteria:
 - User can select a role workspace folder, choose one active JD, and review many candidate CVs against that same role context.

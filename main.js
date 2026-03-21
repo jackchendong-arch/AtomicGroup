@@ -197,6 +197,20 @@ function pushBriefingDebugTrace(debugTrace, label, briefing = {}) {
   pushEmploymentHistoryDebugTrace(debugTrace, label, briefing?.employment_history);
 }
 
+function pushRetrievalManifestDebugTrace(debugTrace, label, retrievalManifest = []) {
+  debugTrace.push(`${label} retrieval block count: ${Array.isArray(retrievalManifest) ? retrievalManifest.length : 0}`);
+
+  if (!Array.isArray(retrievalManifest)) {
+    return;
+  }
+
+  retrievalManifest.forEach((entry, index) => {
+    debugTrace.push(
+      `${label} retrieval ${index + 1}: [${entry.documentType}:${entry.sectionKey}] ${entry.blockId} score=${entry.score}`
+    );
+  });
+}
+
 function buildManagedGeneratedBriefingFilename(suggestedName) {
   const parsed = path.parse(suggestedName || 'hiring-manager-briefing.docx');
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -802,6 +816,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     });
     debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
     debugTrace.push(`Briefing template label: ${briefingRequest.templateLabel}`);
+    pushRetrievalManifestDebugTrace(debugTrace, 'Summary request', summaryRequest.retrievalManifest);
+    pushRetrievalManifestDebugTrace(debugTrace, 'Briefing request', briefingRequest.retrievalManifest);
 
     const briefingGenerationSettings = buildBriefingGenerationSettings(settings);
     debugTrace.push(`Structured briefing max tokens: ${briefingGenerationSettings.maxTokens}`);

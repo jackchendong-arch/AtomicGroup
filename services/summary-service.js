@@ -4,6 +4,12 @@ const {
   isChineseOutputLanguage,
   normalizeOutputLanguage
 } = require('./output-language-service');
+const {
+  buildWorkspaceRetrievalQuery,
+  buildWorkspaceSourceModel,
+  renderSourceBlocksContext,
+  selectWorkspaceSourceBlocks
+} = require('./workspace-source-service');
 
 const DEFAULT_TEMPLATE_LABEL = 'Default Recruiter Profile Template';
 const DEFAULT_TEMPLATE_PATH = path.join(__dirname, '..', 'templates', 'default-summary-template.md');
@@ -458,6 +464,8 @@ function buildSummaryPromptWithTemplateGuidance({
   roleTitle,
   cvText,
   jdText,
+  cvSourceLabel = 'Candidate CV',
+  jdSourceLabel = 'Job Description',
   templateGuidance,
   outputMode = 'named',
   outputLanguage = 'en'
@@ -512,10 +520,10 @@ function buildSummaryPromptWithTemplateGuidance({
       getDefaultTemplateForLanguage(outputLanguage)
     ]),
     '',
-    'Candidate CV:',
+    `${cvSourceLabel}:`,
     cvText,
     '',
-    'Job Description:',
+    `${jdSourceLabel}:`,
     jdText
   ].join('\n');
 }
@@ -525,6 +533,7 @@ function buildSummaryRequest({
   jdDocument,
   systemPrompt,
   templateGuidance = null,
+  sourceModel = null,
   outputMode = 'named',
   outputLanguage = 'en'
 }) {
@@ -537,13 +546,40 @@ function buildSummaryRequest({
     .slice(0, 5)
     .map((match) => `- Requirement: ${match.requirement}\n  Evidence hint: ${match.evidence}`);
   const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance, normalizedOutputLanguage);
+  const workspaceSourceModel = sourceModel || buildWorkspaceSourceModel({
+    cvDocument,
+    jdDocument,
+    templateGuidance: resolvedTemplateGuidance
+  });
+  const sourceSelection = selectWorkspaceSourceBlocks(workspaceSourceModel, {
+    queryText: buildWorkspaceRetrievalQuery({
+      candidateName,
+      roleTitle,
+      requirements,
+      summaryHeadingHints: ['fit summary', 'relevant experience', 'match against key requirements']
+    }),
+    limits: {
+      cv: 8,
+      jd: 6,
+      guidance: 1
+    },
+    preferredSectionKeysByDocumentType: {
+      cv: ['overview', 'experience', 'projects', 'skills', 'education'],
+      jd: ['overview', 'requirements', 'responsibilities'],
+      guidance: ['overview', 'fit', 'experience', 'requirements']
+    }
+  });
+  const cvSourceContext = renderSourceBlocksContext(sourceSelection.selectionByDocumentType.cv);
+  const jdSourceContext = renderSourceBlocksContext(sourceSelection.selectionByDocumentType.jd);
 
   const prompt = [
     buildSummaryPromptWithTemplateGuidance({
       candidateName,
       roleTitle,
-      cvText: cvDocument.text,
-      jdText: jdDocument.text,
+      cvText: cvSourceContext,
+      jdText: jdSourceContext,
+      cvSourceLabel: 'Candidate CV source blocks',
+      jdSourceLabel: 'Job Description source blocks',
       templateGuidance: resolvedTemplateGuidance,
       outputMode,
       outputLanguage: normalizedOutputLanguage
@@ -568,6 +604,7 @@ function buildSummaryRequest({
   return {
     templateLabel: resolvedTemplateGuidance.label,
     prompt,
+    retrievalManifest: sourceSelection.retrievalManifest,
     messages: [
       {
         role: 'system',
@@ -704,6 +741,7 @@ module.exports = {
   buildSummaryPrompt,
   buildSummaryPromptWithTemplateGuidance,
   extractCandidateName,
+  extractRequirements,
   extractRoleTitle,
   getDefaultTemplateForLanguage,
   getDefaultTemplateLabel,

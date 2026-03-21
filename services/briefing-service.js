@@ -2,6 +2,7 @@ const {
   buildSummaryPrompt,
   resolveTemplateGuidance,
   extractCandidateName,
+  extractRequirements,
   extractRoleTitle,
   generateSummaryDraft,
   getDefaultTemplateForLanguage,
@@ -15,6 +16,12 @@ const {
   isChineseOutputLanguage,
   normalizeOutputLanguage
 } = require('./output-language-service');
+const {
+  buildWorkspaceRetrievalQuery,
+  buildWorkspaceSourceModel,
+  renderSourceBlocksContext,
+  selectWorkspaceSourceBlocks
+} = require('./workspace-source-service');
 const {
   extractDocumentDerivedProfile,
   parseStructuredSummary
@@ -1104,6 +1111,7 @@ function buildBriefingRequest({
   jdDocument,
   systemPrompt,
   templateGuidance = null,
+  sourceModel = null,
   outputMode = 'named',
   outputLanguage = 'en'
 }) {
@@ -1111,6 +1119,32 @@ function buildBriefingRequest({
   const roleTitle = extractRoleTitle(jdDocument.text, jdDocument.file.name);
   const normalizedOutputLanguage = normalizeOutputLanguage(outputLanguage);
   const resolvedTemplateGuidance = resolveTemplateGuidance(templateGuidance, normalizedOutputLanguage);
+  const requirements = extractRequirements(jdDocument.text);
+  const workspaceSourceModel = sourceModel || buildWorkspaceSourceModel({
+    cvDocument,
+    jdDocument,
+    templateGuidance: resolvedTemplateGuidance
+  });
+  const sourceSelection = selectWorkspaceSourceBlocks(workspaceSourceModel, {
+    queryText: buildWorkspaceRetrievalQuery({
+      candidateName,
+      roleTitle,
+      requirements,
+      summaryHeadingHints: ['briefing summary', 'candidate snapshot', 'employment experience', 'match against key requirements']
+    }),
+    limits: {
+      cv: 10,
+      jd: 7,
+      guidance: 1
+    },
+    preferredSectionKeysByDocumentType: {
+      cv: ['overview', 'experience', 'projects', 'skills', 'education', 'languages'],
+      jd: ['overview', 'requirements', 'responsibilities'],
+      guidance: ['overview', 'fit', 'experience', 'requirements']
+    }
+  });
+  const cvSourceContext = renderSourceBlocksContext(sourceSelection.selectionByDocumentType.cv);
+  const jdSourceContext = renderSourceBlocksContext(sourceSelection.selectionByDocumentType.jd);
   const normalizedOutputMode = outputMode === 'anonymous' ? 'anonymous' : 'named';
   const modeDescriptor = normalizedOutputMode === 'anonymous' ? 'an anonymous' : 'a named';
   const candidateLabel = normalizedOutputMode === 'anonymous'
@@ -1119,8 +1153,8 @@ function buildBriefingRequest({
   const summaryPrompt = buildSummaryPrompt({
     candidateName: candidateLabel,
     roleTitle,
-    cvText: cvDocument.text,
-    jdText: jdDocument.text,
+    cvText: cvSourceContext,
+    jdText: jdSourceContext,
     outputMode: normalizedOutputMode,
     outputLanguage: normalizedOutputLanguage
   });
@@ -1177,16 +1211,17 @@ function buildBriefingRequest({
     'Current recruiter summary drafting prompt for tone and structure guidance:',
     summaryPrompt,
     '',
-    'Candidate CV:',
-    cvDocument.text,
+    'Candidate CV source blocks:',
+    cvSourceContext,
     '',
-    'Job Description:',
-    jdDocument.text
+    'Job Description source blocks:',
+    jdSourceContext
   ].join('\n');
 
   return {
     templateLabel: resolvedTemplateGuidance.label || getDefaultTemplateLabel(normalizedOutputLanguage),
     prompt,
+    retrievalManifest: sourceSelection.retrievalManifest,
     messages: [
       {
         role: 'system',

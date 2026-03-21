@@ -192,12 +192,13 @@ Mark a release complete only when the work is:
   - local role-workspace snapshots for the selected folder, active JD, current candidate CV, and latest draft
   - recent work list with reopen flow
   - rehydration of the saved folder context, active JD, current candidate CV, and latest draft when reopening recent work
+  - workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
+  - section-aware source blocks with metadata for CV, JD, and guidance inputs
+  - ephemeral lexical retrieval over the active role workspace inputs instead of prompt-stuffing the full CV/JD text
+  - retrieval-backed summary and structured-briefing prompt construction, with retrieval manifests written to generation debug logs
 - Remaining:
-  - build a workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
-  - segment JD and CV content into section-aware source blocks with metadata that can be used for validation and retrieval
-  - add ephemeral per-workspace retrieval over the active JD, current candidate CV, and guidance inputs instead of relying on a global cross-candidate document store
-  - use workspace-level retrieval to select relevant source blocks for recruiter summary generation, structured briefing extraction, and evidence tracing within the active role workspace
   - add dedicated reopen / rehydration regression coverage around saved role workspaces
+  - extend retrieval manifests into richer evidence tracing surfaced for recruiter review rather than only backend diagnostics
 - After a draft has already been generated, let the recruiter switch output language by translating the current derived summary and briefing outputs into the selected language instead of rerunning full CV/JD assessment.
 - Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.
 - Cache the current draft in both language variants when available so switching back to a previously translated language reuses the existing draft instead of re-triggering LLM translation.

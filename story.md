@@ -202,6 +202,33 @@ This gives the benefits of retrieval:
 
 without turning the product into an enterprise document search engine.
 
+Another important lesson was that “RAG” does not automatically mean “embeddings plus vector database.”
+
+For this product, that would have been too much infrastructure for the wrong problem.
+
+At this stage, CVs and JDs are:
+- short-lived
+- workspace-scoped
+- privacy-sensitive
+- tied to one recruiter workflow at a time
+
+So the implemented direction became:
+- normalize the active CV, JD, and guidance into source blocks
+- score and retrieve those blocks locally
+- send only the selected blocks into the LLM prompt
+
+That is retrieval, but it is intentionally not a persistent vector-store architecture.
+
+This gave most of the value we actually needed:
+- smaller and more focused prompts
+- clearer debug traces
+- easier reasoning about why a block was selected
+- less governance burden around storing sensitive candidate embeddings
+
+That led to a useful rule of thumb:
+
+**if the documents are session-scoped and privacy-sensitive, start with local ephemeral retrieval before reaching for embeddings and a vector DB.**
+
 ## Static Templates vs Dynamic Inputs
 This turned into one of the clearest conceptual distinctions in the whole project.
 
@@ -426,6 +453,12 @@ Templates should control presentation.
 ### 3. Do not use RAG as a default buzzword
 For changing CVs and JDs, scoped retrieval is useful.
 A giant global retrieval store is not the right starting point.
+
+In AtomicGroup, “RAG” only made sense once it was translated into a precise design:
+- workspace-scoped source blocks
+- temporary retrieval
+- no global candidate memory
+- no persistent vector DB by default
 
 ### 4. Dynamic evidence and static templates need different handling
 CVs and JDs are transient evidence inputs.

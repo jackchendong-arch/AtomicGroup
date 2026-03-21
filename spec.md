@@ -128,6 +128,8 @@ Initial recommended file support:
   - JD
   - optional Markdown guidance template
 - The first retrieval design should be ephemeral and local to the active workspace, not a persistent global vector store of all candidates and roles.
+- The current implementation should prefer lightweight local block selection and lexical scoring before introducing embeddings or any vector-database dependency.
+- This is intentional because CVs and JDs in this product are short-lived, privacy-sensitive workspace inputs rather than long-lived shared knowledge assets.
 - Retrieval should support long-document focus, evidence tracing, and structured-briefing generation without turning the system into a cross-candidate knowledge base.
 
 ### 3. Summary Generation
@@ -366,6 +368,8 @@ The intended split is:
 - The normalized source model should preserve section structure and source metadata so candidate facts, employment history, and role requirements can be grounded and validated.
 - Retrieval, when introduced, should be ephemeral and scoped to the active workspace only.
 - The product should avoid starting with a global vector store that mixes many candidates and many roles together.
+- The preferred first implementation is local lexical retrieval over section-aware source blocks, not embeddings stored in a persistent vector DB.
+- A vector store is not ruled out forever, but it is not the right default for this app because the current use case is one active JD plus one active candidate CV within a recruiter workspace.
 
 ### Template Design
 There are two different template systems in the product and they should remain separate:
@@ -621,12 +625,17 @@ Current implemented slices inside Release 5:
 - resumable local workspace snapshots and recent-work reopen flow
 - bilingual derived outputs with translation-only language switching and cached variants
 - expanded real-fixture regression coverage over English and Chinese recruiter test packs
+- workspace-scoped normalized source model for the active CV, JD, and active guidance template
+- section-aware source blocks with metadata and lightweight lexical retrieval over the active role workspace
+- retrieval-backed prompt construction for recruiter summary and structured briefing generation, with retrieval manifests captured in debug traces
+
+Implementation note:
+- The current retrieval layer is intentionally lexical and local. It selects relevant source blocks from the active workspace without generating embeddings or persisting vectors.
+- This keeps the design aligned with the current product reality: CVs and JDs are dynamic recruiter-session inputs, not a long-lived cross-candidate knowledge base.
 
 Remaining Release 5 work:
-- normalized workspace source model
-- section-aware source blocks with metadata
-- ephemeral workspace-scoped retrieval
-- retrieval-backed generation/evidence selection
+- richer recruiter-facing evidence tracing on top of the retrieval manifests
+- dedicated reopen / rehydration regression coverage around saved role workspaces
 
 Acceptance criteria:
 - User can select a role workspace folder, choose one active JD, and review many candidate CVs against that same role context.

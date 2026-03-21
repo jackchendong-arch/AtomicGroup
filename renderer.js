@@ -5,6 +5,17 @@ function createEmptyDraftLanguageVariants() {
   };
 }
 
+function createEmptySourceFolderState() {
+  return {
+    path: '',
+    name: '',
+    files: [],
+    error: '',
+    selectedJdPath: '',
+    selectedCvPath: ''
+  };
+}
+
 const state = {
   view: 'workbench',
   workbenchTab: 'summary',
@@ -19,6 +30,7 @@ const state = {
     cv: createEmptyDocumentSlot('cv'),
     jd: createEmptyDocumentSlot('jd')
   },
+  sourceFolder: createEmptySourceFolderState(),
   briefing: null,
   briefingReview: '',
   summary: '',
@@ -93,6 +105,19 @@ const elements = {
   sourcePanelStatus: document.getElementById('source-panel-status'),
   dropzone: document.getElementById('dropzone'),
   swapSourceButton: document.getElementById('swap-source-button'),
+  chooseSourceFolderButton: document.getElementById('choose-source-folder-button'),
+  refreshSourceFolderButton: document.getElementById('refresh-source-folder-button'),
+  sourceFolderName: document.getElementById('source-folder-name'),
+  sourceFolderPath: document.getElementById('source-folder-path'),
+  sourceFolderStats: document.getElementById('source-folder-stats'),
+  sourceFolderWorkspace: document.getElementById('source-folder-workspace'),
+  sourceFolderJdSelected: document.getElementById('source-folder-jd-selected'),
+  sourceFolderCvSelected: document.getElementById('source-folder-cv-selected'),
+  sourceFolderJdSelect: document.getElementById('source-folder-jd-select'),
+  sourceFolderCvSelect: document.getElementById('source-folder-cv-select'),
+  loadSourceFolderJdButton: document.getElementById('load-source-folder-jd-button'),
+  loadSourceFolderCvButton: document.getElementById('load-source-folder-cv-button'),
+  sourceFolderEmptyNote: document.getElementById('source-folder-empty-note'),
   setNamedModeButton: document.getElementById('set-named-mode-button'),
   setAnonymousModeButton: document.getElementById('set-anonymous-mode-button'),
   setEnglishOutputButton: document.getElementById('set-english-output-button'),
@@ -154,6 +179,20 @@ function formatExtension(extension) {
   }
 
   return extension.replace('.', '').toUpperCase();
+}
+
+function formatFileSize(sizeBytes) {
+  const numeric = Number(sizeBytes) || 0;
+
+  if (numeric < 1024) {
+    return `${numeric} B`;
+  }
+
+  if (numeric < 1024 * 1024) {
+    return `${(numeric / 1024).toFixed(1).replace(/\.0$/, '')} KB`;
+  }
+
+  return `${(numeric / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
 }
 
 function getSlotDefaultNote(slot) {
@@ -834,6 +873,182 @@ function updateSourcePanelStatus() {
   elements.swapSourceButton.disabled = !(state.documents.cv.file && state.documents.jd.file);
 }
 
+const JD_FILENAME_PATTERN = /\b(jd|job[\s._-]*description|role)\b/i;
+const CV_FILENAME_PATTERN = /\b(cv|resume|candidate)\b/i;
+
+function getLikelyJdScore(file, allFiles) {
+  const normalizedName = String(file?.name || '');
+  const docxCount = allFiles.filter((entry) => entry.extension === '.docx').length;
+  let score = 0;
+
+  if (JD_FILENAME_PATTERN.test(normalizedName)) {
+    score += 8;
+  }
+
+  if (/\b(job|description)\b/i.test(normalizedName)) {
+    score += 3;
+  }
+
+  if (file?.extension === '.docx') {
+    score += 2;
+  }
+
+  if (docxCount === 1 && allFiles.length > 1 && file?.extension === '.docx') {
+    score += 2;
+  }
+
+  return score;
+}
+
+function getLikelyCvScore(file) {
+  const normalizedName = String(file?.name || '');
+  let score = 0;
+
+  if (CV_FILENAME_PATTERN.test(normalizedName)) {
+    score += 8;
+  }
+
+  if (file?.extension === '.pdf') {
+    score += 2;
+  }
+
+  return score;
+}
+
+function sortFilesByLikelyJd(files) {
+  return [...files].sort((left, right) => {
+    const scoreDelta = getLikelyJdScore(right, files) - getLikelyJdScore(left, files);
+
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    return left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true });
+  });
+}
+
+function sortFilesByLikelyCv(files) {
+  return [...files].sort((left, right) => {
+    const scoreDelta = getLikelyCvScore(right) - getLikelyCvScore(left);
+
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    return left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true });
+  });
+}
+
+function getJdWorkspaceFiles() {
+  return sortFilesByLikelyJd(state.sourceFolder.files);
+}
+
+function getCvWorkspaceFiles() {
+  return sortFilesByLikelyCv(
+    state.sourceFolder.files.filter((file) => file.path !== state.sourceFolder.selectedJdPath)
+  );
+}
+
+function chooseDefaultJdPath(files) {
+  const currentPath = state.documents.jd.file?.path;
+
+  if (currentPath && files.some((file) => file.path === currentPath)) {
+    return currentPath;
+  }
+
+  return files[0]?.path || '';
+}
+
+function chooseDefaultCvPath(files) {
+  const currentPath = state.documents.cv.file?.path;
+
+  if (currentPath && files.some((file) => file.path === currentPath)) {
+    return currentPath;
+  }
+
+  return files[0]?.path || '';
+}
+
+function renderSourceFolder() {
+  const hasSourceFolder = Boolean(state.sourceFolder.path);
+  const busy = isGenerationWorkflowBusy();
+
+  elements.chooseSourceFolderButton.disabled = busy;
+  elements.refreshSourceFolderButton.disabled = busy || !hasSourceFolder;
+  elements.sourceFolderName.textContent = hasSourceFolder
+    ? `${state.sourceFolder.name} · ${state.sourceFolder.files.length} supported files`
+    : 'No source folder selected';
+  elements.sourceFolderName.classList.toggle('is-empty', !hasSourceFolder);
+  elements.sourceFolderPath.textContent = state.sourceFolder.error
+    ? state.sourceFolder.error
+    : (hasSourceFolder
+      ? state.sourceFolder.path
+      : 'Choose a local folder to browse supported CV and JD files in the workbench.');
+
+  elements.sourceFolderStats.innerHTML = '';
+  elements.sourceFolderWorkspace.classList.add('is-hidden');
+  elements.sourceFolderEmptyNote.textContent = 'Browse a local role workspace folder here and choose one active JD plus one candidate CV.';
+
+  if (!hasSourceFolder) {
+    return;
+  }
+
+  if (state.sourceFolder.files.length === 0) {
+    elements.sourceFolderEmptyNote.textContent = 'No PDF, DOCX, or TXT files were found in this folder.';
+    return;
+  }
+
+  const jdFiles = getJdWorkspaceFiles();
+  const selectedJdPath = jdFiles.some((file) => file.path === state.sourceFolder.selectedJdPath)
+    ? state.sourceFolder.selectedJdPath
+    : chooseDefaultJdPath(jdFiles);
+  state.sourceFolder.selectedJdPath = selectedJdPath;
+
+  const cvFiles = getCvWorkspaceFiles();
+  const selectedCvPath = cvFiles.some((file) => file.path === state.sourceFolder.selectedCvPath)
+    ? state.sourceFolder.selectedCvPath
+    : chooseDefaultCvPath(cvFiles);
+  state.sourceFolder.selectedCvPath = selectedCvPath;
+
+  const likelyJdCount = state.sourceFolder.files.filter((file) => getLikelyJdScore(file, state.sourceFolder.files) > 0).length;
+  const likelyCvCount = state.sourceFolder.files.filter((file) => getLikelyCvScore(file) > 0).length;
+
+  elements.sourceFolderStats.innerHTML = [
+    `<span class="status-chip">${state.sourceFolder.files.length} Supported Files</span>`,
+    `<span class="status-chip">${cvFiles.length} Candidate CV Options</span>`,
+    `<span class="status-chip">${jdFiles.length} JD Options</span>`,
+    likelyJdCount > 0 ? `<span class="status-chip">${likelyJdCount} Likely JD${likelyJdCount === 1 ? '' : 's'}</span>` : '',
+    likelyCvCount > 0 ? `<span class="status-chip">${likelyCvCount} Likely CV${likelyCvCount === 1 ? '' : 's'}</span>` : ''
+  ].filter(Boolean).join('');
+
+  elements.sourceFolderWorkspace.classList.remove('is-hidden');
+  elements.sourceFolderEmptyNote.textContent = '';
+
+  elements.sourceFolderJdSelect.disabled = busy || jdFiles.length === 0;
+  elements.sourceFolderCvSelect.disabled = busy || cvFiles.length === 0;
+  elements.loadSourceFolderJdButton.disabled = busy || jdFiles.length === 0 || !selectedJdPath;
+  elements.loadSourceFolderCvButton.disabled = busy || cvFiles.length === 0 || !selectedCvPath;
+  elements.sourceFolderJdSelect.innerHTML = jdFiles.length > 0
+    ? jdFiles.map((file) => `<option value="${escapeHtml(file.path)}">${escapeHtml(file.name)} · ${escapeHtml(formatExtension(file.extension))}</option>`).join('')
+    : '<option value="">No JD files available</option>';
+  elements.sourceFolderCvSelect.innerHTML = cvFiles.length > 0
+    ? cvFiles.map((file) => `<option value="${escapeHtml(file.path)}">${escapeHtml(file.name)} · ${escapeHtml(formatExtension(file.extension))}</option>`).join('')
+    : '<option value="">No candidate CV files available</option>';
+
+  elements.sourceFolderJdSelect.value = jdFiles.length > 0 ? selectedJdPath : '';
+  elements.sourceFolderCvSelect.value = cvFiles.length > 0 ? selectedCvPath : '';
+
+  const selectedJdFile = jdFiles.find((file) => file.path === selectedJdPath);
+  const selectedCvFile = cvFiles.find((file) => file.path === selectedCvPath);
+
+  elements.sourceFolderJdSelected.textContent = selectedJdFile
+    ? `Active: ${selectedJdFile.name}`
+    : 'No JD selected';
+  elements.sourceFolderCvSelected.textContent = selectedCvFile
+    ? `Active: ${selectedCvFile.name}`
+    : 'No CV selected';
+}
+
 function renderSlot(slot) {
   const slotState = state.documents[slot];
   const slotElements = elements[slot];
@@ -987,6 +1202,7 @@ function renderBriefing() {
 function render() {
   renderSlot('cv');
   renderSlot('jd');
+  renderSourceFolder();
   renderSettingsForm();
   renderSettingsStatus();
   updateSourcePanelStatus();
@@ -1388,6 +1604,102 @@ async function importDocumentIntoSlot(filePath, slot) {
   applyImportedDocument(result, slot);
 }
 
+function applySourceFolderListing(result) {
+  const nextFiles = Array.isArray(result?.files) ? result.files : [];
+  const previousSelectedJdPath = state.sourceFolder.selectedJdPath;
+  const previousSelectedCvPath = state.sourceFolder.selectedCvPath;
+  const currentLoadedJdPath = state.documents.jd.file?.path || '';
+  const currentLoadedCvPath = state.documents.cv.file?.path || '';
+
+  state.sourceFolder = {
+    path: result?.folder?.path || '',
+    name: result?.folder?.name || '',
+    files: nextFiles,
+    error: '',
+    selectedJdPath: nextFiles.some((file) => file.path === currentLoadedJdPath)
+      ? currentLoadedJdPath
+      : (nextFiles.some((file) => file.path === previousSelectedJdPath) ? previousSelectedJdPath : ''),
+    selectedCvPath: nextFiles.some((file) => file.path === currentLoadedCvPath)
+      ? currentLoadedCvPath
+      : (nextFiles.some((file) => file.path === previousSelectedCvPath) ? previousSelectedCvPath : '')
+  };
+}
+
+function setSelectedSourceFolderJdPath(filePath) {
+  state.sourceFolder.selectedJdPath = filePath || '';
+
+  if (state.sourceFolder.selectedCvPath === state.sourceFolder.selectedJdPath) {
+    state.sourceFolder.selectedCvPath = '';
+  }
+}
+
+function setSelectedSourceFolderCvPath(filePath) {
+  state.sourceFolder.selectedCvPath = filePath || '';
+}
+
+async function chooseSourceFolder() {
+  if (isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  try {
+    const result = await window.recruitmentApi.pickSourceFolder();
+
+    if (!result) {
+      return;
+    }
+
+    applySourceFolderListing(result);
+    render();
+  } catch (error) {
+    state.sourceFolder = {
+      ...createEmptySourceFolderState(),
+      error: error instanceof Error
+        ? error.message
+        : 'Unable to load the selected source folder.'
+    };
+    render();
+  }
+}
+
+async function refreshSourceFolder() {
+  if (!state.sourceFolder.path || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  try {
+    const result = await window.recruitmentApi.listSourceFolder({
+      folderPath: state.sourceFolder.path
+    });
+    applySourceFolderListing(result);
+    render();
+  } catch (error) {
+    state.sourceFolder = {
+      ...state.sourceFolder,
+      error: error instanceof Error
+        ? error.message
+        : 'Unable to refresh the selected source folder.'
+    };
+    render();
+  }
+}
+
+async function loadSelectedWorkspaceJd() {
+  if (!state.sourceFolder.selectedJdPath || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  await importDocumentIntoSlot(state.sourceFolder.selectedJdPath, 'jd');
+}
+
+async function loadSelectedWorkspaceCv() {
+  if (!state.sourceFolder.selectedCvPath || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  await importDocumentIntoSlot(state.sourceFolder.selectedCvPath, 'cv');
+}
+
 function applyImportedDocument(result, slot) {
   state.documents[slot] = {
     slot,
@@ -1397,6 +1709,14 @@ function applyImportedDocument(result, slot) {
     warnings: result.warnings,
     error: result.error
   };
+
+  if (result?.file?.path && state.sourceFolder.files.some((file) => file.path === result.file.path)) {
+    if (slot === 'jd') {
+      setSelectedSourceFolderJdPath(result.file.path);
+    } else {
+      setSelectedSourceFolderCvPath(result.file.path);
+    }
+  }
 
   if (result.error) {
     invalidateSummary('Fix the import issue before generating the summary.');
@@ -1762,6 +2082,7 @@ async function openWordDraft() {
 function resetWorkspace() {
   state.documents.cv = createEmptyDocumentSlot('cv');
   state.documents.jd = createEmptyDocumentSlot('jd');
+  state.sourceFolder = createEmptySourceFolderState();
   state.briefing = null;
   state.briefingReview = '';
   state.summary = '';
@@ -1947,6 +2268,18 @@ elements.chooseBriefingOutputFolderButton.addEventListener('click', chooseBriefi
 elements.clearBriefingOutputFolderButton.addEventListener('click', clearBriefingOutputFolder);
 elements.cv.chooseButton.addEventListener('click', () => chooseDocument('cv'));
 elements.jd.chooseButton.addEventListener('click', () => chooseDocument('jd'));
+elements.chooseSourceFolderButton.addEventListener('click', chooseSourceFolder);
+elements.refreshSourceFolderButton.addEventListener('click', refreshSourceFolder);
+elements.sourceFolderJdSelect.addEventListener('change', () => {
+  setSelectedSourceFolderJdPath(elements.sourceFolderJdSelect.value);
+  render();
+});
+elements.sourceFolderCvSelect.addEventListener('change', () => {
+  setSelectedSourceFolderCvPath(elements.sourceFolderCvSelect.value);
+  render();
+});
+elements.loadSourceFolderJdButton.addEventListener('click', loadSelectedWorkspaceJd);
+elements.loadSourceFolderCvButton.addEventListener('click', loadSelectedWorkspaceCv);
 elements.swapSourceButton.addEventListener('click', swapDocumentAssignments);
 elements.setNamedModeButton.addEventListener('click', () => setOutputMode('named'));
 elements.setAnonymousModeButton.addEventListener('click', () => setOutputMode('anonymous'));

@@ -591,18 +591,22 @@ Acceptance criteria:
 
 ### Release 5: Local Folder Intake and Job Workspace
 Value:
-- The recruiter spends less time repeatedly locating files and setting up each draft, while the app gains a stable workspace-level source model for retrieval and validation and supports bilingual recruiter/hiring-manager outputs across real-world fixture sets.
+- The recruiter spends less time repeatedly locating files and setting up each draft, while the app gains a stable role-level workspace model: one JD, many candidate CVs, resumable candidate-by-candidate drafting, and a cleaner source foundation for retrieval and validation.
 
 Scope:
-- Select a source folder on local machine
-- Browse imported files within the app
+- Select a role workspace folder on local machine
+- Treat the selected folder as one role workspace containing one active JD and many candidate CVs
+- Browse supported files from that role workspace inside the app
+- Choose the active JD for the role workspace
+- Switch between candidate CVs within the same role workspace
 - Save a simple workspace containing:
-  - chosen CV
-  - chosen JD
+  - selected role folder
+  - active JD
+  - current candidate CV
   - selected template
   - latest generated draft
-- Build a workspace-scoped normalized source model for the chosen CV, JD, and active Markdown guidance template
-- Add ephemeral retrieval over the active workspace inputs instead of a global cross-candidate store
+- Build a workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
+- Add ephemeral retrieval over the active role workspace inputs instead of a global cross-candidate store
 - Re-open recent work
 - User-selectable English / Chinese output language
 - Post-generation language switching by translating current derived outputs rather than rerunning full assessment
@@ -613,9 +617,9 @@ Scope:
 - Structured-briefing diagnostics and repair paths for mixed-language or malformed-output issues found in real fixtures
 
 Acceptance criteria:
-- User can select a folder and pick files from it.
-- User can resume recent work without re-importing everything manually.
-- Retrieval is limited to the active workspace and does not mix unrelated candidate or role documents.
+- User can select a role workspace folder, choose one active JD, and review many candidate CVs against that same role context.
+- User can resume recent role work without re-importing everything manually.
+- Retrieval is limited to the active role workspace and does not mix unrelated candidate or role documents.
 - Existing single-file workflow still works.
 - Recruiter-facing and hiring-manager-facing derived outputs can be produced in English or Chinese.
 - Switching between previously generated language variants does not re-trigger unnecessary LLM translation.

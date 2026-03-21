@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   importDocument(payload) {
     return ipcRenderer.invoke('document:import', payload);
   },
+  pickSourceFolder() {
+    return ipcRenderer.invoke('workspace:pick-source-folder');
+  },
+  listSourceFolder(payload) {
+    return ipcRenderer.invoke('workspace:list-source-folder', payload);
+  },
   getLlmProviders() {
     return ipcRenderer.invoke('llm:get-providers');
   },

@@ -8,6 +8,7 @@ const {
   REFERENCE_TEMPLATE_EXTENSIONS,
   SUPPORTED_EXTENSIONS
 } = require('./services/document-service');
+const { listSourceFolderDocuments } = require('./services/source-folder-service');
 const {
   buildSuggestedOutputFilename,
   describeEmploymentExtraction,
@@ -407,6 +408,27 @@ ipcMain.handle('document:pick', async (_event, { slot }) => {
 
 ipcMain.handle('document:import', async (_event, { filePath }) => {
   return importDocument(filePath);
+});
+
+ipcMain.handle('workspace:pick-source-folder', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Select source folder',
+    properties: ['openDirectory']
+  });
+
+  if (canceled || filePaths.length === 0) {
+    return null;
+  }
+
+  return listSourceFolderDocuments(filePaths[0]);
+});
+
+ipcMain.handle('workspace:list-source-folder', async (_event, { folderPath }) => {
+  if (!folderPath) {
+    throw new Error('A source folder path is required to refresh the folder listing.');
+  }
+
+  return listSourceFolderDocuments(folderPath);
 });
 
 ipcMain.handle('llm:get-providers', async () => {

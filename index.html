@@ -389,6 +389,99 @@
         width: 100%;
       }
 
+      .source-folder-card {
+        margin-top: 14px;
+      }
+
+      .source-folder-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .source-folder-head h3 {
+        margin: 0;
+        font-size: 0.96rem;
+      }
+
+      .source-folder-head .field-note {
+        margin-top: 4px;
+        font-size: 0.84rem;
+      }
+
+      .source-folder-name {
+        margin-top: 10px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--ink);
+        word-break: break-word;
+      }
+
+      .source-folder-name.is-empty {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .source-folder-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .source-folder-workspace {
+        display: grid;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .source-folder-workspace.is-hidden {
+        display: none;
+      }
+
+      .source-folder-workspace-row {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.74);
+      }
+
+      .source-folder-workspace-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .source-folder-workspace-head strong {
+        font-size: 0.9rem;
+      }
+
+      .source-folder-workspace-help {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.45;
+      }
+
+      .source-folder-selected {
+        font-weight: 700;
+        font-size: 0.84rem;
+        color: var(--accent-deep);
+        word-break: break-word;
+      }
+
+      .source-folder-empty-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+
       .source-management {
         display: flex;
         justify-content: space-between;
@@ -1210,6 +1303,50 @@
                 <button class="btn-primary" id="choose-cv-button" type="button">Choose CV</button>
                 <button class="btn-secondary" id="choose-jd-button" type="button">Choose JD</button>
               </div>
+
+              <section class="template-card source-folder-card">
+                <div class="source-folder-head">
+                  <div>
+                    <h3>Source Folder</h3>
+                    <p class="field-note" id="source-folder-path">Choose a local folder to browse supported CV and JD files in the workbench.</p>
+                  </div>
+                  <div class="source-actions">
+                    <button class="btn-ghost btn-inline" id="choose-source-folder-button" type="button">Choose Folder</button>
+                    <button class="btn-ghost btn-inline" id="refresh-source-folder-button" type="button" disabled>Refresh</button>
+                  </div>
+                </div>
+                <div class="source-folder-name is-empty" id="source-folder-name">No source folder selected</div>
+                <div class="source-folder-stats" id="source-folder-stats"></div>
+                <div class="source-folder-workspace is-hidden" id="source-folder-workspace">
+                  <div class="source-folder-workspace-row">
+                    <div class="source-folder-workspace-head">
+                      <strong>Workspace JD</strong>
+                      <div class="source-actions">
+                        <span class="source-folder-selected" id="source-folder-jd-selected">No JD selected</span>
+                        <button class="btn-ghost btn-inline" id="load-source-folder-jd-button" type="button">Load JD</button>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <select id="source-folder-jd-select"></select>
+                    </div>
+                    <p class="source-folder-workspace-help">Choose the active JD for this role workspace, then load it into the workbench when needed.</p>
+                  </div>
+                  <div class="source-folder-workspace-row">
+                    <div class="source-folder-workspace-head">
+                      <strong>Candidate CV</strong>
+                      <div class="source-actions">
+                        <span class="source-folder-selected" id="source-folder-cv-selected">No CV selected</span>
+                        <button class="btn-ghost btn-inline" id="load-source-folder-cv-button" type="button">Load CV</button>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <select id="source-folder-cv-select"></select>
+                    </div>
+                    <p class="source-folder-workspace-help">Switch candidate here while keeping the same role workspace context.</p>
+                  </div>
+                </div>
+                <p class="source-folder-empty-note" id="source-folder-empty-note">Browse a local role workspace folder here and choose one active JD plus one candidate CV.</p>
+              </section>
 
               <div class="source-stack">
                 <article class="source-card" id="cv-card">

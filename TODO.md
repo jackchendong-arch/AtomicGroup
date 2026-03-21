@@ -180,18 +180,23 @@ Mark a release complete only when the work is:
 
 ## Release 5: Local Folder Intake and Job Workspace
 - [-] Release 5 shipped, completed, and tested.
-- Add a folder picker so the recruiter can choose a local source folder.
-- Show browsable files from the selected source folder inside the app.
-- Let the recruiter select a CV and JD from the chosen folder.
-- Save a local workspace containing the selected CV, selected JD, selected template, and latest draft.
-- Build a workspace-scoped normalized source model for the selected CV, JD, and active Markdown guidance template.
-- Segment CV and JD content into section-aware source blocks with metadata that can be used for validation and retrieval.
-- Add ephemeral per-workspace retrieval over the active CV, JD, and guidance inputs instead of relying on a global cross-candidate document store.
-- Use workspace-level retrieval to select relevant source blocks for recruiter summary generation, structured briefing extraction, and evidence tracing.
+- Add a folder picker so the recruiter can choose a local role workspace folder.
+- Treat one selected folder as one role workspace containing:
+  - one primary JD
+  - many candidate CVs
+  - optional supporting recruiter files later
+- Show browsable supported files from the selected role workspace folder inside the app.
+- Let the recruiter choose the active JD for the role workspace and then switch between multiple candidate CVs within that same workspace.
+- Present role-workspace file navigation through compact JD/CV selectors rather than long stacked file cards so recruiters can move between candidates quickly.
+- Save a local workspace containing the selected role folder, active JD, current candidate CV, selected template, and latest draft.
+- Build a workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template.
+- Segment JD and CV content into section-aware source blocks with metadata that can be used for validation and retrieval.
+- Add ephemeral per-workspace retrieval over the active JD, current candidate CV, and guidance inputs instead of relying on a global cross-candidate document store.
+- Use workspace-level retrieval to select relevant source blocks for recruiter summary generation, structured briefing extraction, and evidence tracing within the active role workspace.
 - Show a recent work list so the recruiter can reopen prior work.
-- Rehydrate the prior draft and document selections when a saved workspace is reopened.
+- Rehydrate the prior draft, active JD, current candidate CV, and folder selections when a saved role workspace is reopened.
 - Keep the existing direct file picker workflow working alongside folder-based intake.
-- Test reopening a saved workspace from local history.
+- Test reopening a saved role workspace from local history.
 - Add user-selectable output language support for English and Chinese.
 - Apply the selected output language consistently to:
   - Candidate Summary Review
@@ -215,7 +220,7 @@ Mark a release complete only when the work is:
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
   - file names or file hashes
-  - provider/model/runtime settings
+  - provideI r/model/runtime settings
   - validation outcomes
   - error categories
   - run IDs and artifact/template versions when available

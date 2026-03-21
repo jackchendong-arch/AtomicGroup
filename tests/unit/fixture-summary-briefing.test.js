@@ -4,10 +4,12 @@ const assert = require('node:assert/strict');
 const { importDocument } = require('../../services/document-service');
 const {
   buildFallbackBriefing,
+  buildBriefingRequest,
   prepareHiringManagerBriefingOutput,
   renderHiringManagerBriefingReviewFromBriefing,
   renderSummaryFromBriefing
 } = require('../../services/briefing-service');
+const { buildSummaryRequest } = require('../../services/summary-service');
 const {
   createTranslatableDraftPayload
 } = require('../../services/draft-translation-service');
@@ -89,3 +91,42 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
     }
   );
 }
+
+test(
+  'Test8 retrieval manifests exclude standalone PDF page-marker artifacts from surfaced evidence',
+  {
+    skip: fixtureCaseIsPresent(EXTERNAL_FIXTURE_CASES.find((fixtureCase) => fixtureCase.name === 'Test8'))
+      ? false
+      : 'Test8 fixture documents are not available on this machine.'
+  },
+  async () => {
+    const fixtureCase = EXTERNAL_FIXTURE_CASES.find((entry) => entry.name === 'Test8');
+    const cvDocument = await importDocument(getFixtureCvPath(fixtureCase));
+    const jdDocument = await importDocument(getFixtureJdPath(fixtureCase));
+
+    const summaryRequest = buildSummaryRequest({
+      cvDocument,
+      jdDocument,
+      systemPrompt: 'System prompt'
+    });
+    const briefingRequest = buildBriefingRequest({
+      cvDocument,
+      jdDocument,
+      systemPrompt: 'System prompt'
+    });
+
+    const previews = [
+      ...summaryRequest.retrievalManifest,
+      ...briefingRequest.retrievalManifest
+    ]
+      .filter((entry) => entry.documentType === 'cv')
+      .map((entry) => entry.preview);
+
+    assert.ok(previews.length > 0, 'Test8 should surface CV retrieval evidence previews');
+    assert.equal(
+      previews.some((preview) => /(?:^|\\s)\\d+\\s+of\\s+\\d+(?:\\s|$)/i.test(preview)),
+      false,
+      'Standalone PDF page markers should not appear in surfaced evidence previews'
+    );
+  }
+);

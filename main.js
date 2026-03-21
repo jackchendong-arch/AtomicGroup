@@ -934,6 +934,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       templateLabel: summaryRequest.templateLabel,
       summary: recruiterSummary,
       hiringManagerBriefingReview: hiringManagerBriefing.review,
+      summaryRetrievalManifest: summaryRequest.retrievalManifest,
+      briefingRetrievalManifest: briefingRequest.retrievalManifest,
       prompt: summaryRequest.prompt,
       providerLabel: settings.providerLabel,
       model: settings.model,

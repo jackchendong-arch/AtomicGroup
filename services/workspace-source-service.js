@@ -113,6 +113,16 @@ function uniqueTokens(text) {
   return [...new Set(tokenize(text))];
 }
 
+function buildManifestPreview(text, maxLength = 180) {
+  const normalized = cleanLine(text);
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 function splitParagraphs(text) {
   return String(text || '')
     .replace(/\r\n/g, '\n')
@@ -120,6 +130,21 @@ function splitParagraphs(text) {
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
+}
+
+function isStandalonePageMarker(text) {
+  const normalized = cleanLine(text);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return /^[-–—\s]*\d+\s+of\s+\d+\s*[-–—\s]*$/i.test(normalized) ||
+    /^page\s+\d+\s+of\s+\d+$/i.test(normalized);
+}
+
+function stripArtifactLines(lines) {
+  return lines.filter((line) => !isStandalonePageMarker(line));
 }
 
 function resolveSectionKey(heading, fallback = 'general') {
@@ -176,7 +201,8 @@ function buildDocumentSourceBlocks(documentType, label, text, sourcePath = '') {
       lines.shift();
     }
 
-    const blockText = lines.join('\n').trim();
+    const contentLines = stripArtifactLines(lines);
+    const blockText = contentLines.join('\n').trim();
 
     if (!blockText) {
       return;
@@ -365,8 +391,11 @@ function selectWorkspaceSourceBlocks(sourceModel, {
         blockId: block.blockId,
         documentType: block.documentType,
         documentLabel: block.documentLabel,
+        sourceName: block.sourceName,
         sectionKey: block.sectionKey,
         sectionLabel: block.sectionLabel,
+        preview: buildManifestPreview(block.text),
+        order: block.order,
         score: Number(block.score.toFixed(4))
       });
     });

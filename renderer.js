@@ -11,6 +11,13 @@ function createEmptyDraftVariants() {
   };
 }
 
+function createEmptyRetrievalEvidence() {
+  return {
+    summary: [],
+    briefing: []
+  };
+}
+
 function createEmptySourceFolderState() {
   return {
     path: '',
@@ -48,6 +55,7 @@ const state = {
   outputLanguage: 'en',
   pendingOutputLanguage: '',
   draftVariants: createEmptyDraftVariants(),
+  retrievalEvidence: createEmptyRetrievalEvidence(),
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
@@ -118,15 +126,12 @@ const elements = {
   templateConfigNote: document.getElementById('template-config-note'),
   currentContextPanel: document.getElementById('current-context-panel'),
   currentWorkspaceNote: document.getElementById('current-workspace-note'),
+  currentContextFilesInline: document.getElementById('current-context-files-inline'),
   currentContextStatus: document.getElementById('current-context-status'),
   currentRoleField: document.getElementById('current-role-field'),
   currentRoleName: document.getElementById('current-role-name'),
   currentCandidateField: document.getElementById('current-candidate-field'),
   currentCandidateName: document.getElementById('current-candidate-name'),
-  currentJdField: document.getElementById('current-jd-field'),
-  currentJdFile: document.getElementById('current-jd-file'),
-  currentCvField: document.getElementById('current-cv-field'),
-  currentCvFile: document.getElementById('current-cv-file'),
   dropzone: document.getElementById('dropzone'),
   openWorkspaceContextTab: document.getElementById('open-workspace-context-tab'),
   openManualContextTab: document.getElementById('open-manual-context-tab'),
@@ -167,6 +172,9 @@ const elements = {
   revealWordDraftButton: document.getElementById('reveal-word-draft-button'),
   openWordDraftButton: document.getElementById('open-word-draft-button'),
   debugTrace: document.getElementById('debug-trace'),
+  summaryEvidencePanel: document.getElementById('summary-evidence-panel'),
+  summaryEvidenceSummaryList: document.getElementById('summary-evidence-summary-list'),
+  summaryEvidenceBriefingList: document.getElementById('summary-evidence-briefing-list'),
   draftModePill: document.getElementById('draft-mode-pill'),
   draftLifecyclePill: document.getElementById('draft-lifecycle-pill'),
   templateLabel: document.getElementById('template-label'),
@@ -276,6 +284,24 @@ function normalizeCurrentContextProfile(profile = {}) {
     jobTitle: String(profile.jobTitle || '').trim(),
     companyName: String(profile.companyName || '').trim()
   };
+}
+
+function normalizeRetrievalManifest(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries.map((entry) => ({
+    blockId: String(entry?.blockId || '').trim(),
+    documentType: String(entry?.documentType || '').trim(),
+    documentLabel: String(entry?.documentLabel || '').trim(),
+    sourceName: String(entry?.sourceName || '').trim(),
+    sectionKey: String(entry?.sectionKey || '').trim(),
+    sectionLabel: String(entry?.sectionLabel || '').trim(),
+    preview: String(entry?.preview || '').trim(),
+    order: Number(entry?.order) || 0,
+    score: Number(entry?.score) || 0
+  }));
 }
 
 function cacheDraftVariant(mode = state.outputMode, language = state.outputLanguage) {
@@ -903,6 +929,20 @@ function getCurrentContextStatus() {
   return 'Load Sources';
 }
 
+function getCurrentContextFilesInlineLabel() {
+  const parts = [];
+
+  if (state.documents.cv.file?.name) {
+    parts.push(state.documents.cv.file.name);
+  }
+
+  if (state.documents.jd.file?.name) {
+    parts.push(state.documents.jd.file.name);
+  }
+
+  return parts.join(' | ');
+}
+
 function renderCurrentContext() {
   const hasWorkspace = Boolean(state.sourceFolder.name);
   const hasCandidateLoaded = Boolean(state.documents.cv.file);
@@ -911,26 +951,16 @@ function renderCurrentContext() {
 
   if (!hasCandidateLoaded) {
     elements.currentWorkspaceNote.textContent = '';
+    elements.currentContextFilesInline.textContent = '';
     return;
   }
 
   const hasRole = setContextValue(elements.currentRoleName, getCurrentRoleLabel(), 'No role loaded');
   const hasCandidate = setContextValue(elements.currentCandidateName, getCurrentCandidateLabel(), 'No candidate loaded');
-  const hasJd = setContextValue(
-    elements.currentJdFile,
-    state.documents.jd.file?.name || '',
-    'No JD loaded'
-  );
-  const hasCv = setContextValue(
-    elements.currentCvFile,
-    state.documents.cv.file?.name || '',
-    'No CV loaded'
-  );
 
   elements.currentRoleField.classList.toggle('is-hidden', !hasRole);
   elements.currentCandidateField.classList.toggle('is-hidden', !hasCandidate);
-  elements.currentJdField.classList.toggle('is-hidden', !hasJd);
-  elements.currentCvField.classList.toggle('is-hidden', !hasCv);
+  elements.currentContextFilesInline.textContent = getCurrentContextFilesInlineLabel();
   elements.currentContextStatus.textContent = getCurrentContextStatus();
   elements.currentWorkspaceNote.textContent = hasWorkspace
     ? `Workspace: ${state.sourceFolder.name}`
@@ -1430,6 +1460,7 @@ function renderSummary() {
   elements.debugTrace.textContent = formatDebugTrace();
   elements.templateLabel.textContent = state.templateLabel;
   renderApprovalWarnings();
+  renderRetrievalEvidence();
   if (state.lastExportPath) {
     elements.draftMeta.textContent = `Latest saved Word draft: ${state.lastExportPath}`;
     return;
@@ -1535,6 +1566,7 @@ function invalidateSummary(message) {
   state.summary = '';
   state.pendingOutputLanguage = '';
   clearCachedDraftVariants();
+  state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
@@ -1575,6 +1607,47 @@ function renderApprovalWarnings() {
   elements.approvalWarningList.innerHTML = warnings
     .map((warning) => `<li>${escapeHtml(warning)}</li>`)
     .join('');
+}
+
+function renderEvidenceItems(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return '<p class="evidence-empty">No source evidence was captured for this output yet.</p>';
+  }
+
+  return entries
+    .map((entry) => {
+      const metaParts = [
+        entry.documentLabel,
+        entry.sectionLabel || entry.sectionKey,
+        entry.sourceName,
+        entry.blockId ? `score ${entry.score.toFixed(2)} · ${entry.blockId}` : `score ${entry.score.toFixed(2)}`
+      ].filter(Boolean);
+
+      return [
+        '<article class="evidence-item">',
+        `<p class="evidence-item-meta">${escapeHtml(metaParts.join(' · '))}</p>`,
+        entry.preview ? `<p class="evidence-item-preview">${escapeHtml(entry.preview)}</p>` : '',
+        '</article>'
+      ].join('');
+    })
+    .join('');
+}
+
+function renderRetrievalEvidence() {
+  const summaryEvidence = state.retrievalEvidence.summary;
+  const briefingEvidence = state.retrievalEvidence.briefing;
+  const hasEvidence = summaryEvidence.length > 0 || briefingEvidence.length > 0;
+
+  elements.summaryEvidencePanel.classList.toggle('is-hidden', !hasEvidence);
+
+  if (!hasEvidence) {
+    elements.summaryEvidenceSummaryList.innerHTML = '';
+    elements.summaryEvidenceBriefingList.innerHTML = '';
+    return;
+  }
+
+  elements.summaryEvidenceSummaryList.innerHTML = renderEvidenceItems(summaryEvidence);
+  elements.summaryEvidenceBriefingList.innerHTML = renderEvidenceItems(briefingEvidence);
 }
 
 function markDraftEdited() {
@@ -1969,6 +2042,7 @@ function buildWorkspaceSnapshotPayload() {
     draftLifecycle: state.draftLifecycle,
     summary: state.summary,
     briefing: state.briefing,
+    retrievalEvidence: state.retrievalEvidence,
     briefingReview: state.briefingReview,
     approvalWarnings: state.approvalWarnings,
     lastExportPath: state.lastExportPath,
@@ -2088,6 +2162,10 @@ async function openRecentWorkspace(workspaceId) {
     await hydrateDocument('cv', snapshot.loadedCvPath);
 
     state.briefing = snapshot.briefing || null;
+    state.retrievalEvidence = {
+      summary: normalizeRetrievalManifest(snapshot.retrievalEvidence?.summary),
+      briefing: normalizeRetrievalManifest(snapshot.retrievalEvidence?.briefing)
+    };
     state.briefingReview = snapshot.briefingReview || '';
     state.summary = snapshot.summary || '';
     state.outputMode = snapshot.outputMode === 'anonymous' ? 'anonymous' : 'named';
@@ -2395,6 +2473,7 @@ async function generateSummary() {
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
+  state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.debugTrace = [];
   state.generationError = '';
   state.summaryMessage = 'Generating the candidate summary and hiring-manager briefing review.';
@@ -2411,6 +2490,10 @@ async function generateSummary() {
     });
 
     state.briefing = result.briefing || null;
+    state.retrievalEvidence = {
+      summary: normalizeRetrievalManifest(result.summaryRetrievalManifest),
+      briefing: normalizeRetrievalManifest(result.briefingRetrievalManifest)
+    };
     state.briefingReview = result.hiringManagerBriefingReview || '';
     state.summary = result.summary;
     state.outputMode = result.outputMode || state.outputMode;
@@ -2643,6 +2726,7 @@ function resetWorkspace() {
   state.currentContextProfile = null;
   state.currentWorkspaceId = '';
   state.briefing = null;
+  state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.briefingReview = '';
   state.summary = '';
   state.pendingOutputLanguage = '';

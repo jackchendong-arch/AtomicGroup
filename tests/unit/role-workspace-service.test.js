@@ -29,6 +29,28 @@ function createWorkspacePayload(overrides = {}) {
       }
     },
     briefingReview: 'Hiring manager briefing review.',
+    retrievalEvidence: {
+      summary: [
+        {
+          blockId: 'cv-1',
+          documentLabel: 'Candidate CV',
+          sourceName: 'CV4-1.pdf',
+          sectionLabel: 'Overview',
+          preview: 'Candidate overview text.',
+          score: 1
+        }
+      ],
+      briefing: [
+        {
+          blockId: 'jd-2',
+          documentLabel: 'Job Description',
+          sourceName: 'JD4.docx',
+          sectionLabel: 'Requirements',
+          preview: 'Blockchain developer requirement text.',
+          score: 0.88
+        }
+      ]
+    },
     approvalWarnings: [],
     lastExportPath: '/Users/jack/Documents/AtomicGroup Briefings/candidate-one.docx',
     templateLabel: 'Default Recruiter Profile Template',
@@ -75,6 +97,8 @@ test('RoleWorkspaceStore upserts the same role workspace candidate snapshot', as
     const loaded = await store.load(result.workspace.workspaceId);
     assert.equal(loaded.workspace.summary, 'Updated summary text.');
     assert.equal(loaded.workspace.draftLifecycle, 'approved');
+    assert.equal(loaded.workspace.retrievalEvidence.summary[0].blockId, 'cv-1');
+    assert.equal(loaded.workspace.retrievalEvidence.briefing[0].sourceName, 'JD4.docx');
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

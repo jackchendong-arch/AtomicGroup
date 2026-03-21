@@ -134,6 +134,10 @@ function normalizeWorkspaceSnapshot(input = {}) {
   const loadedCvPath = normalizeString(input.loadedCvPath);
   const summary = String(input.summary || '').trim();
   const briefing = cloneJsonValue(input.briefing, null);
+  const retrievalEvidence = cloneJsonValue(input.retrievalEvidence, {
+    summary: [],
+    briefing: []
+  });
   const workspaceId = buildWorkspaceId({
     sourceFolderPath,
     selectedJdPath,
@@ -157,6 +161,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     draftLifecycle: normalizeString(input.draftLifecycle) || 'empty',
     summary,
     briefing,
+    retrievalEvidence,
     briefingReview: String(input.briefingReview || '').trim(),
     approvalWarnings: normalizeStringArray(input.approvalWarnings),
     lastExportPath: normalizeString(input.lastExportPath),

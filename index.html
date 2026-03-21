@@ -383,6 +383,10 @@
         gap: 10px;
       }
 
+      .stage-shell > .current-context-card {
+        margin: 0 12px 12px;
+      }
+
       .current-context-card.is-hidden {
         display: none;
       }
@@ -397,6 +401,20 @@
       .current-context-head h3 {
         margin: 0;
         font-size: 0.98rem;
+      }
+
+      .current-context-title {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .current-context-title-meta {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--muted);
+        word-break: break-word;
       }
 
       .current-context-grid {
@@ -430,6 +448,21 @@
         gap: 6px;
         padding-top: 8px;
         border-top: 1px solid rgba(23, 32, 51, 0.08);
+      }
+
+      .current-context-card.stage-current-context-card {
+        gap: 12px;
+        padding: 14px 16px;
+      }
+
+      .current-context-card.stage-current-context-card .current-context-grid,
+      .current-context-card.stage-current-context-card .current-context-files {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 16px;
+      }
+
+      .current-context-card.stage-current-context-card .current-context-files {
+        padding-top: 10px;
       }
 
       .current-context-file {
@@ -1083,6 +1116,61 @@
         font-size: 0.85rem;
       }
 
+      .evidence-details .evidence-groups {
+        display: grid;
+        gap: 12px;
+        padding: 0 12px 12px;
+      }
+
+      .evidence-group {
+        display: grid;
+        gap: 8px;
+      }
+
+      .evidence-group strong {
+        font-size: 0.82rem;
+        color: var(--ink);
+      }
+
+      .evidence-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .evidence-item {
+        display: grid;
+        gap: 4px;
+        padding: 10px 12px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.76);
+      }
+
+      .evidence-item-meta,
+      .evidence-item-preview,
+      .evidence-empty {
+        margin: 0;
+      }
+
+      .evidence-item-meta {
+        color: var(--muted);
+        font-size: 0.76rem;
+        line-height: 1.4;
+        font-weight: 700;
+      }
+
+      .evidence-item-preview {
+        color: var(--ink);
+        font-size: 0.8rem;
+        line-height: 1.45;
+      }
+
+      .evidence-empty {
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+
       .debug-trace {
         margin: 0;
         padding: 0 12px 12px;
@@ -1405,6 +1493,11 @@
           min-height: auto;
         }
 
+        .current-context-card.stage-current-context-card .current-context-grid,
+        .current-context-card.stage-current-context-card .current-context-files {
+          grid-template-columns: 1fr;
+        }
+
         .document-reader,
         .summary-editor {
           min-height: 360px;
@@ -1449,36 +1542,6 @@
         <section class="workbench-layout" id="workbench-view">
           <aside class="intake-rail">
             <section class="sidebar-panel">
-              <section class="source-card current-context-card is-hidden" id="current-context-panel">
-                <div class="current-context-head">
-                  <div>
-                    <h3>Current Candidate</h3>
-                    <p class="field-note" id="current-workspace-note"></p>
-                  </div>
-                  <span class="status-chip" id="current-context-status">Ready</span>
-                </div>
-                <div class="current-context-grid">
-                  <div class="current-context-field" id="current-role-field">
-                    <span class="current-context-label">Role</span>
-                    <div class="current-context-value" id="current-role-name"></div>
-                  </div>
-                  <div class="current-context-field" id="current-candidate-field">
-                    <span class="current-context-label">Candidate</span>
-                    <div class="current-context-value" id="current-candidate-name"></div>
-                  </div>
-                </div>
-                <div class="current-context-files">
-                  <div class="current-context-file" id="current-jd-field">
-                    <span class="current-context-label">Active JD</span>
-                    <div class="current-context-value" id="current-jd-file"></div>
-                  </div>
-                  <div class="current-context-file" id="current-cv-field">
-                    <span class="current-context-label">Active CV</span>
-                    <div class="current-context-value" id="current-cv-file"></div>
-                  </div>
-                </div>
-              </section>
-
               <section class="template-card context-panel">
                 <div class="context-panel-head">
                   <h3>Context</h3>
@@ -1595,6 +1658,29 @@
               </button>
             </div>
 
+            <section class="source-card current-context-card stage-current-context-card is-hidden" id="current-context-panel">
+              <div class="current-context-head">
+                <div>
+                  <div class="current-context-title">
+                    <h3>Current Candidate</h3>
+                    <span class="current-context-title-meta" id="current-context-files-inline"></span>
+                  </div>
+                  <p class="field-note" id="current-workspace-note"></p>
+                </div>
+                <span class="status-chip" id="current-context-status">Ready</span>
+              </div>
+              <div class="current-context-grid">
+                <div class="current-context-field" id="current-role-field">
+                  <span class="current-context-label">Role</span>
+                  <div class="current-context-value" id="current-role-name"></div>
+                </div>
+                <div class="current-context-field" id="current-candidate-field">
+                  <span class="current-context-label">Candidate</span>
+                  <div class="current-context-value" id="current-candidate-name"></div>
+                </div>
+              </div>
+            </section>
+
             <div class="generation-progress is-hidden" id="generation-progress">
               <p class="generation-progress-label" id="generation-progress-label">Generating summary with the configured model...</p>
               <div class="generation-progress-track" aria-hidden="true">
@@ -1646,6 +1732,20 @@
                   <p class="summary-note" id="draft-meta">The built-in recruiter template is used unless a Markdown reference template is selected.</p>
                   <button class="text-link-button is-hidden" id="open-word-draft-button" type="button">Open Word Draft</button>
                 </div>
+
+                <details class="debug-details evidence-details is-hidden" id="summary-evidence-panel">
+                  <summary>Source Evidence</summary>
+                  <div class="evidence-groups">
+                    <section class="evidence-group">
+                      <strong>Recruiter Summary</strong>
+                      <div class="evidence-list" id="summary-evidence-summary-list"></div>
+                    </section>
+                    <section class="evidence-group">
+                      <strong>Hiring Manager Briefing</strong>
+                      <div class="evidence-list" id="summary-evidence-briefing-list"></div>
+                    </section>
+                  </div>
+                </details>
 
                 <details class="debug-details">
                   <summary>Export Debug Trace</summary>

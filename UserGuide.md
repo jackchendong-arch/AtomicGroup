@@ -91,6 +91,12 @@ Use the tabs in the main panel to review:
 
 The recruiter summary and briefing can be edited and reviewed before approval.
 
+Use the `Source Evidence` section in the summary review panel when you want to see which retrieved CV/JD blocks grounded:
+- the recruiter summary
+- the hiring-manager briefing
+
+Each evidence item shows the source file, section, retrieval score, and a short excerpt from the selected source block.
+
 ## Switch Language
 After a draft has been generated:
 - switching `English / 中文` translates the current derived outputs

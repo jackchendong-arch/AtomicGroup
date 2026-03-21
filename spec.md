@@ -661,7 +661,7 @@ Current implemented slices inside Release 5:
 - expanded real-fixture regression coverage over English and Chinese recruiter test packs
 - workspace-scoped normalized source model for the active CV, JD, and active guidance template
 - section-aware source blocks with metadata and lightweight lexical retrieval over the active role workspace
-- retrieval-backed prompt construction for recruiter summary and structured briefing generation, with retrieval manifests captured in debug traces
+- retrieval-backed prompt construction for recruiter summary and structured briefing generation, with retrieval manifests persisted and surfaced as recruiter-review evidence traces
 
 Implementation note:
 - The current retrieval layer is intentionally lexical and local. It selects relevant source blocks from the active workspace without generating embeddings or persisting vectors.

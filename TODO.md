@@ -188,6 +188,9 @@ Mark a release complete only when the work is:
   - tabbed context panel for role workspace, manual import, and recent work
   - `Role Workspace` as the default context tab, with manual import and recent work demoted to secondary navigation tabs
   - current candidate panel that only appears when a candidate is loaded
+  - current candidate panel moved into the main stage header area so active role/candidate context sits with the review workspace instead of competing with left-rail navigation
+  - current candidate panel reduced to role and candidate identity only, removing duplicate active-file lines from the stage header context card
+  - active CV and JD filenames folded into the current-candidate title row as compact inline context instead of separate duplicate fields
   - current candidate panel driven from deterministic CV/JD extraction as soon as source documents are loaded, without waiting for LLM generation
   - current candidate label extraction hardened for nickname-style candidate names and bilingual JD headings used in role-workspace fixtures
   - redundant outer left-rail wrapper removed so the rail starts directly with working sections
@@ -204,10 +207,10 @@ Mark a release complete only when the work is:
   - workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
   - section-aware source blocks with metadata for CV, JD, and guidance inputs
   - ephemeral lexical retrieval over the active role workspace inputs instead of prompt-stuffing the full CV/JD text
-  - retrieval-backed summary and structured-briefing prompt construction, with retrieval manifests written to generation debug logs
+  - retrieval-backed summary and structured-briefing prompt construction, with retrieval manifests persisted and surfaced as recruiter-review evidence traces
+  - filter standalone PDF page-marker artifacts out of surfaced retrieval evidence so recruiter review sees meaningful source excerpts rather than extraction noise
 - Remaining:
   - add dedicated reopen / rehydration regression coverage around saved role workspaces
-  - extend retrieval manifests into richer evidence tracing surfaced for recruiter review rather than only backend diagnostics
 - Keep `UserGuide.md` updated as the workflow changes so the shipped behavior and user guidance stay aligned.
 - After a draft has already been generated, let the recruiter switch output language by translating the current derived summary and briefing outputs into the selected language instead of rerunning full CV/JD assessment.
 - Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.

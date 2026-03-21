@@ -210,12 +210,36 @@ Mark a release complete only when the work is:
 
 ## Release 6: Production Hardening
 - [ ] Release 6 shipped, completed, and tested.
+- Address Tier 1 security remediation items from `/Users/jack/dev/documentation/AtomicGroupsecurity_design.html` before lower-priority production polish work.
+- Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files.
+- Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
+- Replace current summary/export debug traces with privacy-safe diagnostics that record only:
+  - file names or file hashes
+  - provider/model/runtime settings
+  - validation outcomes
+  - error categories
+  - run IDs and artifact/template versions when available
+- Explicitly harden Electron window security by setting and enforcing:
+  - `nodeIntegration: false`
+  - `contextIsolation: true`
+  - `sandbox: true`
+  - `webSecurity: true`
+- Add a strict renderer Content Security Policy and remove any need for unsafe script execution.
+- Block unexpected navigation and window creation in the main app surface; do not allow remote URLs to load inside the main app window.
+- Review preload-exposed IPC methods and narrow them to validated, least-privilege operations only.
+- Preserve anonymous-before-send behavior so anonymized runs mask data before LLM prompt assembly, not after the API call.
+- Add explicit clearing of in-memory workspace source content on workspace reset / close and when loading a new candidate.
 - Add structured error states for file import, extraction, generation, anonymization, and email handoff.
 - Add recruiter-friendly retry actions for recoverable failures.
 - Add local logging that is useful for diagnosing extraction and generation problems.
 - Add output quality checks for missing required sections in generated summaries.
 - Add safeguards against overconfident unsupported claims in the generated profile.
 - Add basic performance instrumentation for import, extraction, and generation timings.
+- Add regression tests for Tier 1 security controls:
+  - no plaintext API key persistence
+  - no raw content in persisted diagnostics
+  - hardened Electron webPreferences
+  - navigation / window-open restrictions
 - Decide whether product-approved telemetry is allowed and implement it only if approved.
 - Run regression testing across all previously shipped workflows.
 
@@ -234,6 +258,12 @@ Mark a release complete only when the work is:
 - Add retrieval/run manifests so later workspace-scoped retrieval captures retrieved source block IDs, scores, and evidence lineage.
 - Surface run IDs and selected artifact versions in the app and/or exported diagnostics so recommendations can be audited later.
 - Support rollback to a previous approved prompt or template artifact version.
+- Before any artifact sync/download path ships, implement the Tier 1 supply-chain controls from `/Users/jack/dev/documentation/AtomicGroupsecurity_design.html`:
+  - HTTPS-only manifest and bundle fetches
+  - hardcoded manifest endpoint, not user-overridable
+  - allowed-host/domain validation on download URLs
+  - SHA-256 verification on every downloaded bundle before activation
+  - CI-restricted publishing and documented release integrity checks
 
 ## Cross-Cutting Product Decisions
 - Extend the provider abstraction cleanly when additional LLM vendors are added after DeepSeek.
@@ -252,6 +282,8 @@ Mark a release complete only when the work is:
 - Keep recruiter summary guidance in Markdown and hiring-manager presentation in Word so template responsibilities stay distinct.
 - Use the grounded structured briefing model as the shared content source of truth for hiring-manager briefing review and Word export.
 - Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.
+- Never persist raw CV/JD text or generated candidate content to logs by default; use hashes, metadata, and explicit opt-in retention instead.
+- Treat the LLM API call as the primary PII egress point and keep anonymous-before-send plus minimum-necessary content as baseline controls.
 - Manage prompts, Markdown guidance templates, and Word templates through one app-managed artifact registry with type-specific metadata and versioning.
 - Replace consultant-edited free-form prompts with selection/import of approved prompt artifacts.
 - Persist generation run artifacts with prompt/template versions, input hashes, model settings, and later retrieval manifests so decisions remain traceable.

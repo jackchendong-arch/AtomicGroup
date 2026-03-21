@@ -3,9 +3,10 @@
 ## Document Status
 - Owner: Product / Founding Team
 - Status: Draft v0.1
-- Last updated: 2026-03-20
+- Last updated: 2026-03-21
 - Product surface: Desktop app (Electron)
 - Maintenance rule: This spec should be updated alongside implemented behavior changes and agreed future design direction so it remains the working product/design record.
+- Security reference: This spec is additionally informed by `/Users/jack/dev/documentation/AtomicGroupsecurity_design.html`, which defines Tier 1 and Tier 2 controls for the desktop app and later artifact-registry workflow.
 
 ## Product Summary
 This product helps a headhunter turn raw recruitment documents into a high-quality candidate summary that can be reviewed and then shared with a hiring manager.
@@ -204,6 +205,42 @@ Recommended output sections:
 - The app should keep the busy/progress indicator visible in a shared stage-level location while generation, translation, export, or email handoff is running.
 - The app should prevent repeated conflicting language-toggle actions while translation is in progress.
 - If translation output is malformed, the app should attempt a controlled repair or fall back gracefully rather than silently corrupting the draft.
+
+### 4C. Security and Privacy Baseline
+The app handles candidate PII, recruiter-generated outputs, local templates, and future prompt/template artifacts. Security requirements should therefore be treated as product requirements, not just implementation preferences.
+
+Tier 1 priorities should be addressed before lower-priority production polish work:
+- Never persist raw CV or JD text to application logs.
+- Never persist generated candidate summaries, briefing text, or employment-history content to debug logs by default.
+- Persist only privacy-safe metadata in diagnostics by default, such as:
+  - file names or file hashes
+  - provider and model identifiers
+  - runtime settings
+  - validation and error outcomes
+  - run IDs and selected artifact versions when available
+- Store the LLM API key in the OS credential store only.
+- Do not allow plaintext API-key fallback in config files or other app-managed files.
+- Treat the LLM API call as the primary PII egress point.
+- Apply anonymous mode before prompt assembly so anonymized runs do not send direct identifiers to the LLM provider.
+- Send only the minimum necessary CV/JD content for the generation task, with workspace-scoped retrieval reducing prompt size later.
+- Explicitly harden Electron renderer security with:
+  - `nodeIntegration: false`
+  - `contextIsolation: true`
+  - `sandbox: true`
+  - `webSecurity: true`
+- Require a strict Content Security Policy in the renderer.
+- Never load remote URLs in the main app window.
+- Block unexpected navigation and window creation from the main app surface.
+- Clear in-memory workspace source content when the recruiter resets the workspace, switches candidate context, or closes the active session.
+
+Tier 2 security and privacy controls should follow once the Tier 1 baseline is in place:
+- configurable run-history retention
+- clear-all-history/offboarding actions
+- privacy-safe run records and retrieval manifests
+- artifact-bundle integrity checks for any future synced/imported registry flow
+- richer audit visibility for provider/model/runtime provenance
+
+These security requirements apply both to the currently shipped document-generation workflow and to the later artifact-registry design.
 
 ### 5. Anonymous and Named Modes
 - The user can choose named or anonymous mode before generation.
@@ -586,9 +623,14 @@ Acceptance criteria:
 
 ### Release 6: Production Hardening
 Value:
-- The app becomes more reliable for real recruiter usage.
+- The app becomes more reliable and meets the non-negotiable Tier 1 security baseline for handling candidate data and LLM-provider access.
 
 Scope:
+- Tier 1 security remediation from the security design reference
+- OS credential-store-only API key handling
+- privacy-safe structured logging with no raw candidate content
+- explicit Electron hardening and renderer/browser guardrails
+- in-memory workspace clear behavior for sensitive source content
 - Better extraction diagnostics
 - Error handling and recovery paths
 - Logging suitable for support
@@ -596,6 +638,9 @@ Scope:
 - Basic usage telemetry if approved by product/privacy policy
 
 Acceptance criteria:
+- The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
+- The LLM API key is not stored in plaintext files or file-based fallback config.
+- Electron window security settings and renderer guardrails match the security baseline.
 - Common user-facing failures are recoverable.
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.
@@ -618,6 +663,11 @@ Acceptance criteria:
 - The app can import newer approved prompt/template artifacts without a full app redeploy.
 - Each generation run stores enough provenance to identify which artifacts, inputs, and runtime settings produced the result.
 - Artifact promotion from development to production is documented and operationally clear.
+- If artifact sync or remote bundle download exists, it enforces:
+  - HTTPS-only fetches
+  - hardcoded manifest endpoints
+  - trusted-domain validation
+  - SHA-256 bundle verification before activation
 
 ### Placeholder: Future Artifact Ops Design Review
 This section is intentionally a placeholder for a later deeper design review. The current goal is to capture the main recommendation areas so artifact governance is treated as a product and operational capability, not just an implementation detail.

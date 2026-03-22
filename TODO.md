@@ -244,6 +244,8 @@ Mark a release complete only when the work is:
   - main-window navigation and window-open restrictions so unexpected remote navigation is denied
   - renderer Content Security Policy for local-only script execution and blocked embedded/remote framing paths
   - privacy-safe summary/export diagnostics that keep metadata, counts, and digests instead of raw CV/JD or generated candidate content
+  - deterministic Playwright Electron E2E coverage for import, generation, language switching, source evidence, recent-work reopen, and role-workspace candidate switching using a local mock-generation mode instead of live provider calls
+  - human-observable Playwright run mode via `npm run test:e2e:observe` so end-to-end flows can be watched at slowed-down interaction speed during manual review
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:

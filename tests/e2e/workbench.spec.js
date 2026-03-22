@@ -9,8 +9,40 @@ const appRoot = path.resolve(__dirname, '..', '..');
 const sampleCvPath = path.join(appRoot, 'samples', 'sample-cv.txt');
 const sampleJdPath = path.join(appRoot, 'samples', 'sample-jd.txt');
 const structuredCvPath = path.join(appRoot, 'samples', 'structured-cv.txt');
+const sampleWorkspacePath = path.join(appRoot, 'samples', 'role-workspace');
+const sampleWorkspaceJdPath = path.join(sampleWorkspacePath, 'JD-role.txt');
+const sampleWorkspaceAlexCvPath = path.join(sampleWorkspacePath, 'CV-alex.txt');
+const sampleWorkspaceJordanCvPath = path.join(sampleWorkspacePath, 'CV-jordan.txt');
 const defaultSystemPrompt =
   'You are an executive search recruiter assistant. Produce grounded, evidence-based candidate profile summaries for hiring managers. Do not invent facts. Call out strengths and gaps clearly.';
+
+function getSlowMoMs() {
+  const parsedValue = Number.parseInt(process.env.E2E_SLOW_MO_MS || '0', 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+}
+
+async function dispatchUriDrop(page, selector, filePaths) {
+  const uriList = filePaths.map((filePath) => pathToFileURL(filePath).href).join('\n');
+  await page.locator(selector).evaluate((element, payload) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', payload);
+    element.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer
+    }));
+  }, uriList);
+}
+
+async function openSourceFolderViaTestApi(page, folderPath) {
+  await page.evaluate(async (nextFolderPath) => {
+    await window.__atomicgroupTest.openSourceFolder(nextFolderPath);
+  }, folderPath);
+}
+
+async function getSummaryEditorText(page) {
+  return page.locator('#summary-editor').innerText();
+}
 
 test.describe('Candidate Match Workbench', () => {
   let electronApp;
@@ -41,9 +73,12 @@ test.describe('Candidate Match Workbench', () => {
     electronApp = await electron.launch({
       args: ['.'],
       cwd: appRoot,
+      slowMo: getSlowMoMs(),
       env: {
         ...process.env,
-        ELECTRON_USER_DATA_PATH: userDataPath
+        ELECTRON_USER_DATA_PATH: userDataPath,
+        ATOMICGROUP_E2E_MOCK_LLM: '1',
+        ATOMICGROUP_E2E_TEST_API: '1'
       }
     });
 
@@ -61,118 +96,106 @@ test.describe('Candidate Match Workbench', () => {
     }
   });
 
-  test('opens on the summary-first workbench and supports main review tabs', async () => {
+  test('opens on the summary-first workbench and supports settings navigation', async () => {
     await expect(page.locator('#workbench-view')).toBeVisible();
     await expect(page.locator('#summary-panel')).toBeVisible();
     await expect(page.locator('#briefing-panel')).toBeHidden();
     await expect(page.locator('#cv-panel')).toBeHidden();
     await expect(page.locator('#jd-panel')).toBeHidden();
-    await expect(page.locator('#source-panel-status')).toHaveText(/Awaiting Documents/);
-    await expect(page.locator('#summary-editor')).toHaveAttribute('contenteditable', 'true');
+    await expect(page.locator('#summary-message')).toHaveText(/Load the CV and JD/i);
+    await expect(page.locator('#generation-progress')).toHaveClass(/is-hidden/);
 
     await page.locator('#open-briefing-tab').click();
     await expect(page.locator('#briefing-panel')).toBeVisible();
-    await expect(page.locator('#summary-panel')).toBeHidden();
 
-    await page.locator('#open-cv-tab').click();
-    await expect(page.locator('#cv-panel')).toBeVisible();
-    await expect(page.locator('#briefing-panel')).toBeHidden();
-    await expect(page.locator('#cv-preview-text')).toHaveClass(/rich-document/);
-
-    await page.locator('#open-jd-tab').click();
-    await expect(page.locator('#jd-panel')).toBeVisible();
-    await expect(page.locator('#cv-panel')).toBeHidden();
-
-    await page.locator('#open-summary-tab').click();
-    await expect(page.locator('#summary-panel')).toBeVisible();
-    await expect(page.locator('#jd-panel')).toBeHidden();
-  });
-
-  test('opens settings and switches between LLM and template configuration tabs', async () => {
     await page.locator('#open-settings-view').click();
     await expect(page.locator('#settings-view')).toBeVisible();
     await expect(page.locator('#llm-settings-panel')).toBeVisible();
 
-    await page.locator('#open-template-settings-tab').click();
-    await expect(page.locator('#template-settings-panel')).toBeVisible();
-    await expect(page.locator('#llm-settings-panel')).toBeHidden();
+    await page.locator('#open-summary-guidance-settings-tab').click();
+    await expect(page.locator('#summary-guidance-settings-panel')).toBeVisible();
 
-    await page.locator('#open-llm-settings-tab').click();
-    await expect(page.locator('#llm-settings-panel')).toBeVisible();
-    await expect(page.locator('#template-settings-panel')).toBeHidden();
+    await page.locator('#open-word-template-settings-tab').click();
+    await expect(page.locator('#word-template-settings-panel')).toBeVisible();
 
     await page.locator('#return-to-workbench-button').click();
     await expect(page.locator('#workbench-view')).toBeVisible();
+    await page.locator('#open-summary-tab').click();
     await expect(page.locator('#summary-panel')).toBeVisible();
   });
 
-  test('keeps long-form reading inside the main panels and keeps generation progress available in the summary view', async () => {
-    const layout = await page.evaluate(() => {
-      const bodyStyle = window.getComputedStyle(document.body);
-      const summaryEditorStyle = window.getComputedStyle(document.getElementById('summary-editor'));
-      const cvReaderStyle = window.getComputedStyle(document.getElementById('cv-preview-text'));
-      const jdReaderStyle = window.getComputedStyle(document.getElementById('jd-preview-text'));
-      const progress = document.getElementById('generation-progress');
+  test('supports manual import, deterministic generation, evidence, translation, and recent-work reopen', async () => {
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
 
-      return {
-        bodyOverflow: bodyStyle.overflow,
-        summaryOverflowY: summaryEditorStyle.overflowY,
-        cvOverflowY: cvReaderStyle.overflowY,
-        jdOverflowY: jdReaderStyle.overflowY,
-        progressExists: Boolean(progress),
-        progressHidden: progress?.classList.contains('is-hidden') || false
-      };
-    });
+    await expect(page.locator('#cv-preview-status')).toHaveText(/Ready/i);
+    await expect(page.locator('#jd-preview-status')).toHaveText(/Ready/i);
+    await expect(page.locator('#current-context-panel')).toBeVisible();
+    await expect(page.locator('#current-role-name')).toContainText('Senior Product Manager');
+    await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
 
-    expect(layout.bodyOverflow).toBe('hidden');
-    expect(layout.summaryOverflowY).toBe('auto');
-    expect(layout.cvOverflowY).toBe('auto');
-    expect(layout.jdOverflowY).toBe('auto');
-    expect(layout.progressExists).toBe(true);
-    expect(layout.progressHidden).toBe(true);
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#summary-message')).toHaveText(/ready/i);
+    await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
+    await expect(page.locator('#summary-editor')).toContainText('Senior Product Manager');
+
+    await expect(page.locator('#summary-evidence-panel')).not.toHaveClass(/is-hidden/);
+    await page.locator('#summary-evidence-panel summary').click();
+    await expect(page.locator('#summary-evidence-summary-list .evidence-item').first()).toBeVisible();
+
+    await page.locator('#open-briefing-tab').click();
+    await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
+
+    await page.locator('#toggle-output-language-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
+    await expect(page.locator('#summary-editor')).toContainText(/候选人|匹配|下一步/);
+    await expect(page.locator('#briefing-preview')).toContainText(/候选人|目标岗位|简报/);
+
+    await page.locator('#reset-workspace-button').click();
+    await expect(page.locator('#current-context-panel')).toHaveClass(/is-hidden/);
+
+    await page.locator('#open-recent-context-tab').click();
+    await expect(page.locator('#recent-work-list .recent-work-item').first()).toContainText('Jordan Lee');
+    await page.locator('#recent-work-list .recent-work-item').first().click();
+
+    await expect(page.locator('#current-context-panel')).toBeVisible();
+    await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
+    await expect(page.locator('#summary-status')).toHaveText(/Ready|Approved/);
+    await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
   });
 
-  test('accepts Finder-style file URI drops for source intake', async () => {
-    await page.locator('#cv-card').evaluate((element, fileUri) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData('text/uri-list', fileUri);
-      element.dispatchEvent(new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer
-      }));
-    }, pathToFileURL(sampleCvPath).href);
+  test('supports role workspace candidate switching without stale previews', async () => {
+    await openSourceFolderViaTestApi(page, sampleWorkspacePath);
 
-    await expect(page.locator('#cv-file-pill')).toHaveText(/sample-cv\.txt/i);
+    await expect(page.locator('#source-folder-name')).toContainText('role-workspace');
+    await expect(page.locator('#current-context-panel')).toBeVisible();
+    await expect(page.locator('#current-role-name')).toContainText('Senior Product Manager');
 
-    await page.locator('#dropzone').evaluate((element, fileUris) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData('text/uri-list', fileUris);
-      element.dispatchEvent(new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer
-      }));
-    }, [
-      pathToFileURL(sampleCvPath).href,
-      pathToFileURL(sampleJdPath).href
-    ].join('\n'));
+    await expect(page.locator('#source-folder-jd-select')).toHaveValue(sampleWorkspaceJdPath);
+    await page.locator('#source-folder-cv-select').selectOption(sampleWorkspaceAlexCvPath);
+    await expect(page.locator('#current-candidate-name')).toContainText('Alex Tan');
 
-    await expect(page.locator('#cv-file-pill')).toHaveText(/sample-cv\.txt/i);
-    await expect(page.locator('#jd-file-pill')).toHaveText(/sample-jd\.txt/i);
-    await expect(page.locator('#source-panel-status')).toHaveText(/Ready to Generate/);
+    await page.locator('#open-cv-tab').click();
+    await expect(page.locator('#cv-preview-text')).toContainText('Alex Tan');
+    await expect(page.locator('#cv-preview-text')).toContainText('Director of Product');
+
+    await page.locator('#source-folder-cv-select').selectOption(sampleWorkspaceJordanCvPath);
+    await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
+    await expect(page.locator('#cv-preview-text')).toContainText('Jordan Lee');
+    await expect(page.locator('#cv-preview-text')).not.toContainText('Alex Tan');
+
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#open-summary-tab')).toBeVisible();
+    await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
+    await expect(page.locator('#summary-editor')).not.toContainText('Alex Tan');
   });
 
   test('renders structured CV experience entries without turning every short line into a heading', async () => {
-    await page.locator('#cv-card').evaluate((element, fileUri) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData('text/uri-list', fileUri);
-      element.dispatchEvent(new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer
-      }));
-    }, pathToFileURL(structuredCvPath).href);
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [structuredCvPath]);
 
     await page.locator('#open-cv-tab').click();
 
@@ -180,5 +203,26 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#cv-preview-text .cv-entry-title').first()).toHaveText(/Director of Product/i);
     await expect(page.locator('#cv-preview-text .cv-entry-meta').first()).toHaveText(/Atom Search Partners.*2022 - Present/i);
     await expect(page.locator('#cv-preview-text h3')).toHaveText(['Employment Experience', 'Education', 'Skills']);
+  });
+
+  test('keeps long-form reading inside the main panels', async () => {
+    const layout = await page.evaluate(() => {
+      const bodyStyle = window.getComputedStyle(document.body);
+      const summaryEditorStyle = window.getComputedStyle(document.getElementById('summary-editor'));
+      const cvReaderStyle = window.getComputedStyle(document.getElementById('cv-preview-text'));
+      const jdReaderStyle = window.getComputedStyle(document.getElementById('jd-preview-text'));
+
+      return {
+        bodyOverflow: bodyStyle.overflow,
+        summaryOverflowY: summaryEditorStyle.overflowY,
+        cvOverflowY: cvReaderStyle.overflowY,
+        jdOverflowY: jdReaderStyle.overflowY
+      };
+    });
+
+    expect(layout.bodyOverflow).toBe('hidden');
+    expect(layout.summaryOverflowY).toBe('auto');
+    expect(layout.cvOverflowY).toBe('auto');
+    expect(layout.jdOverflowY).toBe('auto');
   });
 });

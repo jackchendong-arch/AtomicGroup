@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   listSourceFolder(payload) {
     return ipcRenderer.invoke('workspace:list-source-folder', payload);
   },
+  isE2ETestMode() {
+    return process.env.ATOMICGROUP_E2E_TEST_API === '1';
+  },
   deriveWorkspaceProfile(payload) {
     return ipcRenderer.invoke('workspace:derive-profile', payload);
   },

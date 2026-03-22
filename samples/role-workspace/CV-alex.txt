@@ -1,0 +1,26 @@
+Alex Tan
+Singapore
+alex.tan@example.com
++65 9123 4567
+
+Product leader with experience across talent platforms, recruiter workflow design, and AI-enabled hiring tools.
+
+Employment Experience
+Director of Product | Atom Search Partners
+2022 - Present
+- Leads product strategy for a recruiter platform covering search, candidate review, and hiring-manager presentation workflows.
+- Partnered with engineering and data teams to launch AI-assisted profile summarization for executive search consultants.
+
+Senior Product Manager
+Talent Bridge Solutions
+2019 - 2022
+- Owned recruiter productivity features including candidate shortlisting, interview coordination, and submission reporting.
+- Drove platform improvements that reduced recruiter admin time and improved search-to-submission conversion.
+
+Education
+Bachelor of Business
+National University of Singapore
+2011 - 2015
+
+Skills
+Product strategy, B2B SaaS, recruiter tooling, workflow automation, AI features

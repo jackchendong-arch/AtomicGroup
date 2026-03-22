@@ -1,0 +1,16 @@
+Jordan Lee
+Singapore
+jordan.lee@example.com
++65 9123 4567
+
+Senior Product Manager with 8 years of experience leading SaaS platform delivery, workflow automation, recruiter tooling, and cross-functional product execution.
+
+Experience
+- Led the redesign of a candidate search platform used by executive recruiters, improving search-to-shortlist conversion by 28%.
+- Partnered with engineering, design, and data teams to deliver recruiter productivity workflows including profile review, feedback capture, and email-ready shareouts.
+- Built product requirements for AI-assisted summarization features that mapped job requirements to candidate evidence and highlighted risks or missing information.
+- Managed roadmap prioritization, stakeholder communication, release planning, and post-launch adoption reviews for B2B hiring software.
+- Worked closely with enterprise clients to translate hiring-manager needs into search filters, evaluation templates, and recruiter workflows.
+
+Skills
+Product management, SaaS, recruiter workflow design, AI-assisted features, stakeholder management, delivery planning, user research, analytics, workflow automation

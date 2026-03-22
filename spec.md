@@ -748,6 +748,8 @@ Current implemented slices inside Release 6:
 - blocked unexpected in-window navigation and denied new window creation from the main app surface
 - renderer Content Security Policy restricted to local scripts and blocked embedded/remote frame paths
 - privacy-safe summary/export diagnostics that record metadata, counts, and digests instead of raw CV/JD text, generated summaries, or full structured briefing content
+- deterministic Playwright Electron end-to-end coverage for the current recruiter workflow using a local mock-generation mode so generation, translation, recent-work reopen, and role-workspace switching can be tested without live provider dependencies
+- a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.

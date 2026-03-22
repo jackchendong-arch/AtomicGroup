@@ -2440,6 +2440,53 @@ async function autoLoadWorkspaceSelections({ loadJd = true, loadCv = true } = {}
   }
 }
 
+function exposeE2ETestApi() {
+  if (!window.recruitmentApi?.isE2ETestMode || !window.recruitmentApi.isE2ETestMode()) {
+    return;
+  }
+
+  window.__atomicgroupTest = {
+    async openSourceFolder(folderPath) {
+      const result = await window.recruitmentApi.listSourceFolder({ folderPath });
+      state.contextTab = 'workspace';
+      applySourceFolderListing(result);
+      ensureSourceFolderSelections();
+      render();
+      await autoLoadWorkspaceSelections({ loadJd: true, loadCv: true });
+      await persistCurrentWorkspaceSnapshot();
+      render();
+    },
+    async importDocument(slot, filePath) {
+      await importDocumentIntoSlot(filePath, slot);
+      await persistCurrentWorkspaceSnapshot();
+      render();
+    },
+    getStateSnapshot() {
+      return {
+        workbenchTab: state.workbenchTab,
+        contextTab: state.contextTab,
+        currentWorkspaceId: state.currentWorkspaceId,
+        outputMode: state.outputMode,
+        outputLanguage: state.outputLanguage,
+        summaryStatus: state.summaryStatus,
+        isGenerating: state.isGenerating,
+        isTranslating: state.isTranslating,
+        currentContextProfile: state.currentContextProfile,
+        documents: {
+          cv: {
+            path: state.documents.cv.file?.path || '',
+            name: state.documents.cv.file?.name || ''
+          },
+          jd: {
+            path: state.documents.jd.file?.path || '',
+            name: state.documents.jd.file?.name || ''
+          }
+        }
+      };
+    }
+  };
+}
+
 async function applyImportedDocument(result, slot) {
   setDocumentSlotFromImportResult(result, slot);
   render();
@@ -3093,6 +3140,7 @@ elements.summaryEditor.addEventListener('blur', async () => {
 });
 
 bindDropTarget(elements.dropzone, null);
+exposeE2ETestApi();
 
 Promise.all([
   loadConfiguration(),

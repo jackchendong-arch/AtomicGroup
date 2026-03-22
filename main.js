@@ -33,6 +33,7 @@ const { generateWithConfiguredProvider, getProviderOptions } = require('./servic
 const { LlmSettingsStore, validateSettings } = require('./services/llm-settings-service');
 const {
   buildSummaryRequest,
+  generateSummaryDraft,
   normalizeGeneratedSummary
 } = require('./services/summary-service');
 const {
@@ -582,6 +583,135 @@ function buildWorkspaceDerivedProfilePayload({ cvDocument, jdDocument }) {
   };
 }
 
+function isE2EMockLlmEnabled() {
+  return process.env.ATOMICGROUP_E2E_MOCK_LLM === '1';
+}
+
+function getE2EMockDelayMs() {
+  const parsedValue = Number.parseInt(process.env.ATOMICGROUP_E2E_DELAY_MS || '0', 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+}
+
+async function waitForE2EMockDelay() {
+  const delayMs = getE2EMockDelayMs();
+
+  if (!delayMs) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, outputMode, outputLanguage, debugTrace }) {
+  const generationInputs = {
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  };
+  const summaryRequest = buildSummaryRequest({
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument,
+    systemPrompt: settings.systemPrompt,
+    templateGuidance,
+    outputMode: 'named',
+    outputLanguage
+  });
+  const briefingRequest = buildBriefingRequest({
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument,
+    systemPrompt: settings.systemPrompt,
+    templateGuidance,
+    outputMode: 'named',
+    outputLanguage
+  });
+  const recruiterSummary = generateSummaryDraft({
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument,
+    outputLanguage
+  }).summary;
+  const validatedBriefing = validateBriefing(buildFallbackBriefing({
+    cvDocument: generationInputs.cvDocument,
+    jdDocument: generationInputs.jdDocument,
+    outputLanguage
+  })).briefing;
+  const preparedOutput = applyDraftOutputMode({
+    outputMode,
+    recruiterSummary,
+    briefing: validatedBriefing,
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
+    briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage
+  });
+
+  debugTrace.push('E2E mock LLM mode enabled for deterministic summary generation.');
+  debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
+  debugTrace.push(`Briefing template label: ${briefingRequest.templateLabel}`);
+  pushRetrievalManifestDebugTrace(debugTrace, 'Summary request', summaryRequest.retrievalManifest);
+  pushRetrievalManifestDebugTrace(debugTrace, 'Briefing request', briefingRequest.retrievalManifest);
+  pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
+
+  await waitForE2EMockDelay();
+
+  return {
+    templateLabel: summaryRequest.templateLabel,
+    summary: recruiterSummary,
+    hiringManagerBriefingReview: hiringManagerBriefing.review,
+    summaryRetrievalManifest: summaryRequest.retrievalManifest,
+    briefingRetrievalManifest: briefingRequest.retrievalManifest,
+    prompt: summaryRequest.prompt,
+    providerLabel: 'E2E Mock',
+    model: 'deterministic-local',
+    briefing: validatedBriefing,
+    outputMode,
+    outputLanguage,
+    modeLabel: preparedOutput.modeLabel,
+    approvalWarnings: preparedOutput.warnings
+  };
+}
+
+async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debugTrace }) {
+  const recruiterSummary = generateSummaryDraft({
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument,
+    outputLanguage: targetLanguage
+  }).summary;
+  const translatedBriefing = validateBriefing(buildFallbackBriefing({
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument,
+    outputLanguage: targetLanguage
+  })).briefing;
+  const preparedOutput = applyDraftOutputMode({
+    outputMode: payload.outputMode,
+    recruiterSummary,
+    briefing: translatedBriefing,
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument
+  });
+  const composed = prepareHiringManagerBriefingOutput({
+    briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage: targetLanguage
+  });
+
+  debugTrace.push('E2E mock LLM mode enabled for deterministic draft translation.');
+  pushBriefingDebugTrace(debugTrace, 'Translated mock briefing', preparedOutput.briefing);
+
+  await waitForE2EMockDelay();
+
+  return {
+    summary: recruiterSummary,
+    briefing: translatedBriefing,
+    hiringManagerBriefingReview: composed.review,
+    outputLanguage: targetLanguage,
+    approvalWarnings: preparedOutput.warnings
+  };
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1440,
@@ -1019,6 +1149,21 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputMode: 'named',
       outputLanguage
     });
+
+    if (isE2EMockLlmEnabled()) {
+      const mockResult = await buildE2EMockSummaryResult({
+        payload,
+        settings,
+        templateGuidance,
+        outputMode,
+        outputLanguage,
+        debugTrace
+      });
+      debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+      await appendSummaryGenerationDebugLog(debugTrace);
+      return mockResult;
+    }
+
     debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
     debugTrace.push(`Briefing template label: ${briefingRequest.templateLabel}`);
     pushRetrievalManifestDebugTrace(debugTrace, 'Summary request', summaryRequest.retrievalManifest);
@@ -1209,6 +1354,17 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       jdDocument: payload.jdDocument,
       outputLanguage: sourceLanguage
     });
+
+  if (isE2EMockLlmEnabled()) {
+    const mockResult = await buildE2EMockTranslatedDraftResult({
+      payload,
+      targetLanguage,
+      debugTrace
+    });
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
+    return mockResult;
+  }
 
   try {
     const translated = await translateDraftArtifacts({

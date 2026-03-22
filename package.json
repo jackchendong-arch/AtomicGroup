@@ -9,7 +9,8 @@
     "release": "electron-builder --win nsis --publish always",
     "test:unit": "node tests/run-unit-tests.js",
     "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:observe": "node tests/run-e2e-observe.js"
   },
   "build": {
     "appId": "com.atomicgroup.recruitmentintelligence",

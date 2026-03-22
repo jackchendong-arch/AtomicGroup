@@ -28,6 +28,42 @@ function createWorkspacePayload(overrides = {}) {
         title: 'Blockchain Developer'
       }
     },
+    draftVariants: {
+      named: {
+        en: {
+          summary: 'Candidate: Candidate One\nTarget Role: Blockchain Developer\n\nCandidate summary text.',
+          briefing: {
+            candidate: {
+              name: 'Candidate One'
+            },
+            role: {
+              title: 'Blockchain Developer'
+            }
+          },
+          briefingReview: 'Hiring manager briefing review.',
+          approvalWarnings: [],
+          draftLifecycle: 'generated'
+        },
+        zh: {
+          summary: '候选人：Candidate One\n目标职位：区块链开发工程师\n\n中文摘要。',
+          briefing: {
+            candidate: {
+              name: 'Candidate One'
+            },
+            role: {
+              title: '区块链开发工程师'
+            }
+          },
+          briefingReview: '中文 Hiring Manager Briefing。',
+          approvalWarnings: [],
+          draftLifecycle: 'generated'
+        }
+      },
+      anonymous: {
+        en: null,
+        zh: null
+      }
+    },
     briefingReview: 'Hiring manager briefing review.',
     retrievalEvidence: {
       summary: [
@@ -149,6 +185,117 @@ test('RoleWorkspaceStore backfills candidate and role labels from older saved sn
 
     assert.equal(listed.recentWorkspaces[0].candidateName, 'Candidate One');
     assert.equal(listed.recentWorkspaces[0].roleTitle, 'Blockchain Developer');
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('RoleWorkspaceStore load rehydrates the full saved workspace state needed for recent-work reopen', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-role-workspaces-'));
+
+  try {
+    const store = new RoleWorkspaceStore({ userDataPath: tempRoot, maxEntries: 5 });
+    const saved = await store.save(createWorkspacePayload({
+      outputMode: 'anonymous',
+      outputLanguage: 'zh',
+      draftLifecycle: 'approved',
+      briefingReview: 'Restored hiring manager briefing review.',
+      approvalWarnings: ['Remove phone number before sharing.'],
+      lastExportPath: '/Users/jack/Documents/AtomicGroup Briefings/candidate-one-zh.docx',
+      templateLabel: 'Chinese Recruiter Guidance'
+    }));
+
+    const reopened = await store.load(saved.workspace.workspaceId);
+    const snapshot = reopened.workspace;
+
+    assert.equal(snapshot.sourceFolderPath, '/Users/jack/Dev/Test/AtomicGroup/Role4');
+    assert.equal(snapshot.sourceFolderName, 'Role4');
+    assert.equal(snapshot.selectedJdPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/JD4.docx');
+    assert.equal(snapshot.selectedCvPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf');
+    assert.equal(snapshot.loadedJdPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/JD4.docx');
+    assert.equal(snapshot.loadedCvPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf');
+    assert.equal(snapshot.candidateName, 'Candidate One');
+    assert.equal(snapshot.roleTitle, 'Blockchain Developer');
+    assert.equal(snapshot.outputMode, 'anonymous');
+    assert.equal(snapshot.outputLanguage, 'zh');
+    assert.equal(snapshot.draftLifecycle, 'approved');
+    assert.equal(snapshot.summary, 'Candidate: Candidate One\nTarget Role: Blockchain Developer\n\nCandidate summary text.');
+    assert.equal(snapshot.briefingReview, 'Restored hiring manager briefing review.');
+    assert.deepEqual(snapshot.approvalWarnings, ['Remove phone number before sharing.']);
+    assert.equal(snapshot.lastExportPath, '/Users/jack/Documents/AtomicGroup Briefings/candidate-one-zh.docx');
+    assert.equal(snapshot.templateLabel, 'Chinese Recruiter Guidance');
+    assert.equal(snapshot.briefing.candidate.name, 'Candidate One');
+    assert.equal(snapshot.briefing.role.title, 'Blockchain Developer');
+    assert.equal(snapshot.draftVariants.named.en.summary, 'Candidate: Candidate One\nTarget Role: Blockchain Developer\n\nCandidate summary text.');
+    assert.equal(snapshot.draftVariants.named.zh.summary, '候选人：Candidate One\n目标职位：区块链开发工程师\n\n中文摘要。');
+    assert.equal(snapshot.draftVariants.anonymous.en, null);
+    assert.equal(snapshot.retrievalEvidence.summary[0].sourceName, 'CV4-1.pdf');
+    assert.equal(snapshot.retrievalEvidence.briefing[0].sourceName, 'JD4.docx');
+    assert.equal(reopened.recentWorkspaces[0].workspaceId, saved.workspace.workspaceId);
+    assert.equal(reopened.recentWorkspaces[0].candidateName, 'Candidate One');
+    assert.equal(reopened.recentWorkspaces[0].roleTitle, 'Blockchain Developer');
+    assert.equal(reopened.recentWorkspaces[0].hasDraft, true);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('RoleWorkspaceStore load preserves a source-only workspace before summary generation', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-role-workspaces-'));
+
+  try {
+    const store = new RoleWorkspaceStore({ userDataPath: tempRoot, maxEntries: 5 });
+    const saved = await store.save(createWorkspacePayload({
+      candidateName: 'Candidate One',
+      roleTitle: 'Blockchain Developer',
+      draftLifecycle: 'empty',
+      summary: '',
+      briefing: null,
+      draftVariants: {
+        named: {
+          en: null,
+          zh: null
+        },
+        anonymous: {
+          en: null,
+          zh: null
+        }
+      },
+      briefingReview: '',
+      retrievalEvidence: {
+        summary: [],
+        briefing: []
+      },
+      approvalWarnings: [],
+      lastExportPath: '',
+      templateLabel: ''
+    }));
+
+    const reopened = await store.load(saved.workspace.workspaceId);
+    const snapshot = reopened.workspace;
+
+    assert.equal(snapshot.loadedJdPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/JD4.docx');
+    assert.equal(snapshot.loadedCvPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf');
+    assert.equal(snapshot.selectedJdPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/JD4.docx');
+    assert.equal(snapshot.selectedCvPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf');
+    assert.equal(snapshot.summary, '');
+    assert.equal(snapshot.briefing, null);
+    assert.equal(snapshot.briefingReview, '');
+    assert.deepEqual(snapshot.draftVariants, {
+      named: {
+        en: null,
+        zh: null
+      },
+      anonymous: {
+        en: null,
+        zh: null
+      }
+    });
+    assert.deepEqual(snapshot.retrievalEvidence, { summary: [], briefing: [] });
+    assert.equal(snapshot.draftLifecycle, 'empty');
+    assert.equal(reopened.recentWorkspaces[0].hasDraft, false);
+    assert.equal(reopened.recentWorkspaces[0].loadedJdName, 'JD4.docx');
+    assert.equal(reopened.recentWorkspaces[0].loadedCvName, 'CV4-1.pdf');
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

@@ -147,17 +147,15 @@ const elements = {
   sourceFolderWorkspace: document.getElementById('source-folder-workspace'),
   sourceFolderJdSelect: document.getElementById('source-folder-jd-select'),
   sourceFolderCvSelect: document.getElementById('source-folder-cv-select'),
-  loadSourceFolderJdButton: document.getElementById('load-source-folder-jd-button'),
-  loadSourceFolderCvButton: document.getElementById('load-source-folder-cv-button'),
   sourceFolderEmptyNote: document.getElementById('source-folder-empty-note'),
   recentWorkSection: document.getElementById('recent-work-section'),
   recentWorkList: document.getElementById('recent-work-list'),
   recentWorkEmpty: document.getElementById('recent-work-empty'),
   clearRecentWorkspacesButton: document.getElementById('clear-recent-workspaces-button'),
-  setNamedModeButton: document.getElementById('set-named-mode-button'),
-  setAnonymousModeButton: document.getElementById('set-anonymous-mode-button'),
-  setEnglishOutputButton: document.getElementById('set-english-output-button'),
-  setChineseOutputButton: document.getElementById('set-chinese-output-button'),
+  toggleAnonymousModeButton: document.getElementById('toggle-anonymous-mode-button'),
+  anonymousModeValue: document.getElementById('anonymous-mode-value'),
+  toggleOutputLanguageButton: document.getElementById('toggle-output-language-button'),
+  outputLanguageFlag: document.getElementById('output-language-flag'),
   generateButton: document.getElementById('generate-summary-button'),
   resetButton: document.getElementById('reset-workspace-button'),
   summaryStatus: document.getElementById('summary-status'),
@@ -320,6 +318,37 @@ function cacheDraftVariant(mode = state.outputMode, language = state.outputLangu
     approvalWarnings: [...state.approvalWarnings],
     draftLifecycle: state.draftLifecycle
   };
+}
+
+function cloneDraftVariantsSnapshot(input) {
+  const snapshot = createEmptyDraftVariants();
+
+  if (!input || typeof input !== 'object') {
+    return snapshot;
+  }
+
+  ['named', 'anonymous'].forEach((mode) => {
+    ['en', 'zh'].forEach((language) => {
+      const variant = input?.[mode]?.[language];
+
+      if (!variant || typeof variant !== 'object') {
+        snapshot[mode][language] = null;
+        return;
+      }
+
+      snapshot[mode][language] = {
+        summary: String(variant.summary || ''),
+        briefing: cloneDraftData(variant.briefing),
+        briefingReview: String(variant.briefingReview || ''),
+        approvalWarnings: Array.isArray(variant.approvalWarnings)
+          ? variant.approvalWarnings.map((warning) => String(warning || '').trim()).filter(Boolean)
+          : [],
+        draftLifecycle: String(variant.draftLifecycle || '').trim() || (variant.summary ? 'generated' : 'empty')
+      };
+    });
+  });
+
+  return snapshot;
 }
 
 function clearCachedDraftVariants() {
@@ -1206,6 +1235,27 @@ function getCvWorkspaceFiles() {
   );
 }
 
+function ensureSourceFolderSelections() {
+  const jdFiles = getJdWorkspaceFiles();
+  const selectedJdPath = jdFiles.some((file) => file.path === state.sourceFolder.selectedJdPath)
+    ? state.sourceFolder.selectedJdPath
+    : chooseDefaultJdPath(jdFiles);
+  state.sourceFolder.selectedJdPath = selectedJdPath;
+
+  const cvFiles = getCvWorkspaceFiles();
+  const selectedCvPath = cvFiles.some((file) => file.path === state.sourceFolder.selectedCvPath)
+    ? state.sourceFolder.selectedCvPath
+    : chooseDefaultCvPath(cvFiles);
+  state.sourceFolder.selectedCvPath = selectedCvPath;
+
+  return {
+    jdFiles,
+    cvFiles,
+    selectedJdPath,
+    selectedCvPath
+  };
+}
+
 function chooseDefaultJdPath(files) {
   const currentPath = state.documents.jd.file?.path;
 
@@ -1238,11 +1288,9 @@ function renderSourceFolder() {
   elements.sourceFolderName.classList.toggle('is-empty', !hasSourceFolder);
   elements.sourceFolderPath.textContent = state.sourceFolder.error
     ? state.sourceFolder.error
-    : (hasSourceFolder
-      ? ''
-      : 'Choose one role folder with the JD and candidate CVs.');
+    : '';
   elements.sourceFolderWorkspace.classList.add('is-hidden');
-  elements.sourceFolderEmptyNote.textContent = 'Load one JD and switch candidate CVs here.';
+  elements.sourceFolderEmptyNote.textContent = 'Open a role folder to start reviewing candidates.';
 
   if (!hasSourceFolder) {
     return;
@@ -1253,17 +1301,12 @@ function renderSourceFolder() {
     return;
   }
 
-  const jdFiles = getJdWorkspaceFiles();
-  const selectedJdPath = jdFiles.some((file) => file.path === state.sourceFolder.selectedJdPath)
-    ? state.sourceFolder.selectedJdPath
-    : chooseDefaultJdPath(jdFiles);
-  state.sourceFolder.selectedJdPath = selectedJdPath;
-
-  const cvFiles = getCvWorkspaceFiles();
-  const selectedCvPath = cvFiles.some((file) => file.path === state.sourceFolder.selectedCvPath)
-    ? state.sourceFolder.selectedCvPath
-    : chooseDefaultCvPath(cvFiles);
-  state.sourceFolder.selectedCvPath = selectedCvPath;
+  const {
+    jdFiles,
+    cvFiles,
+    selectedJdPath,
+    selectedCvPath
+  } = ensureSourceFolderSelections();
 
   elements.sourceFolderWorkspace.classList.remove('is-hidden');
   elements.sourceFolderEmptyNote.textContent = cvFiles.length === 0 && jdFiles.length === 0
@@ -1272,8 +1315,6 @@ function renderSourceFolder() {
 
   elements.sourceFolderJdSelect.disabled = busy || jdFiles.length === 0;
   elements.sourceFolderCvSelect.disabled = busy || cvFiles.length === 0;
-  elements.loadSourceFolderJdButton.disabled = busy || jdFiles.length === 0 || !selectedJdPath;
-  elements.loadSourceFolderCvButton.disabled = busy || cvFiles.length === 0 || !selectedCvPath;
   elements.sourceFolderJdSelect.innerHTML = jdFiles.length > 0
     ? jdFiles.map((file) => `<option value="${escapeHtml(file.path)}">${escapeHtml(file.name)} · ${escapeHtml(formatExtension(file.extension))}</option>`).join('')
     : '<option value="">No JD files available</option>';
@@ -1434,14 +1475,14 @@ function renderSummary() {
   elements.summaryMessage.textContent = state.generationError || state.summaryMessage;
   elements.generationProgress.classList.toggle('is-hidden', !busy);
   elements.generationProgressLabel.textContent = state.progressLabel;
-  elements.setNamedModeButton.classList.toggle('is-active', state.outputMode === 'named');
-  elements.setAnonymousModeButton.classList.toggle('is-active', state.outputMode === 'anonymous');
-  elements.setEnglishOutputButton.classList.toggle('is-active', activeOutputLanguage === 'en');
-  elements.setChineseOutputButton.classList.toggle('is-active', activeOutputLanguage === 'zh');
-  elements.setNamedModeButton.disabled = busy;
-  elements.setAnonymousModeButton.disabled = busy;
-  elements.setEnglishOutputButton.disabled = busy;
-  elements.setChineseOutputButton.disabled = busy;
+  elements.toggleAnonymousModeButton.classList.toggle('is-on', state.outputMode === 'anonymous');
+  elements.toggleAnonymousModeButton.setAttribute('aria-pressed', state.outputMode === 'anonymous' ? 'true' : 'false');
+  elements.toggleAnonymousModeButton.disabled = busy;
+  elements.anonymousModeValue.textContent = state.outputMode === 'anonymous' ? 'On' : 'Off';
+  elements.toggleOutputLanguageButton.disabled = busy;
+  elements.toggleOutputLanguageButton.classList.toggle('is-zh', activeOutputLanguage === 'zh');
+  elements.toggleOutputLanguageButton.setAttribute('aria-pressed', activeOutputLanguage === 'zh' ? 'true' : 'false');
+  elements.outputLanguageFlag.textContent = activeOutputLanguage === 'zh' ? '🇨🇳' : '🇬🇧';
   elements.draftModePill.textContent = state.outputMode === 'anonymous' ? 'Anonymous Output' : 'Named Output';
   elements.draftLifecyclePill.textContent = getDraftLifecycleLabel();
 
@@ -2042,6 +2083,7 @@ function buildWorkspaceSnapshotPayload() {
     draftLifecycle: state.draftLifecycle,
     summary: state.summary,
     briefing: state.briefing,
+    draftVariants: cloneDraftVariantsSnapshot(state.draftVariants),
     retrievalEvidence: state.retrievalEvidence,
     briefingReview: state.briefingReview,
     approvalWarnings: state.approvalWarnings,
@@ -2175,9 +2217,9 @@ async function openRecentWorkspace(workspaceId) {
     state.lastExportPath = snapshot.lastExportPath || '';
     state.templateLabel = snapshot.templateLabel || 'Default Recruiter Profile Template';
     state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
-    clearCachedDraftVariants();
+    state.draftVariants = cloneDraftVariantsSnapshot(snapshot.draftVariants);
 
-    if (state.summary.trim()) {
+    if (state.summary.trim() && !getCachedDraftVariant(state.outputMode, state.outputLanguage)) {
       cacheDraftVariant(state.outputMode, state.outputLanguage);
     }
 
@@ -2292,7 +2334,9 @@ async function chooseSourceFolder() {
     }
 
     applySourceFolderListing(result);
+    ensureSourceFolderSelections();
     render();
+    await autoLoadWorkspaceSelections({ loadJd: true, loadCv: true });
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.sourceFolder = {
@@ -2316,7 +2360,9 @@ async function refreshSourceFolder() {
       folderPath: state.sourceFolder.path
     });
     applySourceFolderListing(result);
+    ensureSourceFolderSelections();
     render();
+    await autoLoadWorkspaceSelections({ loadJd: true, loadCv: true });
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.sourceFolder = {
@@ -2334,6 +2380,10 @@ async function loadSelectedWorkspaceJd() {
     return;
   }
 
+  if (state.documents.jd.file?.path === state.sourceFolder.selectedJdPath) {
+    return;
+  }
+
   state.contextTab = 'workspace';
   await importDocumentIntoSlot(state.sourceFolder.selectedJdPath, 'jd');
 }
@@ -2343,8 +2393,26 @@ async function loadSelectedWorkspaceCv() {
     return;
   }
 
+  if (state.documents.cv.file?.path === state.sourceFolder.selectedCvPath) {
+    return;
+  }
+
   state.contextTab = 'workspace';
   await importDocumentIntoSlot(state.sourceFolder.selectedCvPath, 'cv');
+}
+
+async function autoLoadWorkspaceSelections({ loadJd = true, loadCv = true } = {}) {
+  if (isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  if (loadJd) {
+    await loadSelectedWorkspaceJd();
+  }
+
+  if (loadCv) {
+    await loadSelectedWorkspaceCv();
+  }
 }
 
 async function applyImportedDocument(result, slot) {
@@ -2932,18 +3000,21 @@ elements.cv.chooseButton.addEventListener('click', () => chooseDocument('cv'));
 elements.jd.chooseButton.addEventListener('click', () => chooseDocument('jd'));
 elements.chooseSourceFolderButton.addEventListener('click', chooseSourceFolder);
 elements.refreshSourceFolderButton.addEventListener('click', refreshSourceFolder);
-elements.sourceFolderJdSelect.addEventListener('change', () => {
-  setSelectedSourceFolderJdPath(elements.sourceFolderJdSelect.value);
+elements.sourceFolderJdSelect.addEventListener('change', async () => {
+  const nextPath = elements.sourceFolderJdSelect.value;
+  setSelectedSourceFolderJdPath(nextPath);
+  ensureSourceFolderSelections();
   render();
-  persistCurrentWorkspaceSnapshot();
+  await autoLoadWorkspaceSelections({ loadJd: true, loadCv: false });
+  await persistCurrentWorkspaceSnapshot();
 });
-elements.sourceFolderCvSelect.addEventListener('change', () => {
-  setSelectedSourceFolderCvPath(elements.sourceFolderCvSelect.value);
+elements.sourceFolderCvSelect.addEventListener('change', async () => {
+  const nextPath = elements.sourceFolderCvSelect.value;
+  setSelectedSourceFolderCvPath(nextPath);
   render();
-  persistCurrentWorkspaceSnapshot();
+  await autoLoadWorkspaceSelections({ loadJd: false, loadCv: true });
+  await persistCurrentWorkspaceSnapshot();
 });
-elements.loadSourceFolderJdButton.addEventListener('click', loadSelectedWorkspaceJd);
-elements.loadSourceFolderCvButton.addEventListener('click', loadSelectedWorkspaceCv);
 elements.recentWorkList.addEventListener('click', (event) => {
   const trigger = event.target.closest('[data-workspace-id]');
 
@@ -2955,10 +3026,12 @@ elements.recentWorkList.addEventListener('click', (event) => {
 });
 elements.clearRecentWorkspacesButton.addEventListener('click', clearRecentWorkspaces);
 elements.swapSourceButton.addEventListener('click', swapDocumentAssignments);
-elements.setNamedModeButton.addEventListener('click', () => setOutputMode('named'));
-elements.setAnonymousModeButton.addEventListener('click', () => setOutputMode('anonymous'));
-elements.setEnglishOutputButton.addEventListener('click', () => setOutputLanguage('en'));
-elements.setChineseOutputButton.addEventListener('click', () => setOutputLanguage('zh'));
+elements.toggleAnonymousModeButton.addEventListener('click', () => {
+  setOutputMode(state.outputMode === 'anonymous' ? 'named' : 'anonymous');
+});
+elements.toggleOutputLanguageButton.addEventListener('click', () => {
+  setOutputLanguage(state.outputLanguage === 'zh' ? 'en' : 'zh');
+});
 elements.generateButton.addEventListener('click', generateSummary);
 elements.approveDraftButton.addEventListener('click', approveDraft);
 elements.copySummaryButton.addEventListener('click', copySummary);

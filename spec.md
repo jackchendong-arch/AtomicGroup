@@ -116,11 +116,11 @@ Initial recommended file support:
 - TXT
 
 ### 1A. Left Rail Interaction Model
-- The left rail should foreground the current working context:
+- The main stage should foreground the current working context:
   - current role
   - current candidate
   - currently loaded JD and CV
-- The left rail should separate current context from context-switching controls.
+- The left rail should focus on context-switching controls rather than duplicating the active candidate context card.
 - The current-candidate panel should only appear when a candidate is actually loaded, and should avoid empty placeholder text when no candidate is active.
 - The current-candidate panel should prefer deterministic CV/JD-derived profile fields as soon as source documents are loaded, instead of waiting for LLM generation.
 - Role workspace navigation should be the primary intake model for recruiter workflows:
@@ -128,10 +128,13 @@ Initial recommended file support:
   - one active JD
   - many candidate CVs
 - Role workspace, manual import, and recent work should share one context-navigation panel with tabbed navigation.
+- The left-rail context tabs should stay fully visible without horizontal clipping or hidden overflow.
 - Manual single-file import and drag/drop should remain available, but should read as fallback utilities rather than the primary workflow.
 - Recent work should be treated as secondary navigation, not as part of the active intake card.
-- Output options such as named/anonymous and English/Chinese should be grouped as draft options, not mixed with source-loading mechanics.
+- Output options such as named/anonymous and English/Chinese should be grouped as compact setup settings at the top of the shared context panel rather than as a separate action card.
+- The language control should present as an intuitive `EN / CN` toggle rather than a generic text button.
 - Output identity and output language switching should avoid unnecessary repeat model calls when a safe cached or deterministic draft variant is available.
+- Role-workspace selectors should load the selected JD or candidate immediately, so the user does not need separate explicit load buttons in the normal folder-based workflow.
 
 ### 2. Text Extraction and Validation
 - The app extracts raw text from the uploaded CV and JD.
@@ -226,6 +229,7 @@ Recommended output sections:
 - Raw source-document views such as imported CV and JD text should remain unchanged when the recruiter switches output language.
 - If the recruiter changes the output language after generation, the app should translate the current derived draft rather than rerunning the full CV/JD assessment.
 - If a draft variant for the target language already exists, the app should reuse that cached variant instead of invoking the LLM again.
+- Saved role workspaces should persist available draft variants so reopening a case can restore previously generated English and Chinese outputs without immediately retranslating.
 - Translation should be treated as a deterministic transformation step over the current approved/generated draft content, not as a fresh candidate assessment.
 - The app should keep the busy/progress indicator visible in a shared stage-level location while generation, translation, export, or email handoff is running.
 - The app should prevent repeated conflicting language-toggle actions while translation is in progress.
@@ -649,6 +653,10 @@ Current implemented slices inside Release 5:
   - role workspace
   - manual import
   - recent work
+- always-visible equal-width context tabs instead of a horizontally clipped tab strip
+- compact top-of-context settings for:
+  - anonymous output
+  - language
 - conditional current-candidate summary card that appears only when a candidate is loaded
 - current-candidate panel populated from deterministic CV/JD extraction immediately after source load
 - in-session draft-variant caching across:
@@ -656,7 +664,9 @@ Current implemented slices inside Release 5:
   - English / Chinese
 - deterministic named/anonymous hiring-manager output switching without rerunning full summary generation
 - selector-based role workspace intake in the sidebar
+- role-workspace selectors auto-load JD and candidate changes without separate load buttons
 - resumable local workspace snapshots and recent-work reopen flow
+- dedicated reopen / rehydration regression coverage around saved role workspaces, including source-only and generated-draft resume state
 - bilingual derived outputs with translation-only language switching and cached variants
 - expanded real-fixture regression coverage over English and Chinese recruiter test packs
 - workspace-scoped normalized source model for the active CV, JD, and active guidance template
@@ -667,9 +677,8 @@ Implementation note:
 - The current retrieval layer is intentionally lexical and local. It selects relevant source blocks from the active workspace without generating embeddings or persisting vectors.
 - This keeps the design aligned with the current product reality: CVs and JDs are dynamic recruiter-session inputs, not a long-lived cross-candidate knowledge base.
 
-Remaining Release 5 work:
+Optional Release 5 follow-on polish:
 - richer recruiter-facing evidence tracing on top of the retrieval manifests
-- dedicated reopen / rehydration regression coverage around saved role workspaces
 
 Acceptance criteria:
 - User can select a role workspace folder, choose one active JD, and review many candidate CVs against that same role context.

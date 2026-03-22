@@ -490,26 +490,27 @@
       }
 
       .context-tabs {
-        display: flex;
-        gap: 6px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
         padding: 4px;
         border: 1px solid rgba(23, 32, 51, 0.08);
-        border-radius: 999px;
+        border-radius: 18px;
         background: rgba(255, 255, 255, 0.78);
-        overflow-x: auto;
       }
 
       .context-tab-button {
         border: 0;
-        border-radius: 999px;
-        padding: 6px 11px;
+        border-radius: 14px;
+        padding: 8px 10px;
         background: transparent;
         color: var(--muted);
         font: inherit;
-        font-size: 0.8rem;
+        font-size: 0.76rem;
         font-weight: 700;
         cursor: pointer;
-        white-space: nowrap;
+        line-height: 1.2;
+        min-width: 0;
       }
 
       .context-tab-button.is-active {
@@ -546,6 +547,147 @@
         font-weight: 600;
       }
 
+      .context-settings-strip {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.68);
+      }
+
+      .context-setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .context-setting-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--muted);
+      }
+
+      .value-switch-button,
+      .binary-toggle-button {
+        border: 1px solid rgba(23, 32, 51, 0.1);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.78rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+      }
+
+      .value-switch-button:hover,
+      .binary-toggle-button:hover {
+        transform: translateY(-1px);
+      }
+
+      .binary-toggle-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px 5px 6px;
+      }
+
+      .binary-toggle-track {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        border-radius: 999px;
+        background: rgba(23, 32, 51, 0.18);
+        transition: background 140ms ease;
+        flex-shrink: 0;
+      }
+
+      .binary-toggle-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        background: white;
+        box-shadow: 0 1px 4px rgba(23, 32, 51, 0.18);
+        transition: transform 140ms ease;
+      }
+
+      .binary-toggle-button.is-on {
+        color: var(--accent-deep);
+        border-color: rgba(187, 91, 52, 0.18);
+        background: rgba(255, 247, 242, 0.95);
+      }
+
+      .binary-toggle-button.is-on .binary-toggle-track {
+        background: rgba(187, 91, 52, 0.76);
+      }
+
+      .binary-toggle-button.is-on .binary-toggle-thumb {
+        transform: translateX(14px);
+      }
+
+      .language-flag-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        min-width: 132px;
+      }
+
+      .language-switch-side {
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: rgba(23, 32, 51, 0.42);
+        transition: color 140ms ease;
+      }
+
+      .language-flag-switch-track {
+        position: relative;
+        width: 54px;
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.96) 0 50%, rgba(240, 241, 243, 0.96) 50% 100%);
+        box-shadow: inset 0 1px 3px rgba(23, 32, 51, 0.08);
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+
+      .language-flag-switch-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        box-shadow: 0 2px 6px rgba(23, 32, 51, 0.22);
+        font-size: 1rem;
+        transition: transform 140ms ease;
+      }
+
+      .language-flag-switch.is-zh {
+        border-color: rgba(187, 91, 52, 0.18);
+        background: rgba(255, 247, 242, 0.95);
+      }
+
+      .language-flag-switch.is-zh .language-flag-switch-thumb {
+        transform: translateX(26px);
+      }
+
+      .language-flag-switch.is-zh .language-switch-side-zh,
+      .language-flag-switch:not(.is-zh) .language-switch-side-en {
+        color: var(--accent-deep);
+      }
+
       .source-folder-workspace {
         display: grid;
         gap: 8px;
@@ -558,29 +700,28 @@
 
       .source-folder-workspace-row {
         display: grid;
-        gap: 6px;
-        padding: 8px 9px;
+        gap: 4px;
+        padding: 8px 10px;
         border: 1px solid rgba(23, 32, 51, 0.08);
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.74);
       }
 
       .source-folder-workspace-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
+        display: block;
       }
 
       .source-folder-workspace-head strong {
-        font-size: 0.9rem;
+        font-size: 0.82rem;
+        color: var(--muted);
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
       }
 
       .source-folder-empty-note {
-        margin: 0;
+        margin: 2px 0 0;
         color: var(--muted);
-        font-size: 0.79rem;
+        font-size: 0.74rem;
         line-height: 1.35;
       }
 
@@ -653,68 +794,6 @@
         color: var(--muted);
         font-size: 0.76rem;
         line-height: 1.3;
-      }
-
-      .source-management {
-        display: grid;
-        gap: 8px;
-        margin-top: 10px;
-      }
-
-      .draft-options-card {
-        margin-top: 10px;
-      }
-
-      .draft-options-card h3 {
-        margin: 0 0 8px;
-        font-size: 0.96rem;
-      }
-
-      .draft-options-group {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-
-      .draft-options-label {
-        font-size: 0.78rem;
-        font-weight: 700;
-        color: var(--muted);
-      }
-
-      .mode-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px;
-        border: 1px solid rgba(23, 32, 51, 0.08);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.78);
-      }
-
-      .mode-toggle-button {
-        border: 0;
-        border-radius: 999px;
-        padding: 5px 10px;
-        background: transparent;
-        color: var(--muted);
-        font: inherit;
-        font-size: 0.78rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: background 140ms ease, color 140ms ease, transform 140ms ease;
-      }
-
-      .mode-toggle-button:hover {
-        transform: translateY(-1px);
-        color: var(--ink);
-      }
-
-      .mode-toggle-button.is-active {
-        background: rgba(187, 91, 52, 0.12);
-        color: var(--accent-deep);
       }
 
       .pill {
@@ -1487,6 +1566,11 @@
           width: 100%;
         }
 
+        .context-setting-row {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
         .stage-panel,
         .summary-shell,
         .reader-stage {
@@ -1544,7 +1628,28 @@
             <section class="sidebar-panel">
               <section class="template-card context-panel">
                 <div class="context-panel-head">
-                  <h3>Context</h3>
+                  <h3>Candidate Setup</h3>
+                </div>
+                <div class="context-settings-strip">
+                  <div class="context-setting-row">
+                    <span class="context-setting-label">Anonymous Output</span>
+                    <button class="binary-toggle-button" id="toggle-anonymous-mode-button" type="button" aria-pressed="false">
+                      <span class="binary-toggle-track" aria-hidden="true">
+                        <span class="binary-toggle-thumb"></span>
+                      </span>
+                      <span id="anonymous-mode-value">Off</span>
+                    </button>
+                  </div>
+                  <div class="context-setting-row">
+                    <span class="context-setting-label">Language</span>
+                    <button class="value-switch-button language-flag-switch" id="toggle-output-language-button" type="button" aria-pressed="false" aria-label="Toggle output language between English and Chinese">
+                      <span class="language-switch-side language-switch-side-en">EN</span>
+                      <span class="language-flag-switch-track" aria-hidden="true">
+                        <span class="language-flag-switch-thumb" id="output-language-flag">🇬🇧</span>
+                      </span>
+                      <span class="language-switch-side language-switch-side-zh">CN</span>
+                    </button>
+                  </div>
                 </div>
                 <div class="context-tabs" role="tablist" aria-label="Context navigation">
                   <button class="context-tab-button is-active" id="open-workspace-context-tab" type="button" role="tab" aria-selected="true">Role Workspace</button>
@@ -1556,16 +1661,15 @@
                   <div class="workspace-toolbar">
                     <div class="workspace-name is-empty" id="source-folder-name">No workspace selected</div>
                     <div class="source-actions">
-                      <button class="btn-ghost btn-inline" id="choose-source-folder-button" type="button">Choose Folder</button>
+                      <button class="btn-ghost btn-inline" id="choose-source-folder-button" type="button">Open Folder</button>
                       <button class="btn-ghost btn-inline" id="refresh-source-folder-button" type="button" disabled>Refresh</button>
                     </div>
                   </div>
-                  <p class="field-note" id="source-folder-path">Choose one folder with the role JD and candidate CVs.</p>
+                  <p class="field-note" id="source-folder-path"></p>
                   <div class="source-folder-workspace is-hidden" id="source-folder-workspace">
                     <div class="source-folder-workspace-row">
                       <div class="source-folder-workspace-head">
-                        <strong>Workspace JD</strong>
-                        <button class="btn-ghost btn-inline" id="load-source-folder-jd-button" type="button">Load JD</button>
+                        <strong>Role JD</strong>
                       </div>
                       <div class="field">
                         <select id="source-folder-jd-select"></select>
@@ -1573,15 +1677,14 @@
                     </div>
                     <div class="source-folder-workspace-row">
                       <div class="source-folder-workspace-head">
-                        <strong>Candidate CV</strong>
-                        <button class="btn-ghost btn-inline" id="load-source-folder-cv-button" type="button">Load Candidate</button>
+                        <strong>Candidate</strong>
                       </div>
                       <div class="field">
                         <select id="source-folder-cv-select"></select>
                       </div>
                     </div>
                   </div>
-                  <p class="source-folder-empty-note" id="source-folder-empty-note">Choose a workspace folder to switch between candidates for one role.</p>
+                  <p class="source-folder-empty-note" id="source-folder-empty-note">Open a role folder to start reviewing candidates.</p>
                 </div>
 
                 <div class="context-tab-panel is-hidden" id="manual-context-panel" role="tabpanel">
@@ -1609,26 +1712,6 @@
                     <div class="recent-work-list" id="recent-work-list"></div>
                   </div>
                   <p class="recent-work-empty" id="recent-work-empty">Saved role workspaces will appear here once you start loading candidates and generating drafts.</p>
-                </div>
-              </section>
-
-              <section class="template-card draft-options-card">
-                <h3>Draft Options</h3>
-                <div class="source-management">
-                  <div class="draft-options-group">
-                    <span class="draft-options-label">Identity</span>
-                    <div class="mode-toggle" aria-label="Draft mode">
-                      <button class="mode-toggle-button is-active" id="set-named-mode-button" type="button">Named</button>
-                      <button class="mode-toggle-button" id="set-anonymous-mode-button" type="button">Anonymous</button>
-                    </div>
-                  </div>
-                  <div class="draft-options-group">
-                    <span class="draft-options-label">Language</span>
-                    <div class="mode-toggle" aria-label="Output language">
-                      <button class="mode-toggle-button is-active" id="set-english-output-button" type="button">English</button>
-                      <button class="mode-toggle-button" id="set-chinese-output-button" type="button">中文</button>
-                    </div>
-                  </div>
                 </div>
               </section>
 

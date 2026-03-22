@@ -187,6 +187,9 @@ Mark a release complete only when the work is:
   - direct file picker workflow kept alongside folder-based intake
   - tabbed context panel for role workspace, manual import, and recent work
   - `Role Workspace` as the default context tab, with manual import and recent work demoted to secondary navigation tabs
+  - context tabs tightened into always-visible equal-width navigation instead of a horizontally clipped tab strip
+  - anonymous output and language moved into compact setting controls at the top of the shared context panel
+  - language control refined into a flag-style `EN / CN` toggle for clearer switching affordance
   - current candidate panel that only appears when a candidate is loaded
   - current candidate panel moved into the main stage header area so active role/candidate context sits with the review workspace instead of competing with left-rail navigation
   - current candidate panel reduced to role and candidate identity only, removing duplicate active-file lines from the stage header context card
@@ -198,19 +201,20 @@ Mark a release complete only when the work is:
   - user-selectable English / Chinese output language across summary, briefing, email, and Word output
   - post-generation language switching that translates the current derived draft instead of rerunning full CV/JD assessment
   - cached language variants so switching back to an already available language avoids another LLM translation call
+  - persisted draft variants in saved role workspaces so reopening a case can reuse previously generated English/Chinese variants instead of retranslating immediately
   - in-session named/anonymous draft variant caching for the same candidate-role workspace
   - deterministic named/anonymous hiring-manager output switching without rerunning full summary generation for the current candidate-role draft
   - file-backed bilingual regression coverage across the external `Test1` to `Test8` recruiter fixture set
   - local role-workspace snapshots for the selected folder, active JD, current candidate CV, and latest draft
   - recent work list with reopen flow
   - rehydration of the saved folder context, active JD, current candidate CV, and latest draft when reopening recent work
+  - dedicated reopen / rehydration regression coverage around saved role workspaces, including source-only snapshots and generated-draft resume state
+  - role-workspace JD and candidate selectors auto-load the selected files immediately, removing separate `Load JD` and `Load Candidate` steps from the main intake flow
   - workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
   - section-aware source blocks with metadata for CV, JD, and guidance inputs
   - ephemeral lexical retrieval over the active role workspace inputs instead of prompt-stuffing the full CV/JD text
   - retrieval-backed summary and structured-briefing prompt construction, with retrieval manifests persisted and surfaced as recruiter-review evidence traces
   - filter standalone PDF page-marker artifacts out of surfaced retrieval evidence so recruiter review sees meaningful source excerpts rather than extraction noise
-- Remaining:
-  - add dedicated reopen / rehydration regression coverage around saved role workspaces
 - Keep `UserGuide.md` updated as the workflow changes so the shipped behavior and user guidance stay aligned.
 - After a draft has already been generated, let the recruiter switch output language by translating the current derived summary and briefing outputs into the selected language instead of rerunning full CV/JD assessment.
 - Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.

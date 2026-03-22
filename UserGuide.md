@@ -25,18 +25,22 @@ The primary workflow is:
 6. Save the Word draft and/or share by email.
 
 ## Left Rail Overview
-The left rail is organized around the current candidate in the current role.
+The workbench is organized around the current candidate in the current role.
 
-It contains:
+The main stage contains:
 - a `Current Candidate` panel that appears once a candidate is loaded
+
+The left rail contains:
 - a tabbed `Context` panel with:
   - `Role Workspace`
   - `Import Manually`
   - `Recent Work`
-- compact `Draft Options`
+- compact top-of-panel settings for:
+  - `Anonymous Output`
+  - `Language` via an `EN / CN` flag-style toggle
 - the main `Generate Summary` action
 
-This means the active candidate and role stay visible, while loading and reopening actions are kept in a separate navigation panel.
+This means the active candidate and role stay visible in the main stage, while loading and reopening actions are kept in a separate navigation rail.
 
 The `Current Candidate` panel is populated from the loaded CV and JD as soon as those documents are imported. It does not wait for summary generation.
 
@@ -51,13 +55,13 @@ This lets you keep the role context stable while switching candidates.
 
 ## Open A Role Workspace
 1. In the `Context` panel, stay on the `Role Workspace` tab.
-2. Click `Choose Folder`.
-2. Select the folder for the role you are working on.
-3. Choose the active JD in `Workspace JD`.
-4. Choose the current candidate in `Candidate CV`.
-5. Click `Load JD` and `Load CV`.
+2. Click `Open Folder`.
+3. Select the folder for the role you are working on.
+4. Choose the active JD in `Role JD`.
+5. Choose the current candidate in `Candidate`.
+6. The selected JD and candidate load immediately when changed.
 
-The loaded JD and CV should then appear in the left rail as the current active files.
+The loaded JD and CV should then appear in the main workbench context and document tabs.
 
 ## Manual Import Fallback
 If you are not using a role workspace folder, open the `Import Manually` tab.
@@ -72,8 +76,8 @@ This is useful for one-off testing or quick review, but the role-workspace flow 
 ## Generate A Draft
 1. Confirm the correct CV and JD are loaded.
 2. Choose:
-   - `Named` or `Anonymous`
-   - `English` or `中文`
+   - `Anonymous Output` on or off
+   - `Language`
 3. Click `Generate Summary`.
 
 The app generates:
@@ -99,15 +103,16 @@ Each evidence item shows the source file, section, retrieval score, and a short 
 
 ## Switch Language
 After a draft has been generated:
-- switching `English / 中文` translates the current derived outputs
+- switching the `EN / CN` language toggle translates the current derived outputs
 - it does not rerun the whole CV/JD assessment
 - if that language version already exists, the app reuses the cached version
+- if you reopen a saved case from `Recent Work`, previously generated language variants are also restored when they were saved with that workspace
 
 The raw `Candidate CV` and `Job Description` views do not change language.
 
 ## Switch Identity Mode
 After a draft has been generated:
-- switching between `Named` and `Anonymous` first checks whether that draft variant is already available for the current candidate and role
+- switching `Anonymous Output` on or off first checks whether that draft variant is already available for the current candidate and role
 - if the variant already exists in the current session, the app restores it without rerunning full generation
 - if the variant is not already cached, the app re-renders the hiring-manager-facing output from the current draft without rerunning full summary generation
 - the recruiter-facing candidate summary remains named in both modes

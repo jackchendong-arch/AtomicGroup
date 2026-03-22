@@ -38,6 +38,63 @@ function cloneJsonValue(value, fallback) {
   }
 }
 
+function normalizeDraftVariantSnapshot(variant) {
+  if (!variant || typeof variant !== 'object') {
+    return null;
+  }
+
+  const summary = String(variant.summary || '').trim();
+  const briefing = cloneJsonValue(variant.briefing, null);
+  const briefingReview = String(variant.briefingReview || '').trim();
+  const approvalWarnings = normalizeStringArray(variant.approvalWarnings);
+  const draftLifecycle = normalizeString(variant.draftLifecycle) || (summary ? 'generated' : 'empty');
+
+  if (!summary && !briefing && !briefingReview && approvalWarnings.length === 0) {
+    return null;
+  }
+
+  return {
+    summary,
+    briefing,
+    briefingReview,
+    approvalWarnings,
+    draftLifecycle
+  };
+}
+
+function normalizeDraftVariants(input) {
+  const modes = ['named', 'anonymous'];
+  const languages = ['en', 'zh'];
+  const normalized = {
+    named: {
+      en: null,
+      zh: null
+    },
+    anonymous: {
+      en: null,
+      zh: null
+    }
+  };
+
+  if (!input || typeof input !== 'object') {
+    return normalized;
+  }
+
+  for (const mode of modes) {
+    const modeEntry = input[mode];
+
+    if (!modeEntry || typeof modeEntry !== 'object') {
+      continue;
+    }
+
+    for (const language of languages) {
+      normalized[mode][language] = normalizeDraftVariantSnapshot(modeEntry[language]);
+    }
+  }
+
+  return normalized;
+}
+
 function extractSummaryField(summary, labels) {
   const normalizedSummary = String(summary || '');
 
@@ -138,6 +195,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     summary: [],
     briefing: []
   });
+  const draftVariants = normalizeDraftVariants(input.draftVariants);
   const workspaceId = buildWorkspaceId({
     sourceFolderPath,
     selectedJdPath,
@@ -161,6 +219,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     draftLifecycle: normalizeString(input.draftLifecycle) || 'empty',
     summary,
     briefing,
+    draftVariants,
     retrievalEvidence,
     briefingReview: String(input.briefingReview || '').trim(),
     approvalWarnings: normalizeStringArray(input.approvalWarnings),

@@ -956,8 +956,21 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const settings = await getSettingsStore().load();
   const validation = validateSettings(settings);
+  const debugTrace = [
+    `Draft translation requested at ${new Date().toISOString()}`,
+    `Source language: ${normalizeOutputLanguage(payload.sourceLanguage)}`,
+    `Target language: ${normalizeOutputLanguage(payload.targetLanguage)}`,
+    `Output mode: ${payload.outputMode === 'anonymous' ? 'anonymous' : 'named'}`,
+    `CV source file: ${path.basename(payload?.cvDocument?.file?.path || payload?.cvDocument?.file?.name || '') || '(unknown)'}`,
+    `JD source file: ${path.basename(payload?.jdDocument?.file?.path || payload?.jdDocument?.file?.name || '') || '(unknown)'}`,
+    `Summary length: ${String(payload.summary || '').length}`,
+    `Briefing payload length: ${JSON.stringify(payload.briefing || {}).length}`
+  ];
 
   if (!validation.isValid) {
+    debugTrace.push(`Settings validation failed: ${validation.errors.join(' | ')}`);
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
     throw new Error(validation.errors.join(' '));
   }
 
@@ -1004,50 +1017,61 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const translationSettings = {
     ...settings,
     temperature: 0,
-    maxTokens: Math.max(Number(settings.maxTokens) || 0, 2400)
+    maxTokens: Math.max(Number(settings.maxTokens) || 0, 4000)
   };
-  const translationResult = await generateWithConfiguredProvider({
-    settings: translationSettings,
-    messages: translationRequest.messages,
-    fetchImpl: (...args) => net.fetch(...args)
-  });
-  let translated;
+  debugTrace.push(`Translation model: ${translationSettings.model}`);
+  debugTrace.push(`Translation max tokens: ${translationSettings.maxTokens}`);
 
   try {
-    translated = parseTranslatedDraftResponse(translationResult.text, currentBriefing);
-  } catch (error) {
-    const repairRequest = buildDraftTranslationRepairRequest({
-      malformedResponse: translationResult.text,
-      expectedPayload: translationRequest.payload
-    });
-    const repairedResult = await generateWithConfiguredProvider({
+    const translationResult = await generateWithConfiguredProvider({
       settings: translationSettings,
-      messages: repairRequest.messages,
+      messages: translationRequest.messages,
       fetchImpl: (...args) => net.fetch(...args)
     });
-    translated = parseTranslatedDraftResponse(repairedResult.text, currentBriefing);
+    let translated;
+
+    try {
+      translated = parseTranslatedDraftResponse(translationResult.text, currentBriefing);
+    } catch (error) {
+      debugTrace.push(`Primary translation response could not be parsed: ${error instanceof Error ? error.message : 'Unknown parse error.'}`);
+      const repairRequest = buildDraftTranslationRepairRequest({
+        malformedResponse: translationResult.text,
+        expectedPayload: translationRequest.payload
+      });
+      const repairedResult = await generateWithConfiguredProvider({
+        settings: translationSettings,
+        messages: repairRequest.messages,
+        fetchImpl: (...args) => net.fetch(...args)
+      });
+      translated = parseTranslatedDraftResponse(repairedResult.text, currentBriefing);
+    }
+
+    const preparedOutput = applyDraftOutputMode({
+      outputMode: payload.outputMode,
+      recruiterSummary: translated.summary,
+      briefing: translated.briefing,
+      cvDocument: payload.cvDocument,
+      jdDocument: payload.jdDocument
+    });
+    const composed = prepareHiringManagerBriefingOutput({
+      briefing: preparedOutput.briefing,
+      recruiterSummary: preparedOutput.summary,
+      outputLanguage: targetLanguage
+    });
+
+    return {
+      summary: translated.summary,
+      briefing: translated.briefing,
+      hiringManagerBriefingReview: composed.review,
+      outputLanguage: targetLanguage,
+      approvalWarnings: preparedOutput.warnings
+    };
+  } catch (error) {
+    debugTrace.push(`Draft translation failed: ${error instanceof Error ? error.message : 'Unknown translation failure.'}`);
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
+    throw error;
   }
-
-  const preparedOutput = applyDraftOutputMode({
-    outputMode: payload.outputMode,
-    recruiterSummary: translated.summary,
-    briefing: translated.briefing,
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
-  });
-  const composed = prepareHiringManagerBriefingOutput({
-    briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary,
-    outputLanguage: targetLanguage
-  });
-
-  return {
-    summary: translated.summary,
-    briefing: translated.briefing,
-    hiringManagerBriefingReview: composed.review,
-    outputLanguage: targetLanguage,
-    approvalWarnings: preparedOutput.warnings
-  };
 });
 
 ipcMain.handle('briefing:render-review', async (_event, payload) => {

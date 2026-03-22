@@ -751,6 +751,7 @@ Current implemented slices inside Release 6:
 - deterministic Playwright Electron end-to-end coverage for the current recruiter workflow using a local mock-generation mode so generation, translation, recent-work reopen, and role-workspace switching can be tested without live provider dependencies
 - a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
 - settings persistence no longer writes plaintext API keys; saving now requires secure OS-backed encryption availability, and legacy plaintext key records are scrubbed from disk on load
+- when a new candidate CV or role JD begins loading, the previous source slot and derived workspace draft state are cleared immediately so old source content does not linger in renderer memory while the replacement file imports
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.

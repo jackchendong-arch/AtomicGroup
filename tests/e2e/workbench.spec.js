@@ -13,6 +13,9 @@ const sampleWorkspacePath = path.join(appRoot, 'samples', 'role-workspace');
 const sampleWorkspaceJdPath = path.join(sampleWorkspacePath, 'JD-role.txt');
 const sampleWorkspaceAlexCvPath = path.join(sampleWorkspacePath, 'CV-alex.txt');
 const sampleWorkspaceJordanCvPath = path.join(sampleWorkspacePath, 'CV-jordan.txt');
+const smallWorkspacePath = path.join(appRoot, 'samples', 'two-file-workspace');
+const smallWorkspaceJdPath = path.join(smallWorkspacePath, 'JD-small.txt');
+const smallWorkspaceCvPath = path.join(smallWorkspacePath, 'CV-small.txt');
 const defaultSystemPrompt =
   'You are an executive search recruiter assistant. Produce grounded, evidence-based candidate profile summaries for hiring managers. Do not invent facts. Call out strengths and gaps clearly.';
 
@@ -78,7 +81,8 @@ test.describe('Candidate Match Workbench', () => {
         ...process.env,
         ELECTRON_USER_DATA_PATH: userDataPath,
         ATOMICGROUP_E2E_MOCK_LLM: '1',
-        ATOMICGROUP_E2E_TEST_API: '1'
+        ATOMICGROUP_E2E_TEST_API: '1',
+        ATOMICGROUP_E2E_IMPORT_DELAY_MS: '250'
       }
     });
 
@@ -171,6 +175,7 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
     await expect(page.locator('#summary-editor')).toContainText('Senior Product Manager');
 
+    await page.locator('#open-summary-tab').click();
     await expect(page.locator('#summary-evidence-panel')).not.toHaveClass(/is-hidden/);
     await page.locator('#summary-evidence-panel summary').click();
     await expect(page.locator('#summary-evidence-summary-list .evidence-item').first()).toBeVisible();
@@ -210,6 +215,7 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#cv-preview-text')).toContainText('Director of Product');
 
     await page.locator('#source-folder-cv-select').selectOption(sampleWorkspaceJordanCvPath);
+    await expect(page.locator('#current-context-panel')).toHaveClass(/is-hidden/);
     await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
     await expect(page.locator('#cv-preview-text')).toContainText('Jordan Lee');
     await expect(page.locator('#cv-preview-text')).not.toContainText('Alex Tan');
@@ -219,6 +225,25 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#open-summary-tab')).toBeVisible();
     await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
     await expect(page.locator('#summary-editor')).not.toContainText('Alex Tan');
+  });
+
+  test('recovers correctly when a two-file workspace is temporarily assigned into the wrong JD/CV slots', async () => {
+    await openSourceFolderViaTestApi(page, smallWorkspacePath);
+
+    await expect(page.locator('#source-folder-jd-select')).toHaveValue(smallWorkspaceJdPath);
+    await expect(page.locator('#source-folder-cv-select')).toHaveValue(smallWorkspaceCvPath);
+    await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
+
+    await page.locator('#source-folder-jd-select').selectOption(smallWorkspaceCvPath);
+    await expect(page.locator('#source-folder-cv-select')).toHaveValue(smallWorkspaceJdPath);
+
+    await page.locator('#source-folder-jd-select').selectOption(smallWorkspaceJdPath);
+    await expect(page.locator('#source-folder-cv-select')).toHaveValue(smallWorkspaceCvPath);
+    await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
+
+    await page.locator('#open-cv-tab').click();
+    await expect(page.locator('#cv-preview-text')).toContainText('Jordan Lee');
+    await expect(page.locator('#cv-preview-text')).not.toContainText('Senior Product Manager, Recruitment Intelligence');
   });
 
   test('renders structured CV experience entries without turning every short line into a heading', async () => {

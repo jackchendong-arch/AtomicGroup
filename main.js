@@ -592,8 +592,25 @@ function getE2EMockDelayMs() {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
+function getE2EImportDelayMs() {
+  const parsedValue = Number.parseInt(process.env.ATOMICGROUP_E2E_IMPORT_DELAY_MS || '0', 10);
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+}
+
 async function waitForE2EMockDelay() {
   const delayMs = getE2EMockDelayMs();
+
+  if (!delayMs) {
+    return;
+  }
+
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+async function waitForE2EImportDelay() {
+  const delayMs = getE2EImportDelayMs();
 
   if (!delayMs) {
     return;
@@ -763,6 +780,10 @@ ipcMain.handle('document:pick', async (_event, { slot }) => {
 });
 
 ipcMain.handle('document:import', async (_event, { filePath }) => {
+  if (isE2EMockLlmEnabled()) {
+    await waitForE2EImportDelay();
+  }
+
   return importDocument(filePath);
 });
 

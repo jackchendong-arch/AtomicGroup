@@ -1621,6 +1621,18 @@ function invalidateSummary(message) {
   setSummaryMessage(message);
 }
 
+function clearCurrentContextProfile() {
+  currentContextProfileRequestId += 1;
+  state.currentContextProfile = null;
+  state.currentWorkspaceId = '';
+}
+
+function beginSensitiveSourceReload(slot, message) {
+  state.documents[slot] = createEmptyDocumentSlot(slot);
+  clearCurrentContextProfile();
+  invalidateSummary(message);
+}
+
 function getDraftLifecycleLabel() {
   switch (state.draftLifecycle) {
     case 'generated':
@@ -2254,6 +2266,14 @@ async function clearRecentWorkspaces() {
 }
 
 async function importDocumentIntoSlot(filePath, slot) {
+  beginSensitiveSourceReload(
+    slot,
+    slot === 'cv'
+      ? 'Loading the selected candidate CV. Previous candidate draft context was cleared.'
+      : 'Loading the selected role JD. Previous draft context was cleared.'
+  );
+  render();
+
   const result = await window.recruitmentApi.importDocument({ filePath });
   await applyImportedDocument(result, slot);
 }
@@ -2304,9 +2324,7 @@ function clearStaleWorkspaceDocuments(nextFiles) {
     return;
   }
 
-  currentContextProfileRequestId += 1;
-  state.currentContextProfile = null;
-  state.currentWorkspaceId = '';
+  clearCurrentContextProfile();
   invalidateSummary('Role workspace changed. Select a candidate and generate a fresh draft.');
 }
 
@@ -2865,12 +2883,10 @@ async function openWordDraft() {
 }
 
 function resetWorkspace() {
-  currentContextProfileRequestId += 1;
+  clearCurrentContextProfile();
   state.documents.cv = createEmptyDocumentSlot('cv');
   state.documents.jd = createEmptyDocumentSlot('jd');
   state.sourceFolder = createEmptySourceFolderState();
-  state.currentContextProfile = null;
-  state.currentWorkspaceId = '';
   state.briefing = null;
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.briefingReview = '';
@@ -3080,10 +3096,15 @@ elements.chooseSourceFolderButton.addEventListener('click', chooseSourceFolder);
 elements.refreshSourceFolderButton.addEventListener('click', refreshSourceFolder);
 elements.sourceFolderJdSelect.addEventListener('change', async () => {
   const nextPath = elements.sourceFolderJdSelect.value;
+  const previousSelectedCvPath = state.sourceFolder.selectedCvPath;
   setSelectedSourceFolderJdPath(nextPath);
   ensureSourceFolderSelections();
   render();
-  await autoLoadWorkspaceSelections({ loadJd: true, loadCv: false });
+  await autoLoadWorkspaceSelections({
+    loadJd: true,
+    loadCv: previousSelectedCvPath !== state.sourceFolder.selectedCvPath
+      || state.documents.cv.file?.path !== state.sourceFolder.selectedCvPath
+  });
   await persistCurrentWorkspaceSnapshot();
 });
 elements.sourceFolderCvSelect.addEventListener('change', async () => {

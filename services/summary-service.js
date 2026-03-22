@@ -40,6 +40,18 @@ const GENERIC_CANDIDATE_FILE_NAMES = new Set([
   'curriculum vitae'
 ]);
 
+const GENERIC_CANDIDATE_HEADINGS = new Set([
+  ...GENERIC_CANDIDATE_FILE_NAMES,
+  'general information',
+  'personal information',
+  'executive profile',
+  'profile',
+  'summary',
+  '简历',
+  '个人信息',
+  '个人优势'
+]);
+
 const GENERIC_ROLE_HEADINGS = new Set([
   'about the job',
   'about this job',
@@ -139,42 +151,106 @@ function normalizeLooseKey(value) {
   return cleanLine(String(value || '').toLowerCase().replace(/[_-]+/g, ' '));
 }
 
+function isGenericCandidateHeading(value) {
+  return GENERIC_CANDIDATE_HEADINGS.has(normalizeLooseKey(value));
+}
+
+function collapseSpacedLetterTokens(value) {
+  const normalized = cleanLine(String(value || ''));
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+
+  if (tokens.length < 6) {
+    return normalized;
+  }
+
+  const looksLikeSeparatedName = tokens.every((token) => /^[A-Za-z]$/.test(token) || /^[()]$/.test(token));
+
+  if (!looksLikeSeparatedName) {
+    return normalized;
+  }
+
+  return cleanLine(
+    tokens
+      .join('')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+  );
+}
+
+function normalizeCandidateNameInlineValue(value) {
+  return collapseSpacedLetterTokens(
+    String(value || '')
+      .split(/\s+(?:(?:mobile|phone|tel|email|wechat|手机|电话|邮箱|微信)\s*[:：]?)/i)[0]
+      .trim()
+  );
+}
+
+function looksLikeSingleNameTokenLine(value) {
+  const normalized = cleanLine(String(value || ''));
+
+  if (!normalized || isGenericCandidateHeading(normalized) || /\d|@/.test(normalized)) {
+    return false;
+  }
+
+  return /^[A-Z][A-Za-z'-]+$/.test(normalized) || /^[\u4e00-\u9fff·]{2,6}$/.test(normalized);
+}
+
 function extractCandidateName(cvText, fileName) {
   const lines = splitLines(cvText);
 
-  for (const line of lines.slice(0, 10)) {
+  for (const line of lines.slice(0, 20)) {
     const labeledMatch = line.match(/^(?:name|candidate name|姓名|候选人姓名)\s*[:：]\s*(.+)$/i);
+    const candidateValue = normalizeCandidateNameInlineValue(labeledMatch?.[1] || '');
 
     if (
-      labeledMatch?.[1] &&
-      !labeledMatch[1].includes('@') &&
-      !/\d{5,}/.test(labeledMatch[1])
+      candidateValue &&
+      !candidateValue.includes('@') &&
+      !/\d{5,}/.test(candidateValue) &&
+      !isGenericCandidateHeading(candidateValue)
     ) {
-      return cleanLine(labeledMatch[1]);
+      return candidateValue;
     }
   }
 
-  for (const line of lines.slice(0, 6)) {
-    const normalizedLine = cleanLine(
-      line
-        .replace(/([A-Za-z])\(/g, '$1 (')
-        .replace(/\)([A-Za-z])/g, ') $1')
-    );
+  for (let index = 0; index < Math.min(lines.length - 1, 8); index += 1) {
+    const first = cleanLine(lines[index]);
+    const second = cleanLine(lines[index + 1]);
+
+    if (looksLikeSingleNameTokenLine(first) && looksLikeSingleNameTokenLine(second)) {
+      return `${first} ${second}`;
+    }
+  }
+
+  for (const line of lines.slice(0, 20)) {
+    const normalizedLine = cleanLine(line);
+
+    if (
+      /^[\u4e00-\u9fff·]{2,12}\s+[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){1,3}$/.test(normalizedLine) &&
+      !normalizedLine.includes('@') &&
+      !/\d/.test(normalizedLine)
+    ) {
+      return normalizedLine;
+    }
+  }
+
+  for (const line of lines.slice(0, 20)) {
+    const normalizedLine = collapseSpacedLetterTokens(line);
 
     if (
       /^[A-Z][A-Za-z]+(?:\s*\([A-Za-z][A-Za-z\s'-]*\))?(?: [A-Z][A-Za-z]+(?:\s*\([A-Za-z][A-Za-z\s'-]*\))?){1,4}$/.test(normalizedLine) &&
       !normalizedLine.includes('@') &&
-      !/\d/.test(normalizedLine)
+      !/\d/.test(normalizedLine) &&
+      !isGenericCandidateHeading(normalizedLine)
     ) {
-      return line;
+      return normalizedLine;
     }
   }
 
-  for (const line of lines.slice(0, 6)) {
+  for (const line of lines.slice(0, 20)) {
     if (
       /^[\u4e00-\u9fff·]{2,12}$/.test(line) &&
       !line.includes('@') &&
-      !/\d/.test(line)
+      !/\d/.test(line) &&
+      !isGenericCandidateHeading(line)
     ) {
       return line;
     }
@@ -207,6 +283,26 @@ function extractRoleTitle(jdText, fileName) {
     if (labeledValue && !GENERIC_ROLE_HEADINGS.has(normalizeLooseKey(labeledValue))) {
       return labeledValue;
     }
+  }
+
+  const sentenceMatchedTitle = lines.slice(0, 30).reduce((matchedTitle, line) => {
+    if (matchedTitle) {
+      return matchedTitle;
+    }
+
+    const match = line.match(/\b((?:Head|Director|Manager|Lead|Principal|Architect|Engineer|Developer|Consultant|Partner|Officer|Vice President|VP)[A-Za-z/&(),\-\s]{2,80})\s+is responsible for\b/i);
+
+    if (!match?.[1]) {
+      return '';
+    }
+
+    const roleTitle = cleanLine(match[1]).replace(/^(?:overview of division\/department\s*)/i, '').trim();
+
+    return GENERIC_ROLE_HEADINGS.has(normalizeLooseKey(roleTitle)) ? '' : roleTitle;
+  }, '');
+
+  if (sentenceMatchedTitle) {
+    return sentenceMatchedTitle;
   }
 
   const firstLongLine = lines.find((line) => {

@@ -231,6 +231,13 @@ Recommended output sections:
 - If a draft variant for the target language already exists, the app should reuse that cached variant instead of invoking the LLM again.
 - Saved role workspaces should persist available draft variants so reopening a case can restore previously generated English and Chinese outputs without immediately retranslating.
 - Translation should be treated as a deterministic transformation step over the current approved/generated draft content, not as a fresh candidate assessment.
+- Translation should operate on bounded artifacts rather than one monolithic payload:
+  - recruiter summary as plain text
+  - core structured briefing fields as one bounded translation payload
+  - large repeating sections such as employment history in small batches
+- The app should keep the draft schema deterministic locally and merge translated field values back into that structure rather than asking the LLM to regenerate the whole draft shape.
+- For large drafts, translation should automatically use section-level or batch-level requests so long cases do not depend on one oversized JSON response.
+- If a newly generated structured briefing comes back in the wrong narrative language for the selected output, the app should normalize that briefing into the requested language before rendering the hiring-manager review.
 - The app should keep the busy/progress indicator visible in a shared stage-level location while generation, translation, export, or email handoff is running.
 - The app should prevent repeated conflicting language-toggle actions while translation is in progress.
 - If translation output is malformed, the app should attempt a controlled repair or fall back gracefully rather than silently corrupting the draft.
@@ -665,10 +672,17 @@ Current implemented slices inside Release 5:
 - deterministic named/anonymous hiring-manager output switching without rerunning full summary generation
 - selector-based role workspace intake in the sidebar
 - role-workspace selectors auto-load JD and candidate changes without separate load buttons
+- switching to a different role workspace clears stale loaded JD/CV slots immediately when those files do not belong to the newly selected folder, so the review panes do not keep showing old workspace content during the handoff
 - resumable local workspace snapshots and recent-work reopen flow
 - dedicated reopen / rehydration regression coverage around saved role workspaces, including source-only and generated-draft resume state
 - bilingual derived outputs with translation-only language switching and cached variants
+- large draft translations split recruiter-summary text and structured-briefing translation into smaller requests so bilingual switching stays reliable on longer cases
+- section-batched translation for large structured briefing sections, with employment history translated in bounded batches and merged back into the deterministic briefing model
+- automatic post-generation briefing language normalization when the structured briefing returns in the wrong narrative language for the selected output
 - expanded real-fixture regression coverage over English and Chinese recruiter test packs
+- contract-based external fixture metadata for expected candidate names, role titles, and smoke-only invalid-pair cases so regression coverage validates semantic correctness instead of only non-empty outputs
+- stronger fixture regressions that assert deterministic candidate/role extraction and rendered summary/briefing labels across the external test packs
+- deterministic current-candidate extraction hardened for OCR-style spaced-letter names such as `C h e n h a o L i`
 - workspace-scoped normalized source model for the active CV, JD, and active guidance template
 - section-aware source blocks with metadata and lightweight lexical retrieval over the active role workspace
 - retrieval-backed prompt construction for recruiter summary and structured briefing generation, with retrieval manifests persisted and surfaced as recruiter-review evidence traces
@@ -707,6 +721,17 @@ Scope:
 - Logging suitable for support
 - Output quality checks
 - Basic usage telemetry if approved by product/privacy policy
+
+Current implemented slices inside Release 6:
+- explicit Electron `BrowserWindow` hardening with:
+  - `nodeIntegration: false`
+  - `contextIsolation: true`
+  - `sandbox: true`
+  - `webSecurity: true`
+  - blocked insecure content
+- blocked unexpected in-window navigation and denied new window creation from the main app surface
+- renderer Content Security Policy restricted to local scripts and blocked embedded/remote frame paths
+- privacy-safe summary/export diagnostics that record metadata, counts, and digests instead of raw CV/JD text, generated summaries, or full structured briefing content
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.

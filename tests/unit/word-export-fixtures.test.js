@@ -17,6 +17,7 @@ const {
 } = require('../../services/briefing-service');
 const {
   EXTERNAL_FIXTURE_CASES,
+  fixtureCaseHasValidContract,
   fixtureCaseIsPresent,
   getFixtureCvPath,
   getFixtureJdPath
@@ -164,6 +165,17 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
           renderedText.includes(templateData.role_title),
         `Rendered document for ${fixtureCase.name} should contain core generated briefing content`
       );
+
+      if (fixtureCaseHasValidContract(fixtureCase)) {
+        assert.ok(
+          renderedText.includes(fixtureCase.expectedCandidateName),
+          `Rendered document for ${fixtureCase.name} should contain the expected candidate name`
+        );
+        assert.ok(
+          renderedText.includes(fixtureCase.expectedRoleTitle),
+          `Rendered document for ${fixtureCase.name} should contain the expected role title`
+        );
+      }
     }
   );
 }

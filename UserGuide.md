@@ -107,6 +107,8 @@ After a draft has been generated:
 - it does not rerun the whole CV/JD assessment
 - if that language version already exists, the app reuses the cached version
 - if you reopen a saved case from `Recent Work`, previously generated language variants are also restored when they were saved with that workspace
+- for longer cases, the app translates the recruiter summary, core briefing content, and large employment-history sections in smaller bounded steps rather than one oversized translation request
+- if a newly generated hiring-manager briefing returns in the wrong narrative language, the app normalizes that briefing into the selected output language before rendering it
 
 The raw `Candidate CV` and `Job Description` views do not change language.
 
@@ -192,5 +194,6 @@ If something looks wrong:
 - confirm you are in the expected language mode
 - regenerate after switching to a different candidate
 - reopen the case from `Recent Work` if needed
+- if a language switch seems slow on a long case, wait for the current translation to finish instead of toggling again while the busy indicator is visible
 
 For technical debugging, the app may also write local diagnostics used during development.

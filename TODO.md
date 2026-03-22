@@ -179,7 +179,7 @@ Mark a release complete only when the work is:
 - Test email draft handoff on Windows.
 
 ## Release 5: Local Folder Intake and Job Workspace
-- [-] Release 5 shipped, completed, and tested.
+- [x] Release 5 shipped, completed, and tested.
 - Implemented so far:
   - folder picker for a local role workspace folder
   - one role workspace folder treated as one active JD plus many candidate CVs
@@ -196,20 +196,27 @@ Mark a release complete only when the work is:
   - active CV and JD filenames folded into the current-candidate title row as compact inline context instead of separate duplicate fields
   - current candidate panel driven from deterministic CV/JD extraction as soon as source documents are loaded, without waiting for LLM generation
   - current candidate label extraction hardened for nickname-style candidate names and bilingual JD headings used in role-workspace fixtures
+  - current candidate label extraction also handles OCR-style spaced-letter candidate names such as `C h e n h a o L i`
   - redundant outer left-rail wrapper removed so the rail starts directly with working sections
   - recent work labels driven by candidate name and role title when draft content is available
   - user-selectable English / Chinese output language across summary, briefing, email, and Word output
   - post-generation language switching that translates the current derived draft instead of rerunning full CV/JD assessment
   - cached language variants so switching back to an already available language avoids another LLM translation call
   - persisted draft variants in saved role workspaces so reopening a case can reuse previously generated English/Chinese variants instead of retranslating immediately
+  - long bilingual draft switches now translate recruiter summary text and structured briefing content through smaller separate translation requests, reducing oversized malformed JSON failures on large drafts
+  - large structured briefing sections such as employment history now translate in bounded batches and merge back into the deterministic briefing model instead of relying on one oversized translation payload
+  - if a generated structured briefing comes back in the wrong narrative language for the selected output, the app now normalizes that briefing into the requested language before rendering the hiring-manager review
   - in-session named/anonymous draft variant caching for the same candidate-role workspace
   - deterministic named/anonymous hiring-manager output switching without rerunning full summary generation for the current candidate-role draft
   - file-backed bilingual regression coverage across the external `Test1` to `Test8` recruiter fixture set
+  - contract-based external fixture regression metadata for expected candidate name, role title, and smoke-only invalid-pair scenarios
+  - stronger fixture regressions that now assert deterministic candidate/role extraction and rendered summary/briefing labels instead of only non-empty output
   - local role-workspace snapshots for the selected folder, active JD, current candidate CV, and latest draft
   - recent work list with reopen flow
   - rehydration of the saved folder context, active JD, current candidate CV, and latest draft when reopening recent work
   - dedicated reopen / rehydration regression coverage around saved role workspaces, including source-only snapshots and generated-draft resume state
   - role-workspace JD and candidate selectors auto-load the selected files immediately, removing separate `Load JD` and `Load Candidate` steps from the main intake flow
+  - switching to a different role workspace now clears stale loaded CV/JD slots immediately when those files are no longer part of the newly selected folder, preventing old preview content from bleeding into the next workspace
   - workspace-scoped normalized source model for the active JD, current candidate CV, and active Markdown guidance template
   - section-aware source blocks with metadata for CV, JD, and guidance inputs
   - ephemeral lexical retrieval over the active role workspace inputs instead of prompt-stuffing the full CV/JD text
@@ -227,8 +234,13 @@ Mark a release complete only when the work is:
 - Add targeted structured-briefing generation diagnostics and unit regressions so mixed-language hiring-manager briefing issues can be traced at the fallback/parsed/merged employment-history level without relying on UI-only retesting.
 
 ## Release 6: Production Hardening
-- [ ] Release 6 shipped, completed, and tested.
+- [-] Release 6 shipped, completed, and tested.
 - Address Tier 1 security remediation items from `/Users/jack/dev/documentation/AtomicGroupsecurity_design.html` before lower-priority production polish work.
+- Implemented so far:
+  - explicit Electron `BrowserWindow` hardening with `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`, and blocked insecure content
+  - main-window navigation and window-open restrictions so unexpected remote navigation is denied
+  - renderer Content Security Policy for local-only script execution and blocked embedded/remote framing paths
+  - privacy-safe summary/export diagnostics that keep metadata, counts, and digests instead of raw CV/JD or generated candidate content
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:

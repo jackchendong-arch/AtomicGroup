@@ -356,6 +356,15 @@ This pushed the design toward a more robust translation workflow:
 - treat translation as a bounded transformation, not as a new reasoning pass
 - add a repair/fallback step when the returned JSON is malformed
 
+The next step after that was even more practical:
+- translate the recruiter summary as plain text
+- translate the core structured briefing as a smaller bounded payload
+- translate large repeating sections such as employment history in batches
+- merge the translated values back into the deterministic local structure
+- if a newly generated briefing still comes back in the wrong narrative language, normalize it into the selected output language before showing it to the recruiter
+
+That mattered because longer recruiter cases were never going to stay reliable if the app depended on one oversized JSON translation response.
+
 That reinforced a broader engineering principle:
 
 **LLM-based translation still needs strict contracts, bounded payloads, and recovery paths.**

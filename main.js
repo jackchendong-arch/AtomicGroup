@@ -1,4 +1,5 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell } = require('electron');
+const { createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('path');
 
@@ -25,6 +26,7 @@ const {
   mergeBriefingWithFallback,
   parseBriefingResponse,
   prepareHiringManagerBriefingOutput,
+  renderSummaryFromBriefing,
   validateBriefing
 } = require('./services/briefing-service');
 const { generateWithConfiguredProvider, getProviderOptions } = require('./services/llm-service');
@@ -45,8 +47,13 @@ const {
 const {
   buildDraftTranslationRepairRequest,
   buildDraftTranslationRequest,
-  parseTranslatedDraftResponse
+  buildSummaryTranslationRequest,
+  mergeTranslatedBriefing,
+  mergeTranslatedEmploymentHistorySlice,
+  parseTranslatedDraftResponse,
+  parseTranslatedSummaryResponse
 } = require('./services/draft-translation-service');
+const { briefingNeedsLanguageNormalization } = require('./services/briefing-language-service');
 const { normalizeOutputLanguage } = require('./services/output-language-service');
 
 let settingsStore;
@@ -162,6 +169,190 @@ async function appendSummaryGenerationDebugLog(lines) {
   await fs.appendFile(summaryGenerationDebugLogPath, `${content}\n`, 'utf8');
 }
 
+function getDebugFileLabel(filePath) {
+  const value = String(filePath || '').trim();
+  return value ? path.basename(value) : '(none)';
+}
+
+function getDebugTextDigest(value) {
+  const normalized = String(value || '').trim();
+
+  if (!normalized) {
+    return '0 chars';
+  }
+
+  return `${normalized.length} chars sha256=${createHash('sha256').update(normalized).digest('hex').slice(0, 16)}`;
+}
+
+function buildTranslationSettings(settings) {
+  return {
+    ...settings,
+    temperature: 0,
+    maxTokens: Math.max(Number(settings.maxTokens) || 0, 4000)
+  };
+}
+
+async function translateDraftArtifacts({
+  settings,
+  summary = '',
+  briefing,
+  sourceLanguage,
+  targetLanguage,
+  includeSummaryTranslation = true,
+  debugTrace = [],
+  fetchImpl
+}) {
+  const normalizedSourceLanguage = normalizeOutputLanguage(sourceLanguage);
+  const normalizedTargetLanguage = normalizeOutputLanguage(targetLanguage);
+  const currentBriefing = briefing || {};
+  const employmentHistory = Array.isArray(currentBriefing.employment_history)
+    ? currentBriefing.employment_history
+    : [];
+  const employmentBatchSize = 3;
+  const coreBriefingForTranslation = {
+    ...currentBriefing,
+    employment_history: []
+  };
+  const coreBriefingTranslationRequest = buildDraftTranslationRequest({
+    summary: '',
+    briefing: coreBriefingForTranslation,
+    outputMode: 'named',
+    sourceLanguage: normalizedSourceLanguage,
+    targetLanguage: normalizedTargetLanguage,
+    includeSummary: false
+  });
+  const translationSettings = buildTranslationSettings(settings);
+
+  debugTrace.push(`Translation model: ${translationSettings.model}`);
+  debugTrace.push(`Translation max tokens: ${translationSettings.maxTokens}`);
+  debugTrace.push(`Employment history entries to translate: ${employmentHistory.length}`);
+  debugTrace.push(`Employment history batch size: ${employmentBatchSize}`);
+
+  const work = [
+    generateWithConfiguredProvider({
+      settings: translationSettings,
+      messages: coreBriefingTranslationRequest.messages,
+      fetchImpl
+    })
+  ];
+
+  if (includeSummaryTranslation) {
+    const summaryTranslationRequest = buildSummaryTranslationRequest({
+      summary,
+      sourceLanguage: normalizedSourceLanguage,
+      targetLanguage: normalizedTargetLanguage
+    });
+
+    work.unshift(
+      generateWithConfiguredProvider({
+        settings: translationSettings,
+        messages: summaryTranslationRequest.messages,
+        fetchImpl
+      })
+    );
+  }
+
+  const results = await Promise.all(work);
+  const summaryTranslationResult = includeSummaryTranslation ? results[0] : null;
+  const coreBriefingTranslationResult = includeSummaryTranslation ? results[1] : results[0];
+  let translatedBriefing;
+  let translatedSummary = includeSummaryTranslation ? '' : normalizeGeneratedSummary(summary);
+
+  if (includeSummaryTranslation && summaryTranslationResult) {
+    try {
+      translatedSummary = parseTranslatedSummaryResponse(summaryTranslationResult.text);
+    } catch (error) {
+      debugTrace.push(`Summary translation response could not be parsed: ${error instanceof Error ? error.message : 'Unknown summary translation parse error.'}`);
+      translatedSummary = '';
+    }
+  }
+
+  try {
+    const translatedCore = parseTranslatedDraftResponse(coreBriefingTranslationResult.text, coreBriefingForTranslation);
+    translatedBriefing = mergeTranslatedBriefing(currentBriefing, translatedCore.briefing);
+  } catch (error) {
+    debugTrace.push(`Core briefing translation response could not be parsed: ${error instanceof Error ? error.message : 'Unknown parse error.'}`);
+    const repairRequest = buildDraftTranslationRepairRequest({
+      malformedResponse: coreBriefingTranslationResult.text,
+      expectedPayload: coreBriefingTranslationRequest.payload
+    });
+    const repairedResult = await generateWithConfiguredProvider({
+      settings: translationSettings,
+      messages: repairRequest.messages,
+      fetchImpl
+    });
+    const translatedCore = parseTranslatedDraftResponse(repairedResult.text, coreBriefingForTranslation);
+    translatedBriefing = mergeTranslatedBriefing(currentBriefing, translatedCore.briefing);
+  }
+
+  for (let startIndex = 0; startIndex < employmentHistory.length; startIndex += employmentBatchSize) {
+    const employmentSlice = employmentHistory.slice(startIndex, startIndex + employmentBatchSize);
+    const sliceBriefing = {
+      candidate: {},
+      role: {},
+      fit_summary: '',
+      relevant_experience: [],
+      match_requirements: [],
+      potential_concerns: [],
+      recommended_next_step: '',
+      employment_history: employmentSlice
+    };
+    const sliceRequest = buildDraftTranslationRequest({
+      summary: '',
+      briefing: sliceBriefing,
+      outputMode: 'named',
+      sourceLanguage: normalizedSourceLanguage,
+      targetLanguage: normalizedTargetLanguage,
+      includeSummary: false
+    });
+
+    debugTrace.push(`Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1}: entries ${startIndex + 1}-${startIndex + employmentSlice.length}`);
+
+    try {
+      const sliceResult = await generateWithConfiguredProvider({
+        settings: translationSettings,
+        messages: sliceRequest.messages,
+        fetchImpl
+      });
+      let translatedSlice;
+
+      try {
+        translatedSlice = parseTranslatedDraftResponse(sliceResult.text, sliceBriefing);
+      } catch (error) {
+        debugTrace.push(`Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1} parse failed: ${error instanceof Error ? error.message : 'Unknown parse error.'}`);
+        const repairRequest = buildDraftTranslationRepairRequest({
+          malformedResponse: sliceResult.text,
+          expectedPayload: sliceRequest.payload
+        });
+        const repairedResult = await generateWithConfiguredProvider({
+          settings: translationSettings,
+          messages: repairRequest.messages,
+          fetchImpl
+        });
+        translatedSlice = parseTranslatedDraftResponse(repairedResult.text, sliceBriefing);
+      }
+
+      translatedBriefing = mergeTranslatedEmploymentHistorySlice({
+        briefing: translatedBriefing,
+        translatedBriefing: translatedSlice.briefing,
+        startIndex
+      });
+    } catch (error) {
+      throw new Error(`Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1} failed. ${error instanceof Error ? error.message : 'Unknown translation failure.'}`);
+    }
+  }
+
+  if (includeSummaryTranslation && !translatedSummary) {
+    translatedSummary = renderSummaryFromBriefing(translatedBriefing, normalizedTargetLanguage);
+    debugTrace.push('Summary translation fallback used: rendered recruiter summary from translated briefing.');
+  }
+
+  return {
+    summary: translatedSummary,
+    briefing: translatedBriefing
+  };
+}
+
 function pushEmploymentHistoryDebugTrace(debugTrace, label, employmentHistory = []) {
   debugTrace.push(`${label} employment history count: ${Array.isArray(employmentHistory) ? employmentHistory.length : 0}`);
 
@@ -170,20 +361,13 @@ function pushEmploymentHistoryDebugTrace(debugTrace, label, employmentHistory = 
   }
 
   employmentHistory.forEach((entry, index) => {
-    debugTrace.push(
-      `${label} employment ${index + 1}: title="${entry.job_title || entry.jobTitle || ''}" company="${entry.company_name || entry.companyName || ''}" dates="${[entry.start_date || entry.startDate, entry.end_date || entry.endDate].filter(Boolean).join(' - ')}"`
-    );
-
     const responsibilities = Array.isArray(entry.responsibilities)
       ? entry.responsibilities
       : [];
 
-    responsibilities.forEach((responsibility, responsibilityIndex) => {
-      const text = typeof responsibility === 'string'
-        ? responsibility
-        : responsibility?.responsibility || '';
-      debugTrace.push(`${label} employment ${index + 1} responsibility ${responsibilityIndex + 1}: ${text}`);
-    });
+    debugTrace.push(
+      `${label} employment ${index + 1}: has_title=${Boolean(entry.job_title || entry.jobTitle)} has_company=${Boolean(entry.company_name || entry.companyName)} has_dates=${Boolean(entry.start_date || entry.startDate || entry.end_date || entry.endDate)} responsibilities=${responsibilities.length}`
+    );
   });
 }
 
@@ -191,9 +375,8 @@ function pushBriefingDebugTrace(debugTrace, label, briefing = {}) {
   const candidate = briefing?.candidate || {};
   const role = briefing?.role || {};
 
-  debugTrace.push(`${label} candidate name: ${candidate.name || '(blank)'}`);
-  debugTrace.push(`${label} role title: ${role.title || '(blank)'}`);
-  debugTrace.push(`${label} candidate location: ${candidate.location || '(blank)'}`);
+  debugTrace.push(`${label} candidate fields present: name=${Boolean(candidate.name)} location=${Boolean(candidate.location)} preferred_location=${Boolean(candidate.preferred_location)} nationality=${Boolean(candidate.nationality)}`);
+  debugTrace.push(`${label} role fields present: title=${Boolean(role.title)} company=${Boolean(role.company)} hiring_manager=${Boolean(role.hiring_manager)}`);
   pushEmploymentHistoryDebugTrace(debugTrace, label, briefing?.employment_history);
 }
 
@@ -303,34 +486,19 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
 
   const templateData = composedOutput.templateData;
   const employmentDebug = describeEmploymentExtraction(payload.cvDocument);
-  debugTrace.push(`Configured template: ${settings.outputTemplatePath}`);
+  debugTrace.push(`Configured template file: ${getDebugFileLabel(settings.outputTemplatePath)}`);
   debugTrace.push(`Template extension: ${settings.outputTemplateExtension}`);
-  debugTrace.push(`CV source file: ${employmentDebug.cvFileName || '(unknown)'}`);
+  debugTrace.push(`CV source file: ${getDebugFileLabel(employmentDebug.cvFileName)}`);
   debugTrace.push(`CV line count: ${employmentDebug.cvLineCount}`);
   debugTrace.push(`Experience section line count: ${employmentDebug.experienceSectionLineCount}`);
-
-  if (employmentDebug.experienceSectionPreview.length > 0) {
-    debugTrace.push(`Experience section preview: ${employmentDebug.experienceSectionPreview.join(' || ')}`);
-  }
-
-  employmentDebug.dateWindows.forEach((window, index) => {
-    debugTrace.push(`CV date window ${index + 1}: ${window}`);
-  });
-
-  debugTrace.push(`Derived candidate name: ${templateData.candidate_name}`);
-  debugTrace.push(`Derived role title: ${templateData.role_title}`);
+  debugTrace.push(`Experience section preview lines captured: ${employmentDebug.experienceSectionPreview.length}`);
+  debugTrace.push(`CV date-window count: ${employmentDebug.dateWindows.length}`);
   debugTrace.push(`Derived employment history count: ${templateData.employment_history.length}`);
 
   templateData.employment_history.forEach((entry, index) => {
     debugTrace.push(
-      `Employment entry ${index + 1}: title="${entry.job_title || ''}" company="${entry.company_name || ''}" dates="${[entry.start_date, entry.end_date].filter(Boolean).join(' - ')}" responsibilities=${entry.responsibilities.length}`
+      `Employment entry ${index + 1}: has_title=${Boolean(entry.job_title)} has_company=${Boolean(entry.company_name)} has_dates=${Boolean(entry.start_date || entry.end_date)} responsibilities=${entry.responsibilities.length}`
     );
-
-    entry.responsibilities.forEach((responsibility, responsibilityIndex) => {
-      debugTrace.push(
-        `Employment entry ${index + 1} responsibility ${responsibilityIndex + 1}: ${responsibility.responsibility || ''}`
-      );
-    });
   });
 
   debugTrace.push(`Summary length: ${payload.summary.trim().length} characters`);
@@ -423,8 +591,21 @@ function createWindow() {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#eef2f3',
     webPreferences: {
+      nodeIntegration: false,
+      sandbox: true,
       contextIsolation: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const currentUrl = mainWindow.webContents.getURL();
+
+    if (currentUrl && navigationUrl !== currentUrl) {
+      event.preventDefault();
     }
   });
 
@@ -618,7 +799,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     throw new Error(`${error instanceof Error ? error.message : 'Unable to prepare the hiring-manager draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`);
   }
 
-  debugTrace.push(`Suggested output filename: ${suggestedName}`);
+  debugTrace.push(`Suggested output filename: ${getDebugFileLabel(suggestedName)}`);
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'Save hiring-manager Word draft',
     defaultPath: path.join(app.getPath('documents'), suggestedName),
@@ -630,7 +811,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     ]
   });
   debugTrace.push(`Save dialog canceled: ${canceled ? 'yes' : 'no'}`);
-  debugTrace.push(`Save dialog returned path: ${filePath || '(none)'}`);
+  debugTrace.push(`Save dialog returned file: ${getDebugFileLabel(filePath)}`);
 
   if (canceled || !filePath) {
     await appendExportDebugLog(debugTrace);
@@ -641,7 +822,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   }
 
   const outputPath = await resolveWordDraftOutputPath(filePath, suggestedName);
-  debugTrace.push(`Resolved output path: ${outputPath}`);
+  debugTrace.push(`Resolved output file: ${getDebugFileLabel(outputPath)}`);
 
   try {
     const result = await writeWordDraftToPath({
@@ -720,7 +901,7 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
       configuredOutputFolder,
       buildManagedGeneratedBriefingFilename(suggestedName)
     );
-    debugTrace.push(`Managed email attachment path: ${attachmentPath}`);
+    debugTrace.push(`Managed email attachment file: ${getDebugFileLabel(attachmentPath)}`);
 
     await writeWordDraftToPath({
       settings,
@@ -813,8 +994,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
     debugTrace.push(`Output mode: ${outputMode}`);
     debugTrace.push(`Output language: ${outputLanguage}`);
-    debugTrace.push(`CV source file: ${payload.cvDocument?.file?.name || '(unknown)'}`);
-    debugTrace.push(`JD source file: ${payload.jdDocument?.file?.name || '(unknown)'}`);
+    debugTrace.push(`CV source file: ${getDebugFileLabel(payload.cvDocument?.file?.name || payload.cvDocument?.file?.path)}`);
+    debugTrace.push(`JD source file: ${getDebugFileLabel(payload.jdDocument?.file?.name || payload.jdDocument?.file?.path)}`);
     debugTrace.push('Recruiter summary generation is always grounded on the named CV/JD inputs.');
 
     const generationInputs = {
@@ -860,9 +1041,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     ]);
     const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
     debugTrace.push(`Recruiter summary length: ${recruiterSummary.length}`);
-    debugTrace.push(`Structured briefing raw response length: ${(structuredBriefingResult.text || '').trim().length}`);
-    debugTrace.push('Structured briefing raw response:');
-    debugTrace.push((structuredBriefingResult.text || '').trim() || '(empty)');
+    debugTrace.push(`Structured briefing raw response digest: ${getDebugTextDigest(structuredBriefingResult.text)}`);
 
     const fallbackBriefing = buildFallbackBriefing({
       cvDocument: generationInputs.cvDocument,
@@ -911,7 +1090,30 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       throw new Error(briefingValidation.errors.join(' '));
     }
 
-    const validatedBriefing = briefingValidation.briefing;
+    let validatedBriefing = briefingValidation.briefing;
+
+    if (briefingNeedsLanguageNormalization(validatedBriefing, outputLanguage)) {
+      debugTrace.push(`Structured briefing language normalization triggered for target language: ${outputLanguage}`);
+
+      try {
+        const normalizedTranslation = await translateDraftArtifacts({
+          settings,
+          summary: '',
+          briefing: validatedBriefing,
+          sourceLanguage: outputLanguage === 'zh' ? 'en' : 'zh',
+          targetLanguage: outputLanguage,
+          includeSummaryTranslation: false,
+          debugTrace,
+          fetchImpl: (...args) => net.fetch(...args)
+        });
+
+        validatedBriefing = normalizedTranslation.briefing;
+        pushBriefingDebugTrace(debugTrace, 'Language-normalized briefing', validatedBriefing);
+      } catch (error) {
+        debugTrace.push(`Structured briefing language normalization failed: ${error instanceof Error ? error.message : 'Unknown normalization failure.'}`);
+      }
+    }
+
     const preparedOutput = applyDraftOutputMode({
       outputMode,
       recruiterSummary,
@@ -1007,44 +1209,18 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       jdDocument: payload.jdDocument,
       outputLanguage: sourceLanguage
     });
-  const translationRequest = buildDraftTranslationRequest({
-    summary: payload.summary,
-    briefing: currentBriefing,
-    outputMode: 'named',
-    sourceLanguage,
-    targetLanguage
-  });
-  const translationSettings = {
-    ...settings,
-    temperature: 0,
-    maxTokens: Math.max(Number(settings.maxTokens) || 0, 4000)
-  };
-  debugTrace.push(`Translation model: ${translationSettings.model}`);
-  debugTrace.push(`Translation max tokens: ${translationSettings.maxTokens}`);
 
   try {
-    const translationResult = await generateWithConfiguredProvider({
-      settings: translationSettings,
-      messages: translationRequest.messages,
+    const translated = await translateDraftArtifacts({
+      settings,
+      summary: payload.summary,
+      briefing: currentBriefing,
+      sourceLanguage,
+      targetLanguage,
+      includeSummaryTranslation: true,
+      debugTrace,
       fetchImpl: (...args) => net.fetch(...args)
     });
-    let translated;
-
-    try {
-      translated = parseTranslatedDraftResponse(translationResult.text, currentBriefing);
-    } catch (error) {
-      debugTrace.push(`Primary translation response could not be parsed: ${error instanceof Error ? error.message : 'Unknown parse error.'}`);
-      const repairRequest = buildDraftTranslationRepairRequest({
-        malformedResponse: translationResult.text,
-        expectedPayload: translationRequest.payload
-      });
-      const repairedResult = await generateWithConfiguredProvider({
-        settings: translationSettings,
-        messages: repairRequest.messages,
-        fetchImpl: (...args) => net.fetch(...args)
-      });
-      translated = parseTranslatedDraftResponse(repairedResult.text, currentBriefing);
-    }
 
     const preparedOutput = applyDraftOutputMode({
       outputMode: payload.outputMode,

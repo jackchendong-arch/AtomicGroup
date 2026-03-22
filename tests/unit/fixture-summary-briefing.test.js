@@ -15,10 +15,18 @@ const {
 } = require('../../services/draft-translation-service');
 const {
   EXTERNAL_FIXTURE_CASES,
+  fixtureCaseHasValidContract,
   fixtureCaseIsPresent,
   getFixtureCvPath,
   getFixtureJdPath
 } = require('./external-fixture-registry');
+const {
+  extractDocumentDerivedProfile
+} = require('../../services/hiring-manager-template-service');
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
   test(
@@ -36,6 +44,8 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
       assert.equal(jdDocument.error, null, `${fixtureCase.name} JD should import without error`);
       assert.ok(cvDocument.text.trim().length > 0, `${fixtureCase.name} CV should yield extracted text`);
       assert.ok(jdDocument.text.trim().length > 0, `${fixtureCase.name} JD should yield extracted text`);
+
+      const profile = extractDocumentDerivedProfile({ cvDocument, jdDocument });
 
       const briefingEn = buildFallbackBriefing({
         cvDocument,
@@ -71,6 +81,10 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
       assert.match(summaryZh, /## 匹配概述/);
       assert.match(reviewEn, /## Employment Experience/);
       assert.match(reviewZh, /## 工作经历/);
+      assert.doesNotMatch(summaryEn, /## 匹配概述/);
+      assert.doesNotMatch(summaryZh, /## Fit Summary/);
+      assert.doesNotMatch(reviewEn, /## 简报摘要/);
+      assert.doesNotMatch(reviewZh, /## Briefing Summary/);
       assert.ok(reviewEn.trim().length > 200, `${fixtureCase.name} English briefing review should be non-trivial`);
       assert.ok(reviewZh.trim().length > 120, `${fixtureCase.name} Chinese briefing review should be non-trivial`);
       assert.ok(preparedEn.review.trim().length > 0, `${fixtureCase.name} should prepare English hiring-manager review output`);
@@ -79,6 +93,45 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
       assert.ok(preparedZh.templateData.fit_summary, `${fixtureCase.name} Chinese template data should include fit summary`);
       assert.ok(translationPayload.summary.trim().length > 0, `${fixtureCase.name} translation payload should include summary text`);
       assert.ok(Array.isArray(translationPayload.employment_history), `${fixtureCase.name} translation payload should expose employment history array`);
+
+      if (fixtureCaseHasValidContract(fixtureCase)) {
+        assert.equal(
+          profile.candidateName,
+          fixtureCase.expectedCandidateName,
+          `${fixtureCase.name} should derive the expected candidate name from the fixture documents`
+        );
+        assert.equal(
+          profile.roleTitle,
+          fixtureCase.expectedRoleTitle,
+          `${fixtureCase.name} should derive the expected role title from the fixture documents`
+        );
+        assert.match(
+          summaryEn,
+          new RegExp(`^Candidate: ${escapeRegExp(fixtureCase.expectedCandidateName)}\\nTarget Role: ${escapeRegExp(fixtureCase.expectedRoleTitle)}`, 'm')
+        );
+        assert.match(
+          summaryZh,
+          new RegExp(`^候选人：${escapeRegExp(fixtureCase.expectedCandidateName)}\\n目标职位：${escapeRegExp(fixtureCase.expectedRoleTitle)}`, 'm')
+        );
+        assert.match(
+          reviewEn,
+          new RegExp(`^Candidate: ${escapeRegExp(fixtureCase.expectedCandidateName)}\\nTarget Role: ${escapeRegExp(fixtureCase.expectedRoleTitle)}`, 'm')
+        );
+        assert.match(
+          reviewZh,
+          new RegExp(`^候选人：${escapeRegExp(fixtureCase.expectedCandidateName)}\\n目标职位：${escapeRegExp(fixtureCase.expectedRoleTitle)}`, 'm')
+        );
+        assert.equal(
+          translationPayload.candidate.name,
+          fixtureCase.expectedCandidateName,
+          `${fixtureCase.name} translation payload should preserve the expected candidate name`
+        );
+        assert.equal(
+          translationPayload.role.title,
+          fixtureCase.expectedRoleTitle,
+          `${fixtureCase.name} translation payload should preserve the expected role title`
+        );
+      }
 
       if (translationPayload.employment_history.length > 0) {
         assert.ok(
@@ -91,6 +144,18 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
     }
   );
 }
+
+test(
+  'invalid-pair fixture cases stay explicitly marked as smoke-only scenarios',
+  () => {
+    const invalidCases = EXTERNAL_FIXTURE_CASES.filter((fixtureCase) => fixtureCase.contractMode === 'invalid_pair');
+
+    assert.ok(invalidCases.length > 0, 'At least one invalid or malformed fixture scenario should be tracked explicitly.');
+    invalidCases.forEach((fixtureCase) => {
+      assert.ok(fixtureCase.notes, `${fixtureCase.name} should explain why it is excluded from strict candidate-role contract assertions.`);
+    });
+  }
+);
 
 test(
   'Test8 retrieval manifests exclude standalone PDF page-marker artifacts from surfaced evidence',

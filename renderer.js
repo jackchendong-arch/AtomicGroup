@@ -2287,12 +2287,37 @@ function setDocumentSlotFromImportResult(result, slot, { invalidate = true } = {
   }
 }
 
+function clearStaleWorkspaceDocuments(nextFiles) {
+  const nextPaths = new Set((Array.isArray(nextFiles) ? nextFiles : []).map((file) => file.path));
+  let clearedAnySlot = false;
+
+  ['jd', 'cv'].forEach((slot) => {
+    const currentPath = state.documents[slot].file?.path || '';
+
+    if (currentPath && !nextPaths.has(currentPath)) {
+      state.documents[slot] = createEmptyDocumentSlot(slot);
+      clearedAnySlot = true;
+    }
+  });
+
+  if (!clearedAnySlot) {
+    return;
+  }
+
+  currentContextProfileRequestId += 1;
+  state.currentContextProfile = null;
+  state.currentWorkspaceId = '';
+  invalidateSummary('Role workspace changed. Select a candidate and generate a fresh draft.');
+}
+
 function applySourceFolderListing(result) {
   const nextFiles = Array.isArray(result?.files) ? result.files : [];
   const previousSelectedJdPath = state.sourceFolder.selectedJdPath;
   const previousSelectedCvPath = state.sourceFolder.selectedCvPath;
   const currentLoadedJdPath = state.documents.jd.file?.path || '';
   const currentLoadedCvPath = state.documents.cv.file?.path || '';
+
+  clearStaleWorkspaceDocuments(nextFiles);
 
   state.sourceFolder = {
     path: result?.folder?.path || '',

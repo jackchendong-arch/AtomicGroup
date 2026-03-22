@@ -31,11 +31,21 @@ function extractJsonPayload(responseText) {
   return source;
 }
 
-function createTranslatableDraftPayload({ summary, briefing }) {
+function extractPlainTextPayload(responseText) {
+  const source = String(responseText || '').trim();
+  const fencedMatch = source.match(/```(?:text|markdown)?\s*([\s\S]*?)```/i);
+
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  return source;
+}
+
+function createTranslatableDraftPayload({ summary, briefing, includeSummary = true }) {
   const normalizedBriefing = normalizeBriefing(briefing);
 
-  return {
-    summary: normalizeGeneratedSummary(summary || ''),
+  const payload = {
     candidate: {
       name: normalizedBriefing.candidate.name,
       gender: normalizedBriefing.candidate.gender,
@@ -67,14 +77,17 @@ function createTranslatableDraftPayload({ summary, briefing }) {
       responsibilities: entry.responsibilities
     }))
   };
+
+  if (includeSummary) {
+    payload.summary = normalizeGeneratedSummary(summary || '');
+  }
+
+  return payload;
 }
 
-function applyTranslatedDraftPayload({ briefing, translatedPayload }) {
-  const base = normalizeBriefing(briefing);
-  const translated = createTranslatableDraftPayload({
-    summary: translatedPayload.summary,
-    briefing: translatedPayload
-  });
+function mergeTranslatedBriefing(baseBriefing, translatedBriefing) {
+  const base = normalizeBriefing(baseBriefing);
+  const translated = normalizeBriefing(translatedBriefing);
 
   const matchRequirements = translated.match_requirements.length > 0
     ? translated.match_requirements.map((entry, index) => ({
@@ -104,29 +117,73 @@ function applyTranslatedDraftPayload({ briefing, translatedPayload }) {
     };
   });
 
-  return {
-    summary: translated.summary,
-    briefing: normalizeBriefing({
-      ...base,
-      candidate: {
-        ...base.candidate,
-        ...translated.candidate
-      },
-      role: {
-        ...base.role,
-        ...translated.role
-      },
-      fit_summary: translated.fit_summary || base.fit_summary,
-      relevant_experience: translated.relevant_experience.length > 0
-        ? translated.relevant_experience
-        : base.relevant_experience,
-      match_requirements: matchRequirements,
-      potential_concerns: translated.potential_concerns.length > 0
-        ? translated.potential_concerns
-        : base.potential_concerns,
-      recommended_next_step: translated.recommended_next_step || base.recommended_next_step,
-      employment_history: employmentHistory
+  return normalizeBriefing({
+    ...base,
+    candidate: {
+      ...base.candidate,
+      ...translated.candidate
+    },
+    role: {
+      ...base.role,
+      ...translated.role
+    },
+    fit_summary: translated.fit_summary || base.fit_summary,
+    relevant_experience: translated.relevant_experience.length > 0
+      ? translated.relevant_experience
+      : base.relevant_experience,
+    match_requirements: matchRequirements,
+    potential_concerns: translated.potential_concerns.length > 0
+      ? translated.potential_concerns
+      : base.potential_concerns,
+    recommended_next_step: translated.recommended_next_step || base.recommended_next_step,
+    employment_history: employmentHistory
+  });
+}
+
+function mergeTranslatedEmploymentHistorySlice({ briefing, translatedBriefing, startIndex = 0 }) {
+  const base = normalizeBriefing(briefing);
+  const translated = normalizeBriefing(translatedBriefing);
+  const nextEmploymentHistory = [...base.employment_history];
+
+  translated.employment_history.forEach((translatedEntry, translatedIndex) => {
+    const baseIndex = startIndex + translatedIndex;
+    const existingEntry = nextEmploymentHistory[baseIndex];
+
+    if (!existingEntry) {
+      return;
+    }
+
+    nextEmploymentHistory[baseIndex] = {
+      ...existingEntry,
+      job_title: translatedEntry.job_title || existingEntry.job_title,
+      company_name: translatedEntry.company_name || existingEntry.company_name,
+      start_date: translatedEntry.start_date || existingEntry.start_date,
+      end_date: translatedEntry.end_date || existingEntry.end_date,
+      responsibilities: translatedEntry.responsibilities.length > 0
+        ? translatedEntry.responsibilities
+        : existingEntry.responsibilities,
+      evidence_refs: existingEntry.evidence_refs || []
+    };
+  });
+
+  return normalizeBriefing({
+    ...base,
+    employment_history: nextEmploymentHistory
+  });
+}
+
+function applyTranslatedDraftPayload({ briefing, translatedPayload }) {
+  const translatedBriefing = mergeTranslatedBriefing(
+    briefing,
+    createTranslatableDraftPayload({
+      summary: translatedPayload.summary,
+      briefing: translatedPayload
     })
+  );
+
+  return {
+    summary: translatedPayload.summary || '',
+    briefing: translatedBriefing
   };
 }
 
@@ -151,27 +208,38 @@ function parseTranslatedDraftResponse(responseText, originalBriefing) {
   });
 }
 
+function parseTranslatedSummaryResponse(responseText) {
+  const translatedText = normalizeGeneratedSummary(extractPlainTextPayload(responseText));
+
+  if (!translatedText) {
+    throw new Error('The LLM did not return translated summary text.');
+  }
+
+  return translatedText;
+}
+
 function buildDraftTranslationRequest({
   summary,
   briefing,
   outputMode = 'named',
   sourceLanguage = 'en',
-  targetLanguage = 'en'
+  targetLanguage = 'en',
+  includeSummary = true
 }) {
   const normalizedSourceLanguage = normalizeOutputLanguage(sourceLanguage);
   const normalizedTargetLanguage = normalizeOutputLanguage(targetLanguage);
-  const translatablePayload = createTranslatableDraftPayload({ summary, briefing });
+  const translatablePayload = createTranslatableDraftPayload({ summary, briefing, includeSummary });
   const sourceDescriptor = getLanguageDescriptor(normalizedSourceLanguage);
   const targetDescriptor = getLanguageDescriptor(normalizedTargetLanguage);
 
   const prompt = [
-    `Translate the current recruiter summary and hiring-manager briefing content from ${sourceDescriptor} to ${targetDescriptor}.`,
+    `Translate the current ${includeSummary ? 'recruiter summary and hiring-manager briefing' : 'hiring-manager briefing'} content from ${sourceDescriptor} to ${targetDescriptor}.`,
     'This is a translation task only.',
     'Do not add new claims, remove information, summarize, expand, reinterpret, or change the assessment.',
     'Preserve the current section order, bullet structure, and level of detail.',
     'Keep names, company names, school names, product names, emails, phone numbers, URLs, dates, numbers, and other exact factual identifiers exactly as written unless simple localization of a common language/country term is required for readability.',
     'Translate narrative prose, headings, labels, bullets, and human-readable evidence phrasing into the target language while keeping the same meaning.',
-    'Translate all narrative content inside these fields: `summary`, `fit_summary`, `relevant_experience`, `match_requirements[].requirement`, `match_requirements[].evidence`, `potential_concerns`, `recommended_next_step`, `employment_history[].job_title`, and `employment_history[].responsibilities`.',
+    `Translate all narrative content inside these fields: ${includeSummary ? '`summary`, ' : ''}\`fit_summary\`, \`relevant_experience\`, \`match_requirements[].requirement\`, \`match_requirements[].evidence\`, \`potential_concerns\`, \`recommended_next_step\`, \`employment_history[].job_title\`, and \`employment_history[].responsibilities\`.`,
     'Do not leave whole source-language sentences untranslated inside those fields when the target language is different.',
     'For `employment_history`, keep company names, dates, and technical identifiers such as Go, Solana, RESTful API, SDK, or product names as-is when appropriate, but translate the surrounding role titles, role descriptions, and responsibility sentences.',
     'Return only valid JSON with this exact shape:',
@@ -196,6 +264,44 @@ function buildDraftTranslationRequest({
       {
         role: 'system',
         content: 'You are a precise business translation engine for recruiter and hiring-manager documents. Return only valid JSON.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ]
+  };
+}
+
+function buildSummaryTranslationRequest({
+  summary,
+  sourceLanguage = 'en',
+  targetLanguage = 'en'
+}) {
+  const normalizedSourceLanguage = normalizeOutputLanguage(sourceLanguage);
+  const normalizedTargetLanguage = normalizeOutputLanguage(targetLanguage);
+  const sourceDescriptor = getLanguageDescriptor(normalizedSourceLanguage);
+  const targetDescriptor = getLanguageDescriptor(normalizedTargetLanguage);
+  const normalizedSummary = normalizeGeneratedSummary(summary || '');
+
+  const prompt = [
+    `Translate the following recruiter summary from ${sourceDescriptor} to ${targetDescriptor}.`,
+    'This is a translation task only.',
+    'Do not add new claims, remove information, summarize, expand, reinterpret, or change the assessment.',
+    'Preserve section order, headings, bullets, labels, and level of detail.',
+    'Keep names, company names, school names, product names, emails, phone numbers, URLs, dates, numbers, and other exact factual identifiers exactly as written unless simple localization of a common language/country term is required for readability.',
+    'Return only the translated summary text. Do not return JSON. Do not wrap the answer in code fences.',
+    '',
+    normalizedSummary
+  ].join('\n');
+
+  return {
+    prompt,
+    sourceSummary: normalizedSummary,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a precise business translation engine for recruiter summaries. Return only the translated summary text.'
       },
       {
         role: 'user',
@@ -236,6 +342,10 @@ module.exports = {
   applyTranslatedDraftPayload,
   buildDraftTranslationRepairRequest,
   buildDraftTranslationRequest,
+  buildSummaryTranslationRequest,
   createTranslatableDraftPayload,
-  parseTranslatedDraftResponse
+  mergeTranslatedBriefing,
+  mergeTranslatedEmploymentHistorySlice,
+  parseTranslatedDraftResponse,
+  parseTranslatedSummaryResponse
 };

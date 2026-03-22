@@ -1174,6 +1174,9 @@ function buildBriefingRequest({
     isChineseOutputLanguage(normalizedOutputLanguage)
       ? 'For human-readable fields such as candidate snapshot values, education entries, employment-history titles, and employment-history responsibilities, translate source-language prose into Simplified Chinese while preserving proper nouns, employer names, and technical identifiers where appropriate.'
       : 'For human-readable fields such as candidate snapshot values, education entries, employment-history titles, and employment-history responsibilities, translate source-language prose into English while preserving proper nouns, employer names, and technical identifiers where appropriate.',
+    isChineseOutputLanguage(normalizedOutputLanguage)
+      ? 'Do not leave whole narrative fields in English when the requested output language is Simplified Chinese.'
+      : 'Do not leave whole narrative fields in Chinese when the requested output language is English.',
     'Preserve exact names, employers, qualifications, and other source facts in their original form when appropriate.',
     'The recruiter summary is generated separately. This structured object should preserve exact candidate facts and grounded hiring-manager briefing content.',
     'The `fit_summary` field should align with the recruiter summary key points and be suitable for the hiring-manager briefing summary section.',

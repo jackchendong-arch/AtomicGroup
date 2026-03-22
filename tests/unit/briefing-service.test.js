@@ -644,8 +644,31 @@ test('extractCandidateName recognizes uppercase surnames and parenthetical nickn
     'CV4-6.pdf'
   );
 
+  const spacedLetterOcrName = extractCandidateName(
+    [
+      'MSc in Computing',
+      'Cardiff University, UK | 2019 – 2020',
+      'Bachelor of Business Administration (BBA)',
+      'Jincheng College, Nanjing University of Aeronautics and Astronautics | 2012 – 2016',
+      'Shanghai Xiaohan Technology Co., Ltd. — Blockchain Engineer',
+      'Sep 2021 – Sep 2025',
+      'Wanxiang Blockchain Inc., Shanghai — Blockchain Engineer',
+      'Feb 2021 – Sep 2021',
+      'Shanghai Tancheng Data Technology Co., Ltd. — Full-Stack Engineer',
+      'Sep 2020 – Feb 2021',
+      'Shanghai Baoxiang Financial Information Service Co., Ltd. — Full-Stack Engineer',
+      'Jun 2016 – Jun 2019',
+      'Shanghai Chahe Interactive Network Technology Co., Ltd. — Android Engineer',
+      'Jun 2015 – Jun 2016',
+      'C h e n h a o L i',
+      'Full-Stack Web3 Engineer'
+    ].join('\n'),
+    'CV4-2.pdf'
+  );
+
   assert.equal(uppercaseSurnameName, 'Xiaoshen CONG (Shawn)');
   assert.equal(middleNicknameName, 'Jimmy(Feiyang) Tan');
+  assert.equal(spacedLetterOcrName, 'Chenhao Li');
 });
 
 test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {
@@ -678,6 +701,10 @@ test('buildBriefingRequest explicitly tells English output to translate human-re
   assert.match(
     request.prompt,
     /employment-history titles, and employment-history responsibilities/i
+  );
+  assert.match(
+    request.prompt,
+    /Do not leave whole narrative fields in Chinese when the requested output language is English/i
   );
 });
 

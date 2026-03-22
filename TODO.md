@@ -206,6 +206,7 @@ Mark a release complete only when the work is:
   - long bilingual draft switches now translate recruiter summary text and structured briefing content through smaller separate translation requests, reducing oversized malformed JSON failures on large drafts
   - large structured briefing sections such as employment history now translate in bounded batches and merge back into the deterministic briefing model instead of relying on one oversized translation payload
   - if a generated structured briefing comes back in the wrong narrative language for the selected output, the app now normalizes that briefing into the requested language before rendering the hiring-manager review
+  - translation payloads now focus on generated narrative and human-readable derived display fields, while stable factual identifiers stay in the base briefing instead of being resent for translation
   - in-session named/anonymous draft variant caching for the same candidate-role workspace
   - deterministic named/anonymous hiring-manager output switching without rerunning full summary generation for the current candidate-role draft
   - file-backed bilingual regression coverage across the external `Test1` to `Test8` recruiter fixture set
@@ -227,6 +228,8 @@ Mark a release complete only when the work is:
 - Keep the busy progress indicator visible in the shared main stage while generation, translation, export, or email handoff is running, and disable the language toggle during translation so repeated clicks do not queue confusing duplicate actions.
 - Cache the current draft in both language variants when available so switching back to a previously translated language reuses the existing draft instead of re-triggering LLM translation.
 - Keep raw imported CV and JD source views unchanged while allowing bilingual derived outputs.
+- Optimize language switching so translation work is applied only to generated output blocks and human-readable derived display fields, not to raw CV/JD source content.
+- Preserve exact factual identifiers across language variants where possible, and only localize source-derived fields when they are being rendered as part of the generated summary or hiring-manager briefing.
 - Add Chinese-language regression fixtures and unit tests for summary, briefing, email, and Word-draft generation.
 - Add file-backed bilingual translation regressions for real Chinese CV/JD fixtures so employment-history and briefing sections can be validated against actual recruiter test documents.
 - Expand file-backed regression coverage across the external `Test1` to `Test8` CV/JD fixture set for document import, recruiter summary, hiring-manager briefing, translation payloads, and Word export smoke validation.

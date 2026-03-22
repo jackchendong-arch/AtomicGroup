@@ -122,14 +122,14 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
           new RegExp(`^候选人：${escapeRegExp(fixtureCase.expectedCandidateName)}\\n目标职位：${escapeRegExp(fixtureCase.expectedRoleTitle)}`, 'm')
         );
         assert.equal(
-          translationPayload.candidate.name,
-          fixtureCase.expectedCandidateName,
-          `${fixtureCase.name} translation payload should preserve the expected candidate name`
-        );
-        assert.equal(
           translationPayload.role.title,
           fixtureCase.expectedRoleTitle,
           `${fixtureCase.name} translation payload should preserve the expected role title`
+        );
+        assert.match(
+          translationPayload.summary,
+          new RegExp(`^候选人：${escapeRegExp(fixtureCase.expectedCandidateName)}`, 'm'),
+          `${fixtureCase.name} translated summary payload should keep the expected candidate label`
         );
       }
 

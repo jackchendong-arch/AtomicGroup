@@ -237,6 +237,22 @@ Recommended output sections:
   - large repeating sections such as employment history in small batches
 - The app should keep the draft schema deterministic locally and merge translated field values back into that structure rather than asking the LLM to regenerate the whole draft shape.
 - For large drafts, translation should automatically use section-level or batch-level requests so long cases do not depend on one oversized JSON response.
+- Translation should be applied to generated output blocks and human-readable derived display fields, not to the raw imported source documents themselves.
+- Raw source views such as the `Candidate CV` and `Job Description` tabs should remain exact to the imported documents regardless of output-language switching.
+- Exact factual identifiers should stay stable across language variants unless a simple localized label is needed for readability:
+  - candidate names
+  - company names
+  - university names
+  - dates
+  - phone numbers
+  - email addresses
+  - URLs
+  - evidence references and other internal metadata
+- Human-readable source-derived display fields may be localized when they are being rendered as part of the generated draft, for example:
+  - briefing snapshot values
+  - employment-history role titles and responsibility text
+  - education display lines
+  - recruiter-facing or hiring-manager-facing narrative sections
 - If a newly generated structured briefing comes back in the wrong narrative language for the selected output, the app should normalize that briefing into the requested language before rendering the hiring-manager review.
 - The app should keep the busy/progress indicator visible in a shared stage-level location while generation, translation, export, or email handoff is running.
 - The app should prevent repeated conflicting language-toggle actions while translation is in progress.

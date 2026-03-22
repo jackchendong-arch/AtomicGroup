@@ -42,7 +42,9 @@ test('buildDraftTranslationRequest creates a translation-only prompt for the cur
   assert.match(request.messages[1].content, /This is a translation task only/i);
   assert.match(request.messages[1].content, /from English to Simplified Chinese/i);
   assert.match(request.messages[1].content, /Current translatable draft payload:/i);
-  assert.equal(request.payload.role.company, 'Atomic Group');
+  assert.equal(request.payload.role.title, 'Head of IT Transformation');
+  assert.equal(Object.prototype.hasOwnProperty.call(request.payload.candidate, 'name'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(request.payload.role, 'company'), false);
 });
 
 test('buildDraftTranslationRequest adds anonymity-preserving guidance for anonymous output', () => {
@@ -199,6 +201,10 @@ test('createTranslatableDraftPayload keeps the translation payload smaller than 
   assert.equal(payload.summary, 'Candidate: Jane Doe');
   assert.equal(payload.candidate.languages[0], 'English');
   assert.equal(payload.employment_history[0].responsibilities[0], 'Led transformation');
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.candidate, 'name'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.role, 'company'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.employment_history[0], 'company_name'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.employment_history[0], 'start_date'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(payload.employment_history[0], 'evidence_refs'), false);
 });
 

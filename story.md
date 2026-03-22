@@ -362,6 +362,7 @@ The next step after that was even more practical:
 - translate large repeating sections such as employment history in batches
 - merge the translated values back into the deterministic local structure
 - if a newly generated briefing still comes back in the wrong narrative language, normalize it into the selected output language before showing it to the recruiter
+- keep stable factual identifiers outside the translation payload where possible, and only localize generated narrative plus human-readable derived display fields
 
 That mattered because longer recruiter cases were never going to stay reliable if the app depended on one oversized JSON translation response.
 

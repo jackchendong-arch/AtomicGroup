@@ -109,6 +109,7 @@ After a draft has been generated:
 - if you reopen a saved case from `Recent Work`, previously generated language variants are also restored when they were saved with that workspace
 - for longer cases, the app translates the recruiter summary, core briefing content, and large employment-history sections in smaller bounded steps rather than one oversized translation request
 - if a newly generated hiring-manager briefing returns in the wrong narrative language, the app normalizes that briefing into the selected output language before rendering it
+- exact identifiers such as candidate names, company names, dates, URLs, and other raw source facts stay stable where possible while narrative and human-readable derived display fields are localized
 
 The raw `Candidate CV` and `Job Description` views do not change language.
 

@@ -47,7 +47,6 @@ function createTranslatableDraftPayload({ summary, briefing, includeSummary = tr
 
   const payload = {
     candidate: {
-      name: normalizedBriefing.candidate.name,
       gender: normalizedBriefing.candidate.gender,
       nationality: normalizedBriefing.candidate.nationality,
       location: normalizedBriefing.candidate.location,
@@ -57,9 +56,7 @@ function createTranslatableDraftPayload({ summary, briefing, includeSummary = tr
       education: normalizedBriefing.candidate.education
     },
     role: {
-      title: normalizedBriefing.role.title,
-      company: normalizedBriefing.role.company,
-      hiring_manager: normalizedBriefing.role.hiring_manager
+      title: normalizedBriefing.role.title
     },
     fit_summary: normalizedBriefing.fit_summary,
     relevant_experience: normalizedBriefing.relevant_experience,
@@ -71,9 +68,6 @@ function createTranslatableDraftPayload({ summary, briefing, includeSummary = tr
     recommended_next_step: normalizedBriefing.recommended_next_step,
     employment_history: normalizedBriefing.employment_history.map((entry) => ({
       job_title: entry.job_title,
-      company_name: entry.company_name,
-      start_date: entry.start_date,
-      end_date: entry.end_date,
       responsibilities: entry.responsibilities
     }))
   };
@@ -121,11 +115,17 @@ function mergeTranslatedBriefing(baseBriefing, translatedBriefing) {
     ...base,
     candidate: {
       ...base.candidate,
-      ...translated.candidate
+      gender: translated.candidate.gender || base.candidate.gender,
+      nationality: translated.candidate.nationality || base.candidate.nationality,
+      location: translated.candidate.location || base.candidate.location,
+      preferred_location: translated.candidate.preferred_location || base.candidate.preferred_location,
+      languages: translated.candidate.languages.length > 0 ? translated.candidate.languages : base.candidate.languages,
+      notice_period: translated.candidate.notice_period || base.candidate.notice_period,
+      education: translated.candidate.education.length > 0 ? translated.candidate.education : base.candidate.education
     },
     role: {
       ...base.role,
-      ...translated.role
+      title: translated.role.title || base.role.title
     },
     fit_summary: translated.fit_summary || base.fit_summary,
     relevant_experience: translated.relevant_experience.length > 0
@@ -238,9 +238,10 @@ function buildDraftTranslationRequest({
     'Do not add new claims, remove information, summarize, expand, reinterpret, or change the assessment.',
     'Preserve the current section order, bullet structure, and level of detail.',
     'Keep names, company names, school names, product names, emails, phone numbers, URLs, dates, numbers, and other exact factual identifiers exactly as written unless simple localization of a common language/country term is required for readability.',
-    'Translate narrative prose, headings, labels, bullets, and human-readable evidence phrasing into the target language while keeping the same meaning.',
-    `Translate all narrative content inside these fields: ${includeSummary ? '`summary`, ' : ''}\`fit_summary\`, \`relevant_experience\`, \`match_requirements[].requirement\`, \`match_requirements[].evidence\`, \`potential_concerns\`, \`recommended_next_step\`, \`employment_history[].job_title\`, and \`employment_history[].responsibilities\`.`,
+    'Translate narrative prose, headings, labels, bullets, and human-readable derived display fields into the target language while keeping the same meaning.',
+    `Translate all narrative or human-readable derived content inside these fields: ${includeSummary ? '`summary`, ' : ''}\`candidate.gender\`, \`candidate.nationality\`, \`candidate.location\`, \`candidate.preferred_location\`, \`candidate.languages\`, \`candidate.notice_period\`, \`candidate.education[].degree_name\`, \`candidate.education[].degreeName\`, \`role.title\`, \`fit_summary\`, \`relevant_experience\`, \`match_requirements[].requirement\`, \`match_requirements[].evidence\`, \`potential_concerns\`, \`recommended_next_step\`, \`employment_history[].job_title\`, and \`employment_history[].responsibilities\`.`,
     'Do not leave whole source-language sentences untranslated inside those fields when the target language is different.',
+    'Do not modify or invent stable factual identifiers that are not present in the payload, such as candidate names, company names, dates, URLs, phone numbers, or evidence reference metadata.',
     'For `employment_history`, keep company names, dates, and technical identifiers such as Go, Solana, RESTful API, SDK, or product names as-is when appropriate, but translate the surrounding role titles, role descriptions, and responsibility sentences.',
     'Return only valid JSON with this exact shape:',
     JSON.stringify(translatablePayload, null, 2),

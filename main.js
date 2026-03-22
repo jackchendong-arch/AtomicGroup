@@ -55,6 +55,20 @@ const {
   parseTranslatedSummaryResponse
 } = require('./services/draft-translation-service');
 const { briefingNeedsLanguageNormalization } = require('./services/briefing-language-service');
+const {
+  validateClipboardTextPayload,
+  validateDocumentImportPayload,
+  validateDocumentPickPayload,
+  validateDraftTranslationPayload,
+  validateLlmSettingsPayload,
+  validateLoadWorkspaceSnapshotPayload,
+  validateRenderBriefingPayload,
+  validateShellPathPayload,
+  validateSourceFolderListPayload,
+  validateSummaryGenerationPayload,
+  validateWorkspaceProfilePayload,
+  validateWorkspaceSnapshotPayload
+} = require('./services/ipc-validation-service');
 const { normalizeOutputLanguage } = require('./services/output-language-service');
 
 let settingsStore;
@@ -759,7 +773,8 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
-ipcMain.handle('document:pick', async (_event, { slot }) => {
+ipcMain.handle('document:pick', async (_event, payload) => {
+  const { slot } = validateDocumentPickPayload(payload);
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: slot === 'jd' ? 'Select job description' : 'Select candidate CV',
     properties: ['openFile'],
@@ -779,7 +794,9 @@ ipcMain.handle('document:pick', async (_event, { slot }) => {
   return importDocument(filePath);
 });
 
-ipcMain.handle('document:import', async (_event, { filePath }) => {
+ipcMain.handle('document:import', async (_event, payload) => {
+  const { filePath } = validateDocumentImportPayload(payload);
+
   if (isE2EMockLlmEnabled()) {
     await waitForE2EImportDelay();
   }
@@ -800,19 +817,18 @@ ipcMain.handle('workspace:pick-source-folder', async () => {
   return listSourceFolderDocuments(filePaths[0]);
 });
 
-ipcMain.handle('workspace:list-source-folder', async (_event, { folderPath }) => {
-  if (!folderPath) {
-    throw new Error('A source folder path is required to refresh the folder listing.');
-  }
-
+ipcMain.handle('workspace:list-source-folder', async (_event, payload) => {
+  const { folderPath } = validateSourceFolderListPayload(payload);
   return listSourceFolderDocuments(folderPath);
 });
 
 ipcMain.handle('workspace:derive-profile', async (_event, payload = {}) => {
+  const normalizedPayload = validateWorkspaceProfilePayload(payload);
+
   return {
     profile: buildWorkspaceDerivedProfilePayload({
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument
     })
   };
 });
@@ -822,10 +838,11 @@ ipcMain.handle('workspace:list-recent', async () => {
 });
 
 ipcMain.handle('workspace:save-snapshot', async (_event, payload) => {
-  return getRoleWorkspaceStore().save(payload);
+  return getRoleWorkspaceStore().save(validateWorkspaceSnapshotPayload(payload));
 });
 
-ipcMain.handle('workspace:load-snapshot', async (_event, { workspaceId }) => {
+ipcMain.handle('workspace:load-snapshot', async (_event, payload) => {
+  const { workspaceId } = validateLoadWorkspaceSnapshotPayload(payload);
   return getRoleWorkspaceStore().load(workspaceId);
 });
 
@@ -848,7 +865,7 @@ ipcMain.handle('llm:load-settings', async () => {
 });
 
 ipcMain.handle('llm:save-settings', async (_event, payload) => {
-  return getSettingsStore().save(payload);
+  return getSettingsStore().save(validateLlmSettingsPayload(payload));
 });
 
 ipcMain.handle('template:pick-word-template', async () => {
@@ -919,23 +936,24 @@ ipcMain.handle('template:pick-briefing-output-folder', async () => {
 });
 
 ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
+  const normalizedPayload = validateRenderBriefingPayload(payload);
   const debugTrace = [
     `Export started at ${new Date().toISOString()}`
   ];
 
   const settings = await getSettingsStore().load();
-  const preparedPayload = normalizeOutputMode(payload.outputMode) === 'anonymous'
+  const preparedPayload = normalizeOutputMode(normalizedPayload.outputMode) === 'anonymous'
     ? {
-      ...payload,
+      ...normalizedPayload,
       ...applyDraftOutputMode({
-        outputMode: payload.outputMode,
-        recruiterSummary: payload.summary,
-        briefing: payload.briefing,
-        cvDocument: payload.cvDocument,
-        jdDocument: payload.jdDocument
+        outputMode: normalizedPayload.outputMode,
+        recruiterSummary: normalizedPayload.summary,
+        briefing: normalizedPayload.briefing,
+        cvDocument: normalizedPayload.cvDocument,
+        jdDocument: normalizedPayload.jdDocument
       })
     }
-    : payload;
+    : normalizedPayload;
   let templateData;
   let suggestedName;
 
@@ -1002,24 +1020,25 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
 });
 
 ipcMain.handle('email:share-draft', async (_event, payload) => {
+  const normalizedPayload = validateRenderBriefingPayload(payload);
   const debugTrace = [
     `Email draft handoff started at ${new Date().toISOString()}`
   ];
   const settings = await getSettingsStore().load();
-  const outputMode = normalizeOutputMode(payload.outputMode);
-  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
+  const outputMode = normalizeOutputMode(normalizedPayload.outputMode);
+  const outputLanguage = normalizeOutputLanguage(normalizedPayload.outputLanguage);
   const preparedPayload = outputMode === 'anonymous'
     ? {
-      ...payload,
+      ...normalizedPayload,
       ...applyDraftOutputMode({
         outputMode,
-        recruiterSummary: payload.summary,
-        briefing: payload.briefing,
-        cvDocument: payload.cvDocument,
-        jdDocument: payload.jdDocument
+        recruiterSummary: normalizedPayload.summary,
+        briefing: normalizedPayload.briefing,
+        cvDocument: normalizedPayload.cvDocument,
+        jdDocument: normalizedPayload.jdDocument
       })
     }
-    : payload;
+    : normalizedPayload;
   const fallbackBriefing = buildFallbackBriefing({
     cvDocument: preparedPayload.cvDocument,
     jdDocument: preparedPayload.jdDocument,
@@ -1128,6 +1147,7 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
 });
 
 ipcMain.handle('summary:generate', async (_event, payload) => {
+  const normalizedPayload = validateSummaryGenerationPayload(payload);
   const debugTrace = [
     `Summary generation started at ${new Date().toISOString()}`
   ];
@@ -1141,17 +1161,17 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       throw new Error(validation.errors.join(' '));
     }
 
-    const outputMode = normalizeOutputMode(payload.outputMode);
-    const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
+    const outputMode = normalizeOutputMode(normalizedPayload.outputMode);
+    const outputLanguage = normalizeOutputLanguage(normalizedPayload.outputLanguage);
     debugTrace.push(`Output mode: ${outputMode}`);
     debugTrace.push(`Output language: ${outputLanguage}`);
-    debugTrace.push(`CV source file: ${getDebugFileLabel(payload.cvDocument?.file?.name || payload.cvDocument?.file?.path)}`);
-    debugTrace.push(`JD source file: ${getDebugFileLabel(payload.jdDocument?.file?.name || payload.jdDocument?.file?.path)}`);
+    debugTrace.push(`CV source file: ${getDebugFileLabel(normalizedPayload.cvDocument?.file?.name || normalizedPayload.cvDocument?.file?.path)}`);
+    debugTrace.push(`JD source file: ${getDebugFileLabel(normalizedPayload.jdDocument?.file?.name || normalizedPayload.jdDocument?.file?.path)}`);
     debugTrace.push('Recruiter summary generation is always grounded on the named CV/JD inputs.');
 
     const generationInputs = {
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument
     };
     const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
     const summaryRequest = buildSummaryRequest({
@@ -1173,7 +1193,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 
     if (isE2EMockLlmEnabled()) {
       const mockResult = await buildE2EMockSummaryResult({
-        payload,
+        payload: normalizedPayload,
         settings,
         templateGuidance,
         outputMode,
@@ -1284,8 +1304,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputMode,
       recruiterSummary,
       briefing: validatedBriefing,
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument
     });
     pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
 
@@ -1322,17 +1342,18 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 });
 
 ipcMain.handle('draft:translate-output', async (_event, payload) => {
+  const normalizedPayload = validateDraftTranslationPayload(payload);
   const settings = await getSettingsStore().load();
   const validation = validateSettings(settings);
   const debugTrace = [
     `Draft translation requested at ${new Date().toISOString()}`,
-    `Source language: ${normalizeOutputLanguage(payload.sourceLanguage)}`,
-    `Target language: ${normalizeOutputLanguage(payload.targetLanguage)}`,
-    `Output mode: ${payload.outputMode === 'anonymous' ? 'anonymous' : 'named'}`,
-    `CV source file: ${path.basename(payload?.cvDocument?.file?.path || payload?.cvDocument?.file?.name || '') || '(unknown)'}`,
-    `JD source file: ${path.basename(payload?.jdDocument?.file?.path || payload?.jdDocument?.file?.name || '') || '(unknown)'}`,
-    `Summary length: ${String(payload.summary || '').length}`,
-    `Briefing payload length: ${JSON.stringify(payload.briefing || {}).length}`
+    `Source language: ${normalizeOutputLanguage(normalizedPayload.sourceLanguage)}`,
+    `Target language: ${normalizeOutputLanguage(normalizedPayload.targetLanguage)}`,
+    `Output mode: ${normalizedPayload.outputMode === 'anonymous' ? 'anonymous' : 'named'}`,
+    `CV source file: ${path.basename(normalizedPayload?.cvDocument?.file?.path || normalizedPayload?.cvDocument?.file?.name || '') || '(unknown)'}`,
+    `JD source file: ${path.basename(normalizedPayload?.jdDocument?.file?.path || normalizedPayload?.jdDocument?.file?.name || '') || '(unknown)'}`,
+    `Summary length: ${String(normalizedPayload.summary || '').length}`,
+    `Briefing payload length: ${JSON.stringify(normalizedPayload.briefing || {}).length}`
   ];
 
   if (!validation.isValid) {
@@ -1342,16 +1363,16 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     throw new Error(validation.errors.join(' '));
   }
 
-  const sourceLanguage = normalizeOutputLanguage(payload.sourceLanguage);
-  const targetLanguage = normalizeOutputLanguage(payload.targetLanguage);
+  const sourceLanguage = normalizeOutputLanguage(normalizedPayload.sourceLanguage);
+  const targetLanguage = normalizeOutputLanguage(normalizedPayload.targetLanguage);
 
   if (sourceLanguage === targetLanguage) {
     const preparedOutput = applyDraftOutputMode({
-      outputMode: payload.outputMode,
-      recruiterSummary: payload.summary,
-      briefing: payload.briefing,
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
+      outputMode: normalizedPayload.outputMode,
+      recruiterSummary: normalizedPayload.summary,
+      briefing: normalizedPayload.briefing,
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument
     });
     const composed = prepareHiringManagerBriefingOutput({
       briefing: preparedOutput.briefing,
@@ -1360,25 +1381,25 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     });
 
     return {
-      summary: payload.summary,
-      briefing: payload.briefing,
+      summary: normalizedPayload.summary,
+      briefing: normalizedPayload.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
       approvalWarnings: preparedOutput.warnings
     };
   }
 
-  const currentBriefing = payload.briefing
-    ? applySummaryOverridesToBriefing(payload.briefing, payload.summary)
+  const currentBriefing = normalizedPayload.briefing
+    ? applySummaryOverridesToBriefing(normalizedPayload.briefing, normalizedPayload.summary)
     : buildFallbackBriefing({
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument,
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument,
       outputLanguage: sourceLanguage
     });
 
   if (isE2EMockLlmEnabled()) {
     const mockResult = await buildE2EMockTranslatedDraftResult({
-      payload,
+      payload: normalizedPayload,
       targetLanguage,
       debugTrace
     });
@@ -1390,7 +1411,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   try {
     const translated = await translateDraftArtifacts({
       settings,
-      summary: payload.summary,
+      summary: normalizedPayload.summary,
       briefing: currentBriefing,
       sourceLanguage,
       targetLanguage,
@@ -1400,11 +1421,11 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     });
 
     const preparedOutput = applyDraftOutputMode({
-      outputMode: payload.outputMode,
+      outputMode: normalizedPayload.outputMode,
       recruiterSummary: translated.summary,
       briefing: translated.briefing,
-      cvDocument: payload.cvDocument,
-      jdDocument: payload.jdDocument
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument
     });
     const composed = prepareHiringManagerBriefingOutput({
       briefing: preparedOutput.briefing,
@@ -1428,21 +1449,22 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
 });
 
 ipcMain.handle('briefing:render-review', async (_event, payload) => {
-  const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
+  const normalizedPayload = validateRenderBriefingPayload(payload);
+  const outputLanguage = normalizeOutputLanguage(normalizedPayload.outputLanguage);
   const fallbackBriefing = buildFallbackBriefing({
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument,
+    cvDocument: normalizedPayload.cvDocument,
+    jdDocument: normalizedPayload.jdDocument,
     outputLanguage
   });
-  const requestedBriefing = payload.briefing
-    ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
+  const requestedBriefing = normalizedPayload.briefing
+    ? mergeBriefingWithFallback(normalizedPayload.briefing, fallbackBriefing)
     : fallbackBriefing;
   const preparedOutput = applyDraftOutputMode({
-    outputMode: payload.outputMode,
-    recruiterSummary: payload.summary,
+    outputMode: normalizedPayload.outputMode,
+    recruiterSummary: normalizedPayload.summary,
     briefing: requestedBriefing,
-    cvDocument: payload.cvDocument,
-    jdDocument: payload.jdDocument
+    cvDocument: normalizedPayload.cvDocument,
+    jdDocument: normalizedPayload.jdDocument
   });
   const composed = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
@@ -1453,34 +1475,28 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
   return {
     briefing: requestedBriefing,
     hiringManagerBriefingReview: composed.review,
-    summary: payload.summary,
+    summary: normalizedPayload.summary,
     modeLabel: preparedOutput.modeLabel,
     approvalWarnings: preparedOutput.warnings
   };
 });
 
 ipcMain.handle('clipboard:write-text', async (_event, value) => {
-  clipboard.writeText(value);
+  clipboard.writeText(validateClipboardTextPayload(value));
   return true;
 });
 
 ipcMain.handle('shell:reveal-in-folder', async (_event, filePath) => {
-  if (!filePath) {
-    throw new Error('A file path is required to reveal the saved draft.');
-  }
-
-  await fs.access(filePath);
-  shell.showItemInFolder(filePath);
+  const normalizedPath = validateShellPathPayload(filePath);
+  await fs.access(normalizedPath);
+  shell.showItemInFolder(normalizedPath);
   return true;
 });
 
 ipcMain.handle('shell:open-path', async (_event, filePath) => {
-  if (!filePath) {
-    throw new Error('A file path is required to open the generated briefing.');
-  }
-
-  await fs.access(filePath);
-  const shellResult = await shell.openPath(filePath);
+  const normalizedPath = validateShellPathPayload(filePath);
+  await fs.access(normalizedPath);
+  const shellResult = await shell.openPath(normalizedPath);
 
   if (shellResult) {
     throw new Error(shellResult);

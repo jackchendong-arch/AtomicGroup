@@ -31,3 +31,11 @@ test('persistent diagnostics avoid raw candidate-content log lines', () => {
   assert.doesNotMatch(mainSource, /candidate location:/);
   assert.match(mainSource, /Structured briefing raw response digest:/);
 });
+
+test('main-process IPC routes through shared payload validation helpers', () => {
+  assert.match(mainSource, /services\/ipc-validation-service/);
+  assert.match(mainSource, /validateDocumentImportPayload/);
+  assert.match(mainSource, /validateSummaryGenerationPayload/);
+  assert.match(mainSource, /validateDraftTranslationPayload/);
+  assert.match(mainSource, /validateShellPathPayload/);
+});

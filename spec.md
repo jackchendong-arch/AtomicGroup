@@ -752,12 +752,20 @@ Current implemented slices inside Release 6:
 - a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
 - settings persistence no longer writes plaintext API keys; saving now requires secure OS-backed encryption availability, and legacy plaintext key records are scrubbed from disk on load
 - when a new candidate CV or role JD begins loading, the previous source slot and derived workspace draft state are cleared immediately so old source content does not linger in renderer memory while the replacement file imports
+- higher-risk preload/IPC operations now validate payloads in the main process before side effects occur, including:
+  - `cv` / `jd` slot selection
+  - absolute local file and folder paths
+  - recent-work workspace IDs
+  - draft generation / translation / render payload shape
+  - clipboard text bounds
+  - local shell open / reveal targets
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
 - The LLM API key is not stored in plaintext files or file-based fallback config.
 - Legacy plaintext API key records are removed from disk the next time settings load.
 - Electron window security settings and renderer guardrails match the security baseline.
+- Main-process IPC handlers reject malformed or unexpectedly broad payloads before touching the filesystem, shell integration, or generation flows.
 - Common user-facing failures are recoverable.
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.

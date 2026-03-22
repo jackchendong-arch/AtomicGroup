@@ -750,10 +750,12 @@ Current implemented slices inside Release 6:
 - privacy-safe summary/export diagnostics that record metadata, counts, and digests instead of raw CV/JD text, generated summaries, or full structured briefing content
 - deterministic Playwright Electron end-to-end coverage for the current recruiter workflow using a local mock-generation mode so generation, translation, recent-work reopen, and role-workspace switching can be tested without live provider dependencies
 - a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
+- settings persistence no longer writes plaintext API keys; saving now requires secure OS-backed encryption availability, and legacy plaintext key records are scrubbed from disk on load
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
 - The LLM API key is not stored in plaintext files or file-based fallback config.
+- Legacy plaintext API key records are removed from disk the next time settings load.
 - Electron window security settings and renderer guardrails match the security baseline.
 - Common user-facing failures are recoverable.
 - Logs help diagnose extraction or generation problems.

@@ -1,7 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
+  LlmSettingsStore,
   createDefaultSettings,
   validateSettings
 } = require('../../services/llm-settings-service');
@@ -68,4 +72,92 @@ test('LLM settings validation preserves an optional briefing output folder path'
 
   assert.equal(validation.isValid, true);
   assert.equal(validation.settings.outputBriefingFolderPath, '/Users/jack/Documents/AtomicGroup Briefings');
+});
+
+test('LlmSettingsStore saves API keys only in encrypted mode when secure storage is available', async () => {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-llm-settings-'));
+  const safeStorage = {
+    isEncryptionAvailable() {
+      return true;
+    },
+    encryptString(value) {
+      return Buffer.from(`enc:${value}`, 'utf8');
+    },
+    decryptString(buffer) {
+      return String(buffer).replace(/^enc:/, '');
+    }
+  };
+  const store = new LlmSettingsStore({ userDataPath, safeStorage });
+  const settings = {
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder'
+  };
+
+  const result = await store.save(settings);
+  const persisted = JSON.parse(await fs.readFile(path.join(userDataPath, 'llm-settings.json'), 'utf8'));
+
+  assert.equal(result.validation.isValid, true);
+  assert.equal(persisted.apiKeyMode, 'encrypted');
+  assert.notEqual(persisted.apiKey, 'test-only-placeholder');
+
+  const loaded = await store.load();
+  assert.equal(loaded.apiKey, 'test-only-placeholder');
+
+  await fs.rm(userDataPath, { recursive: true, force: true });
+});
+
+test('LlmSettingsStore rejects saving API keys when secure storage is unavailable', async () => {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-llm-settings-'));
+  const safeStorage = {
+    isEncryptionAvailable() {
+      return false;
+    }
+  };
+  const store = new LlmSettingsStore({ userDataPath, safeStorage });
+  const settings = {
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder'
+  };
+
+  const result = await store.save(settings);
+
+  assert.equal(result.validation.isValid, false);
+  assert.match(result.validation.errors.join(' '), /cannot be saved/i);
+  await assert.rejects(() => fs.access(path.join(userDataPath, 'llm-settings.json')), /ENOENT/);
+
+  await fs.rm(userDataPath, { recursive: true, force: true });
+});
+
+test('LlmSettingsStore strips any legacy plaintext API key from disk on load', async () => {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-llm-settings-'));
+  const filePath = path.join(userDataPath, 'llm-settings.json');
+  await fs.writeFile(filePath, JSON.stringify({
+    ...createDefaultSettings(),
+    apiKeyMode: 'plain',
+    apiKey: 'legacy-plaintext-key'
+  }, null, 2));
+
+  const store = new LlmSettingsStore({
+    userDataPath,
+    safeStorage: {
+      isEncryptionAvailable() {
+        return true;
+      },
+      encryptString(value) {
+        return Buffer.from(`enc:${value}`, 'utf8');
+      },
+      decryptString(buffer) {
+        return String(buffer).replace(/^enc:/, '');
+      }
+    }
+  });
+
+  const loaded = await store.load();
+  const sanitized = JSON.parse(await fs.readFile(filePath, 'utf8'));
+
+  assert.equal(loaded.apiKey, '');
+  assert.equal(sanitized.apiKeyMode, 'empty');
+  assert.equal(sanitized.apiKey, '');
+
+  await fs.rm(userDataPath, { recursive: true, force: true });
 });

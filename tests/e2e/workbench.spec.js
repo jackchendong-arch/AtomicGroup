@@ -58,8 +58,8 @@ test.describe('Candidate Match Workbench', () => {
         providerLabel: 'DeepSeek',
         baseUrl: 'https://api.deepseek.com',
         model: 'deepseek-chat',
-        apiKeyMode: 'plain',
-        apiKey: 'test-only-placeholder',
+        apiKeyMode: 'empty',
+        apiKey: '',
         temperature: 0.2,
         maxTokens: 1200,
         systemPrompt: defaultSystemPrompt,
@@ -84,6 +84,32 @@ test.describe('Candidate Match Workbench', () => {
 
     page = await electronApp.firstWindow();
     await page.waitForLoadState('domcontentloaded');
+    await page.waitForFunction(() => Boolean(window.recruitmentApi));
+    await page.evaluate(async (systemPrompt) => {
+      await window.recruitmentApi.saveLlmSettings({
+        providerId: 'deepseek',
+        providerLabel: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-chat',
+        apiKey: 'test-only-placeholder',
+        temperature: 0.2,
+        maxTokens: 1200,
+        systemPrompt,
+        referenceTemplateMode: 'default',
+        referenceTemplatePath: '',
+        referenceTemplateName: '',
+        referenceTemplateExtension: '',
+        outputTemplatePath: '',
+        outputTemplateName: '',
+        outputTemplateExtension: '',
+        outputBriefingFolderPath: ''
+      });
+    }, defaultSystemPrompt);
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.reloadConfiguration();
+    });
+    await page.locator('#return-to-workbench-button').click();
+    await expect(page.locator('#workbench-view')).toBeVisible();
   });
 
   test.afterEach(async () => {
@@ -134,8 +160,13 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#current-role-name')).toContainText('Senior Product Manager');
     await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
 
+    await page.locator('#open-briefing-tab').click();
+    await expect(page.locator('#briefing-panel')).toBeVisible();
     await page.locator('#generate-summary-button').click();
     await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#briefing-panel')).toBeVisible();
+    await expect(page.locator('#briefing-status')).toHaveText('Ready');
+    await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
     await expect(page.locator('#summary-message')).toHaveText(/ready/i);
     await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
     await expect(page.locator('#summary-editor')).toContainText('Senior Product Manager');
@@ -143,9 +174,6 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#summary-evidence-panel')).not.toHaveClass(/is-hidden/);
     await page.locator('#summary-evidence-panel summary').click();
     await expect(page.locator('#summary-evidence-summary-list .evidence-item').first()).toBeVisible();
-
-    await page.locator('#open-briefing-tab').click();
-    await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
 
     await page.locator('#toggle-output-language-button').click();
     await expect(page.locator('#summary-status')).toHaveText('Ready');

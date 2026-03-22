@@ -2446,6 +2446,10 @@ function exposeE2ETestApi() {
   }
 
   window.__atomicgroupTest = {
+    async reloadConfiguration() {
+      await loadConfiguration();
+      render();
+    },
     async openSourceFolder(folderPath) {
       const result = await window.recruitmentApi.listSourceFolder({ folderPath });
       state.contextTab = 'workspace';
@@ -2592,6 +2596,8 @@ function isGenerationWorkflowBusy() {
 }
 
 async function generateSummary() {
+  const nextWorkbenchTab = state.workbenchTab === 'briefing' ? 'briefing' : 'summary';
+
   if (!state.settingsValidation.isValid) {
     state.summaryStatus = 'Settings Required';
     state.generationError = state.settingsValidation.errors[0] || 'Configure the LLM settings before generation.';
@@ -2618,8 +2624,8 @@ async function generateSummary() {
   state.generationError = '';
   state.summaryMessage = 'Generating the candidate summary and hiring-manager briefing review.';
   state.progressLabel = 'Generating candidate summary and hiring-manager briefing review...';
-  state.workbenchTab = 'summary';
-  renderSummary();
+  state.workbenchTab = nextWorkbenchTab;
+  render();
 
   try {
     const result = await window.recruitmentApi.generateSummary({
@@ -2643,7 +2649,7 @@ async function generateSummary() {
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     state.draftLifecycle = 'generated';
     state.templateLabel = result.templateLabel;
-    state.workbenchTab = 'summary';
+    state.workbenchTab = nextWorkbenchTab;
     state.summaryStatus = 'Ready';
     state.summaryMessage = state.outputMode === 'anonymous'
       ? (state.approvalWarnings.length > 0
@@ -2652,9 +2658,9 @@ async function generateSummary() {
       : 'Candidate summary and hiring-manager briefing are ready for review and approval.';
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
-    state.workbenchTab = 'summary';
+    state.workbenchTab = nextWorkbenchTab;
     await persistCurrentWorkspaceSnapshot();
-    renderSummary();
+    render();
   } catch (error) {
     state.isGenerating = false;
     state.summaryStatus = 'Failed';
@@ -2662,8 +2668,8 @@ async function generateSummary() {
     state.generationError = error instanceof Error
       ? error.message
       : 'Unable to generate a summary. Review the settings and imported documents, then try again.';
-    state.workbenchTab = 'summary';
-    renderSummary();
+    state.workbenchTab = nextWorkbenchTab;
+    render();
   }
 }
 

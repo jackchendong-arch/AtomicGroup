@@ -207,6 +207,16 @@ class LlmSettingsStore {
     };
   }
 
+  hasSecureApiKeyStorage() {
+    return Boolean(
+      this.safeStorage &&
+      typeof this.safeStorage.isEncryptionAvailable === 'function' &&
+      this.safeStorage.isEncryptionAvailable() &&
+      typeof this.safeStorage.encryptString === 'function' &&
+      typeof this.safeStorage.decryptString === 'function'
+    );
+  }
+
   encryptApiKey(apiKey) {
     if (!apiKey) {
       return {
@@ -215,17 +225,14 @@ class LlmSettingsStore {
       };
     }
 
-    if (this.safeStorage && this.safeStorage.isEncryptionAvailable()) {
+    if (this.hasSecureApiKeyStorage()) {
       return {
         apiKeyMode: 'encrypted',
         apiKey: this.safeStorage.encryptString(apiKey).toString('base64')
       };
     }
 
-    return {
-      apiKeyMode: 'plain',
-      apiKey
-    };
+    throw new Error('Secure OS-backed encryption is unavailable, so the API key cannot be saved.');
   }
 
   decryptApiKey(record = {}) {
@@ -238,10 +245,6 @@ class LlmSettingsStore {
       }
     }
 
-    if (record.apiKeyMode === 'plain') {
-      return record.apiKey || '';
-    }
-
     return '';
   }
 
@@ -249,6 +252,17 @@ class LlmSettingsStore {
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
       const parsed = JSON.parse(raw);
+
+      if (parsed.apiKeyMode === 'plain' && parsed.apiKey) {
+        const sanitizedRecord = {
+          ...parsed,
+          apiKeyMode: 'empty',
+          apiKey: ''
+        };
+
+        await fs.writeFile(this.filePath, JSON.stringify(sanitizedRecord, null, 2));
+      }
+
       return normalizeSettings({
         ...parsed,
         apiKey: this.decryptApiKey(parsed)
@@ -266,6 +280,7 @@ class LlmSettingsStore {
     const validation = validateSettings(input);
     const existingSettings = await this.load();
     let settings = validation.settings;
+    const validationErrors = [...validation.errors];
 
     if (!validation.isValid) {
       return {
@@ -290,7 +305,22 @@ class LlmSettingsStore {
       };
     }
 
-    const encrypted = this.encryptApiKey(settings.apiKey);
+    let encrypted;
+
+    try {
+      encrypted = this.encryptApiKey(settings.apiKey);
+    } catch (error) {
+      validationErrors.push(error instanceof Error ? error.message : 'Unable to save the API key securely.');
+      return {
+        settings,
+        validation: {
+          isValid: false,
+          errors: validationErrors,
+          settings
+        }
+      };
+    }
+
     const storedRecord = {
       providerId: settings.providerId,
       providerLabel: settings.providerLabel,

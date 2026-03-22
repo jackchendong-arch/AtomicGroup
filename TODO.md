@@ -246,7 +246,9 @@ Mark a release complete only when the work is:
   - privacy-safe summary/export diagnostics that keep metadata, counts, and digests instead of raw CV/JD or generated candidate content
   - deterministic Playwright Electron E2E coverage for import, generation, language switching, source evidence, recent-work reopen, and role-workspace candidate switching using a local mock-generation mode instead of live provider calls
   - human-observable Playwright run mode via `npm run test:e2e:observe` so end-to-end flows can be watched at slowed-down interaction speed during manual review
-- Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files.
+  - API-key persistence no longer falls back to plaintext storage; settings save now requires secure OS-backed encryption availability, and any legacy plaintext key record is scrubbed from disk on load
+  - generating while the recruiter is on `Hiring Manager Briefing` now refreshes that briefing view in place instead of leaving stale content until another tab navigation occurs
+- Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slice removes plaintext fallback and scrubs old plaintext records, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
   - file names or file hashes

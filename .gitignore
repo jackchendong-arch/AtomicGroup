@@ -11,3 +11,4 @@ playwright-report/
 *.local.json
 *.secrets.json
 llm-settings.json
+story.md

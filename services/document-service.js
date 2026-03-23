@@ -7,6 +7,11 @@ const { PDFParse } = require('pdf-parse');
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.docx', '.txt']);
 const REFERENCE_TEMPLATE_EXTENSIONS = new Set(['.md']);
 
+function startTimer() {
+  const startedAt = process.hrtime.bigint();
+  return () => Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+}
+
 function normalizeWhitespace(value) {
   return value.replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -94,6 +99,7 @@ async function importDocumentWithOptions(filePath, {
   supportedExtensions = SUPPORTED_EXTENSIONS,
   unsupportedMessage = 'Unsupported file type. Release 1 accepts PDF, DOCX, and TXT only.'
 } = {}) {
+  const totalTimer = startTimer();
   const resolvedPath = path.resolve(filePath);
   const name = path.basename(resolvedPath);
   const extension = path.extname(resolvedPath).toLowerCase();
@@ -111,7 +117,10 @@ async function importDocumentWithOptions(filePath, {
       text: '',
       previewText: '',
       warnings: [],
-      error: 'The selected path is not a file.'
+      error: 'The selected path is not a file.',
+      performance: {
+        totalMs: totalTimer()
+      }
     };
   }
 
@@ -127,12 +136,20 @@ async function importDocumentWithOptions(filePath, {
       text: '',
       previewText: '',
       warnings: [],
-      error: unsupportedMessage
+      error: unsupportedMessage,
+      performance: {
+        totalMs: totalTimer()
+      }
     };
   }
 
   try {
-    const text = normalizeWhitespace(await extractText(resolvedPath, extension));
+    const extractTimer = startTimer();
+    const extractedText = await extractText(resolvedPath, extension);
+    const extractMs = extractTimer();
+    const normalizeTimer = startTimer();
+    const text = normalizeWhitespace(extractedText);
+    const normalizeMs = normalizeTimer();
     const warnings = createWarnings(text, extension);
 
     return {
@@ -146,7 +163,12 @@ async function importDocumentWithOptions(filePath, {
       text,
       previewText: createPreviewText(text),
       warnings,
-      error: null
+      error: null,
+      performance: {
+        totalMs: totalTimer(),
+        extractMs,
+        normalizeMs
+      }
     };
   } catch (error) {
     return {
@@ -160,7 +182,10 @@ async function importDocumentWithOptions(filePath, {
       text: '',
       previewText: '',
       warnings: [],
-      error: error instanceof Error ? error.message : 'Unable to extract text from this document.'
+      error: error instanceof Error ? error.message : 'Unable to extract text from this document.',
+      performance: {
+        totalMs: totalTimer()
+      }
     };
   }
 }

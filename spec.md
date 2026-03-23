@@ -769,6 +769,7 @@ Current implemented slices inside Release 6:
   - open / reveal saved draft
 - unsupported source files are rejected early in the workbench and surfaced as an explicit import issue instead of failing silently during manual or drag-and-drop intake
 - generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
+- import results and summary/translation diagnostics now record basic timing metrics so support reviews can see import, extraction, and generation/translation duration without exposing raw candidate content
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.

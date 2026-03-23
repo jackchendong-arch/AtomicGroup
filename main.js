@@ -200,6 +200,29 @@ function getDebugTextDigest(value) {
   return `${normalized.length} chars sha256=${createHash('sha256').update(normalized).digest('hex').slice(0, 16)}`;
 }
 
+function startTimer() {
+  const startedAt = process.hrtime.bigint();
+  return () => Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+}
+
+function formatDuration(durationMs) {
+  return `${Number(durationMs || 0).toFixed(1)} ms`;
+}
+
+function pushTimingDebugTrace(debugTrace, label, durationMs) {
+  debugTrace.push(`${label}: ${formatDuration(durationMs)}`);
+}
+
+async function measureAsync(operation) {
+  const stopTimer = startTimer();
+  const result = await operation();
+
+  return {
+    result,
+    durationMs: stopTimer()
+  };
+}
+
 function buildTranslationSettings(settings) {
   return {
     ...settings,
@@ -238,6 +261,7 @@ async function translateDraftArtifacts({
     includeSummary: false
   });
   const translationSettings = buildTranslationSettings(settings);
+  const totalTimer = startTimer();
 
   debugTrace.push(`Translation model: ${translationSettings.model}`);
   debugTrace.push(`Translation max tokens: ${translationSettings.maxTokens}`);
@@ -245,11 +269,11 @@ async function translateDraftArtifacts({
   debugTrace.push(`Employment history batch size: ${employmentBatchSize}`);
 
   const work = [
-    generateWithConfiguredProvider({
+    measureAsync(() => generateWithConfiguredProvider({
       settings: translationSettings,
       messages: coreBriefingTranslationRequest.messages,
       fetchImpl
-    })
+    }))
   ];
 
   if (includeSummaryTranslation) {
@@ -260,19 +284,27 @@ async function translateDraftArtifacts({
     });
 
     work.unshift(
-      generateWithConfiguredProvider({
+      measureAsync(() => generateWithConfiguredProvider({
         settings: translationSettings,
         messages: summaryTranslationRequest.messages,
         fetchImpl
-      })
+      }))
     );
   }
 
   const results = await Promise.all(work);
-  const summaryTranslationResult = includeSummaryTranslation ? results[0] : null;
-  const coreBriefingTranslationResult = includeSummaryTranslation ? results[1] : results[0];
+  const summaryTranslationOperation = includeSummaryTranslation ? results[0] : null;
+  const coreBriefingTranslationOperation = includeSummaryTranslation ? results[1] : results[0];
+  const summaryTranslationResult = includeSummaryTranslation ? summaryTranslationOperation.result : null;
+  const coreBriefingTranslationResult = coreBriefingTranslationOperation.result;
   let translatedBriefing;
   let translatedSummary = includeSummaryTranslation ? '' : normalizeGeneratedSummary(summary);
+
+  if (summaryTranslationOperation) {
+    pushTimingDebugTrace(debugTrace, 'Summary translation call', summaryTranslationOperation.durationMs);
+  }
+
+  pushTimingDebugTrace(debugTrace, 'Core briefing translation call', coreBriefingTranslationOperation.durationMs);
 
   if (includeSummaryTranslation && summaryTranslationResult) {
     try {
@@ -292,11 +324,13 @@ async function translateDraftArtifacts({
       malformedResponse: coreBriefingTranslationResult.text,
       expectedPayload: coreBriefingTranslationRequest.payload
     });
-    const repairedResult = await generateWithConfiguredProvider({
+    const repairedOperation = await measureAsync(() => generateWithConfiguredProvider({
       settings: translationSettings,
       messages: repairRequest.messages,
       fetchImpl
-    });
+    }));
+    pushTimingDebugTrace(debugTrace, 'Core briefing translation repair', repairedOperation.durationMs);
+    const repairedResult = repairedOperation.result;
     const translatedCore = parseTranslatedDraftResponse(repairedResult.text, coreBriefingForTranslation);
     translatedBriefing = mergeTranslatedBriefing(currentBriefing, translatedCore.briefing);
   }
@@ -325,11 +359,17 @@ async function translateDraftArtifacts({
     debugTrace.push(`Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1}: entries ${startIndex + 1}-${startIndex + employmentSlice.length}`);
 
     try {
-      const sliceResult = await generateWithConfiguredProvider({
+      const sliceOperation = await measureAsync(() => generateWithConfiguredProvider({
         settings: translationSettings,
         messages: sliceRequest.messages,
         fetchImpl
-      });
+      }));
+      pushTimingDebugTrace(
+        debugTrace,
+        `Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1} call`,
+        sliceOperation.durationMs
+      );
+      const sliceResult = sliceOperation.result;
       let translatedSlice;
 
       try {
@@ -340,11 +380,17 @@ async function translateDraftArtifacts({
           malformedResponse: sliceResult.text,
           expectedPayload: sliceRequest.payload
         });
-        const repairedResult = await generateWithConfiguredProvider({
+        const repairedOperation = await measureAsync(() => generateWithConfiguredProvider({
           settings: translationSettings,
           messages: repairRequest.messages,
           fetchImpl
-        });
+        }));
+        pushTimingDebugTrace(
+          debugTrace,
+          `Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1} repair`,
+          repairedOperation.durationMs
+        );
+        const repairedResult = repairedOperation.result;
         translatedSlice = parseTranslatedDraftResponse(repairedResult.text, sliceBriefing);
       }
 
@@ -362,6 +408,8 @@ async function translateDraftArtifacts({
     translatedSummary = renderSummaryFromBriefing(translatedBriefing, normalizedTargetLanguage);
     debugTrace.push('Summary translation fallback used: rendered recruiter summary from translated briefing.');
   }
+
+  pushTimingDebugTrace(debugTrace, 'Total draft translation', totalTimer());
 
   return {
     summary: translatedSummary,
@@ -841,12 +889,16 @@ ipcMain.handle('workspace:list-source-folder', async (_event, payload) => {
 
 ipcMain.handle('workspace:derive-profile', async (_event, payload = {}) => {
   const normalizedPayload = validateWorkspaceProfilePayload(payload);
+  const stopTimer = startTimer();
 
   return {
     profile: buildWorkspaceDerivedProfilePayload({
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
-    })
+    }),
+    performance: {
+      totalMs: stopTimer()
+    }
   };
 });
 
@@ -1165,6 +1217,7 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
 
 ipcMain.handle('summary:generate', async (_event, payload) => {
   const normalizedPayload = validateSummaryGenerationPayload(payload);
+  const totalTimer = startTimer();
   const debugTrace = [
     `Summary generation started at ${new Date().toISOString()}`
   ];
@@ -1190,6 +1243,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     };
+    const requestBuildTimer = startTimer();
     const templateGuidance = await loadReferenceTemplateGuidance(validation.settings);
     const summaryRequest = buildSummaryRequest({
       cvDocument: generationInputs.cvDocument,
@@ -1207,6 +1261,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputMode: 'named',
       outputLanguage
     });
+    pushTimingDebugTrace(debugTrace, 'Prompt and retrieval preparation', requestBuildTimer());
 
     if (isE2EMockLlmEnabled()) {
       const mockResult = await buildE2EMockSummaryResult({
@@ -1230,27 +1285,35 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     const briefingGenerationSettings = buildBriefingGenerationSettings(settings);
     debugTrace.push(`Structured briefing max tokens: ${briefingGenerationSettings.maxTokens}`);
 
-    const [summaryResult, structuredBriefingResult] = await Promise.all([
-      generateWithConfiguredProvider({
+    const providerWaitTimer = startTimer();
+    const [summaryOperation, structuredBriefingOperation] = await Promise.all([
+      measureAsync(() => generateWithConfiguredProvider({
         settings,
         messages: summaryRequest.messages,
         fetchImpl: (...args) => net.fetch(...args)
-      }),
-      generateWithConfiguredProvider({
+      })),
+      measureAsync(() => generateWithConfiguredProvider({
         settings: briefingGenerationSettings,
         messages: briefingRequest.messages,
         fetchImpl: (...args) => net.fetch(...args)
-      })
+      }))
     ]);
+    pushTimingDebugTrace(debugTrace, 'Summary LLM call', summaryOperation.durationMs);
+    pushTimingDebugTrace(debugTrace, 'Structured briefing LLM call', structuredBriefingOperation.durationMs);
+    pushTimingDebugTrace(debugTrace, 'Combined provider wait', providerWaitTimer());
+    const summaryResult = summaryOperation.result;
+    const structuredBriefingResult = structuredBriefingOperation.result;
     const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
     debugTrace.push(`Recruiter summary length: ${recruiterSummary.length}`);
     debugTrace.push(`Structured briefing raw response digest: ${getDebugTextDigest(structuredBriefingResult.text)}`);
 
+    const fallbackBriefingTimer = startTimer();
     const fallbackBriefing = buildFallbackBriefing({
       cvDocument: generationInputs.cvDocument,
       jdDocument: generationInputs.jdDocument,
       outputLanguage
     });
+    pushTimingDebugTrace(debugTrace, 'Fallback briefing build', fallbackBriefingTimer());
     pushBriefingDebugTrace(debugTrace, 'Fallback briefing', fallbackBriefing);
 
     let briefing;
@@ -1266,14 +1329,16 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
           malformedResponse: structuredBriefingResult.text,
           expectedBriefing: fallbackBriefing
         });
-        const repairedResult = await generateWithConfiguredProvider({
+        const repairedOperation = await measureAsync(() => generateWithConfiguredProvider({
           settings: {
             ...briefingGenerationSettings,
             temperature: 0
           },
           messages: repairRequest.messages,
           fetchImpl: (...args) => net.fetch(...args)
-        });
+        }));
+        pushTimingDebugTrace(debugTrace, 'Structured briefing repair call', repairedOperation.durationMs);
+        const repairedResult = repairedOperation.result;
         debugTrace.push(`Structured briefing repair response length: ${(repairedResult.text || '').trim().length}`);
         const repairedStructuredBriefing = parseBriefingResponse(repairedResult.text);
         pushBriefingDebugTrace(debugTrace, 'Repaired structured briefing', repairedStructuredBriefing);
@@ -1340,6 +1405,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputLanguage
     });
     debugTrace.push('Prepared hiring-manager briefing review successfully.');
+    pushTimingDebugTrace(debugTrace, 'Total summary generation', totalTimer());
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
 
@@ -1360,6 +1426,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     };
   } catch (error) {
     debugTrace.push(`Summary generation failed: ${error instanceof Error ? error.message : 'Unknown summary generation failure.'}`);
+    pushTimingDebugTrace(debugTrace, 'Total summary generation', totalTimer());
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
     throw error;

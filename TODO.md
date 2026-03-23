@@ -255,6 +255,7 @@ Mark a release complete only when the work is:
   - unsupported source files such as dragged image files now surface a clear `Import Issue` state in the workbench instead of failing silently
   - generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
   - current-candidate context no longer falls back to file-derived candidate or role labels when the loaded source assignment is weak or incorrect
+  - import results and summary/translation diagnostics now record basic operation timings so support reviews can see import, extraction, and generation/translation durations without raw candidate-content logging
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slice removes plaintext fallback and scrubs old plaintext records, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
@@ -278,7 +279,7 @@ Mark a release complete only when the work is:
 - Add local logging that is useful for diagnosing extraction and generation problems.
 - Add output quality checks for any remaining edge cases where generated summaries or briefings are structurally incomplete. Current slice now flags the main missing-section and weak-evidence cases in the review UI.
 - Add safeguards against overconfident unsupported claims in the generated profile. Current slice now flags strong certainty language and generic source-derived labels; future tightening can still deepen those heuristics.
-- Add basic performance instrumentation for import, extraction, and generation timings.
+- Add deeper performance instrumentation if import, extraction, or generation hotspots still need finer-grained tracing. Current slice now records basic timings for import/extraction and summary/translation operations.
 - Add regression tests for Tier 1 security controls:
   - no plaintext API key persistence
   - no raw content in persisted diagnostics

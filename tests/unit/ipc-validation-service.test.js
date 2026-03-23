@@ -8,6 +8,7 @@ const {
   validateDocumentPickPayload,
   validateDraftTranslationPayload,
   validateLoadWorkspaceSnapshotPayload,
+  validateRetrievalManifest,
   validateRenderBriefingPayload,
   validateShellPathPayload,
   validateSourceFolderListPayload,
@@ -71,11 +72,18 @@ test('translation payloads normalize language and reject invalid briefing shapes
     cvDocument: createDocument('/tmp/candidate.pdf'),
     jdDocument: createDocument('/tmp/job.pdf'),
     sourceLanguage: 'english',
-    targetLanguage: 'cn'
+    targetLanguage: 'cn',
+    summaryRetrievalManifest: [
+      {
+        blockId: 'cv-1',
+        score: 0.91
+      }
+    ]
   });
 
   assert.equal(payload.sourceLanguage, 'en');
   assert.equal(payload.targetLanguage, 'zh');
+  assert.equal(payload.summaryRetrievalManifest[0].blockId, 'cv-1');
   assert.throws(
     () => validateDraftTranslationPayload({
       summary: 'Example summary',
@@ -84,6 +92,24 @@ test('translation payloads normalize language and reject invalid briefing shapes
       jdDocument: createDocument('/tmp/job.pdf')
     }),
     /briefing payload must be an object/
+  );
+});
+
+test('retrieval manifests are sanitized and reject invalid shapes', () => {
+  const manifest = validateRetrievalManifest([
+    {
+      blockId: 'cv-1',
+      documentLabel: 'Candidate CV',
+      score: 0.88
+    }
+  ], 'Summary retrieval manifest');
+
+  assert.equal(manifest[0].blockId, 'cv-1');
+  assert.equal(manifest[0].documentLabel, 'Candidate CV');
+  assert.equal(manifest[0].score, 0.88);
+  assert.throws(
+    () => validateRetrievalManifest({}, 'Summary retrieval manifest'),
+    /must be an array/
   );
 });
 

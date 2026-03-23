@@ -39,6 +39,7 @@ const {
 const {
   anonymizeDraftOutput
 } = require('./services/anonymization-service');
+const { buildDraftReviewWarnings } = require('./services/draft-review-service');
 const {
   buildEmailDraftRequest,
   buildFallbackEmailDraft,
@@ -673,6 +674,14 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument
   });
+  const reviewWarnings = buildDraftReviewWarnings({
+    recruiterSummary: preparedOutput.summary,
+    briefing: preparedOutput.briefing,
+    outputMode,
+    existingWarnings: preparedOutput.warnings,
+    summaryRetrievalManifest: summaryRequest.retrievalManifest,
+    briefingRetrievalManifest: briefingRequest.retrievalManifest
+  });
   const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
     recruiterSummary: preparedOutput.summary,
@@ -701,7 +710,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     outputMode,
     outputLanguage,
     modeLabel: preparedOutput.modeLabel,
-    approvalWarnings: preparedOutput.warnings
+    approvalWarnings: reviewWarnings
   };
 }
 
@@ -723,6 +732,14 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument
   });
+  const reviewWarnings = buildDraftReviewWarnings({
+    recruiterSummary: preparedOutput.summary,
+    briefing: preparedOutput.briefing,
+    outputMode: payload.outputMode,
+    existingWarnings: preparedOutput.warnings,
+    summaryRetrievalManifest: payload.summaryRetrievalManifest,
+    briefingRetrievalManifest: payload.briefingRetrievalManifest
+  });
   const composed = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
     recruiterSummary: preparedOutput.summary,
@@ -739,7 +756,7 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     briefing: translatedBriefing,
     hiringManagerBriefingReview: composed.review,
     outputLanguage: targetLanguage,
-    approvalWarnings: preparedOutput.warnings
+    approvalWarnings: reviewWarnings
   };
 }
 
@@ -1307,6 +1324,14 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     });
+    const reviewWarnings = buildDraftReviewWarnings({
+      recruiterSummary: preparedOutput.summary,
+      briefing: preparedOutput.briefing,
+      outputMode,
+      existingWarnings: preparedOutput.warnings,
+      summaryRetrievalManifest: summaryRequest.retrievalManifest,
+      briefingRetrievalManifest: briefingRequest.retrievalManifest
+    });
     pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
 
     const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
@@ -1331,7 +1356,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputMode,
       outputLanguage,
       modeLabel: preparedOutput.modeLabel,
-      approvalWarnings: preparedOutput.warnings
+      approvalWarnings: reviewWarnings
     };
   } catch (error) {
     debugTrace.push(`Summary generation failed: ${error instanceof Error ? error.message : 'Unknown summary generation failure.'}`);
@@ -1374,6 +1399,14 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     });
+    const reviewWarnings = buildDraftReviewWarnings({
+      recruiterSummary: preparedOutput.summary,
+      briefing: preparedOutput.briefing,
+      outputMode: normalizedPayload.outputMode,
+      existingWarnings: preparedOutput.warnings,
+      summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
+      briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
+    });
     const composed = prepareHiringManagerBriefingOutput({
       briefing: preparedOutput.briefing,
       recruiterSummary: preparedOutput.summary,
@@ -1385,7 +1418,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       briefing: normalizedPayload.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
-      approvalWarnings: preparedOutput.warnings
+      approvalWarnings: reviewWarnings
     };
   }
 
@@ -1427,6 +1460,14 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     });
+    const reviewWarnings = buildDraftReviewWarnings({
+      recruiterSummary: preparedOutput.summary,
+      briefing: preparedOutput.briefing,
+      outputMode: normalizedPayload.outputMode,
+      existingWarnings: preparedOutput.warnings,
+      summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
+      briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
+    });
     const composed = prepareHiringManagerBriefingOutput({
       briefing: preparedOutput.briefing,
       recruiterSummary: preparedOutput.summary,
@@ -1438,7 +1479,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       briefing: translated.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
-      approvalWarnings: preparedOutput.warnings
+      approvalWarnings: reviewWarnings
     };
   } catch (error) {
     debugTrace.push(`Draft translation failed: ${error instanceof Error ? error.message : 'Unknown translation failure.'}`);
@@ -1466,6 +1507,14 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
     cvDocument: normalizedPayload.cvDocument,
     jdDocument: normalizedPayload.jdDocument
   });
+  const reviewWarnings = buildDraftReviewWarnings({
+    recruiterSummary: preparedOutput.summary,
+    briefing: preparedOutput.briefing,
+    outputMode: normalizedPayload.outputMode,
+    existingWarnings: preparedOutput.warnings,
+    summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
+    briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
+  });
   const composed = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
     recruiterSummary: preparedOutput.summary,
@@ -1477,7 +1526,7 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
     hiringManagerBriefingReview: composed.review,
     summary: normalizedPayload.summary,
     modeLabel: preparedOutput.modeLabel,
-    approvalWarnings: preparedOutput.warnings
+    approvalWarnings: reviewWarnings
   };
 });
 

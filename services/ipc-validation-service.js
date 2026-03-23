@@ -76,6 +76,32 @@ function validateDocumentLike(document, { required = true, label = 'Document' } 
   return normalizedDocument;
 }
 
+function validateRetrievalManifest(entries, label) {
+  if (entries == null) {
+    return [];
+  }
+
+  if (!Array.isArray(entries)) {
+    throw new Error(`${label} must be an array when provided.`);
+  }
+
+  return entries.map((entry, index) => {
+    const normalizedEntry = requirePlainObject(entry, `${label} entry ${index + 1} must be an object.`);
+
+    return {
+      blockId: normalizeString(normalizedEntry.blockId),
+      documentType: normalizeString(normalizedEntry.documentType),
+      documentLabel: normalizeString(normalizedEntry.documentLabel),
+      sourceName: normalizeString(normalizedEntry.sourceName),
+      sectionKey: normalizeString(normalizedEntry.sectionKey),
+      sectionLabel: normalizeString(normalizedEntry.sectionLabel),
+      preview: normalizeString(normalizedEntry.preview),
+      order: Number.isFinite(normalizedEntry.order) ? normalizedEntry.order : 0,
+      score: Number.isFinite(normalizedEntry.score) ? normalizedEntry.score : 0
+    };
+  });
+}
+
 function validateDraftPayload(payload, { requireSummary = false } = {}) {
   const normalizedPayload = requirePlainObject(payload, 'A draft payload is required.');
   const summary = String(normalizedPayload.summary || '');
@@ -95,7 +121,9 @@ function validateDraftPayload(payload, { requireSummary = false } = {}) {
     summary,
     briefing: normalizedPayload.briefing || null,
     outputMode: normalizeOutputMode(normalizedPayload.outputMode),
-    outputLanguage: normalizeOutputLanguage(normalizedPayload.outputLanguage)
+    outputLanguage: normalizeOutputLanguage(normalizedPayload.outputLanguage),
+    summaryRetrievalManifest: validateRetrievalManifest(normalizedPayload.summaryRetrievalManifest, 'Summary retrieval manifest'),
+    briefingRetrievalManifest: validateRetrievalManifest(normalizedPayload.briefingRetrievalManifest, 'Briefing retrieval manifest')
   };
 }
 
@@ -206,6 +234,7 @@ module.exports = {
   validateDraftTranslationPayload,
   validateLlmSettingsPayload,
   validateLoadWorkspaceSnapshotPayload,
+  validateRetrievalManifest,
   validateRenderBriefingPayload,
   validateShellPathPayload,
   validateSourceFolderListPayload,

@@ -915,6 +915,34 @@ function stripFileExtension(filename) {
   return String(filename || '').replace(/\.[^.]+$/, '');
 }
 
+function normalizeContextIdentityKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+}
+
+function isGenericCurrentCandidateLabel(value, fileName = '') {
+  const normalized = normalizeContextIdentityKey(value);
+  const normalizedFileStem = normalizeContextIdentityKey(stripFileExtension(fileName));
+
+  return Boolean(
+    !normalized ||
+    normalized === normalizedFileStem ||
+    ['candidate', 'candidatecv', 'cv', 'profile', 'resume'].includes(normalized)
+  );
+}
+
+function isGenericCurrentRoleLabel(value, fileName = '') {
+  const normalized = normalizeContextIdentityKey(value);
+  const normalizedFileStem = normalizeContextIdentityKey(stripFileExtension(fileName));
+
+  return Boolean(
+    !normalized ||
+    normalized === normalizedFileStem ||
+    ['role', 'jd', 'jobdescription', 'information', 'info', '岗位信息', '职位信息', '职位描述', '岗位描述'].includes(normalized)
+  );
+}
+
 function getActiveWorkspaceMeta() {
   return state.recentWorkspaces.find((workspace) => workspace.workspaceId === state.currentWorkspaceId) || null;
 }
@@ -922,53 +950,45 @@ function getActiveWorkspaceMeta() {
 function getCurrentRoleLabel() {
   const derivedRoleTitle = String(state.currentContextProfile?.roleTitle || '').trim();
 
-  if (derivedRoleTitle) {
+  if (derivedRoleTitle && !isGenericCurrentRoleLabel(derivedRoleTitle, state.documents.jd.file?.name || '')) {
     return derivedRoleTitle;
   }
 
   const briefingRoleTitle = String(state.briefing?.role?.title || '').trim();
 
-  if (briefingRoleTitle) {
+  if (briefingRoleTitle && !isGenericCurrentRoleLabel(briefingRoleTitle, state.documents.jd.file?.name || '')) {
     return briefingRoleTitle;
   }
 
   const workspaceRoleTitle = String(getActiveWorkspaceMeta()?.roleTitle || '').trim();
 
-  if (workspaceRoleTitle) {
+  if (workspaceRoleTitle && !isGenericCurrentRoleLabel(workspaceRoleTitle, state.documents.jd.file?.name || '')) {
     return workspaceRoleTitle;
   }
 
-  if (state.documents.jd.file?.name) {
-    return stripFileExtension(state.documents.jd.file.name);
-  }
-
-  return 'No role loaded';
+  return '';
 }
 
 function getCurrentCandidateLabel() {
   const derivedCandidateName = String(state.currentContextProfile?.candidateName || '').trim();
 
-  if (derivedCandidateName) {
+  if (derivedCandidateName && !isGenericCurrentCandidateLabel(derivedCandidateName, state.documents.cv.file?.name || '')) {
     return derivedCandidateName;
   }
 
   const briefingCandidateName = String(state.briefing?.candidate?.name || '').trim();
 
-  if (briefingCandidateName) {
+  if (briefingCandidateName && !isGenericCurrentCandidateLabel(briefingCandidateName, state.documents.cv.file?.name || '')) {
     return briefingCandidateName;
   }
 
   const workspaceCandidateName = String(getActiveWorkspaceMeta()?.candidateName || '').trim();
 
-  if (workspaceCandidateName) {
+  if (workspaceCandidateName && !isGenericCurrentCandidateLabel(workspaceCandidateName, state.documents.cv.file?.name || '')) {
     return workspaceCandidateName;
   }
 
-  if (state.documents.cv.file?.name) {
-    return stripFileExtension(state.documents.cv.file.name);
-  }
-
-  return 'No candidate loaded';
+  return '';
 }
 
 function setContextValue(element, value, emptyLabel) {
@@ -1771,7 +1791,7 @@ function getDraftLifecycleLabel() {
 }
 
 function renderApprovalWarnings() {
-  const warnings = state.outputMode === 'anonymous' ? state.approvalWarnings : [];
+  const warnings = state.approvalWarnings;
   const hasWarnings = warnings.length > 0;
 
   elements.approvalWarningPanel.classList.toggle('is-hidden', !hasWarnings);
@@ -1900,6 +1920,8 @@ async function setOutputMode(mode) {
       summary: state.summary,
       outputMode: normalizedMode,
       outputLanguage: state.outputLanguage,
+      summaryRetrievalManifest: state.retrievalEvidence.summary,
+      briefingRetrievalManifest: state.retrievalEvidence.briefing,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -2002,6 +2024,8 @@ async function translateCurrentDraft(targetLanguage) {
       targetLanguage,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd,
+      summaryRetrievalManifest: state.retrievalEvidence.summary,
+      briefingRetrievalManifest: state.retrievalEvidence.briefing,
       approvalWarnings: state.approvalWarnings
     });
 
@@ -2787,6 +2811,8 @@ async function syncBriefingReviewFromCurrentSummary() {
     summary: state.summary,
     outputMode: state.outputMode,
     outputLanguage: state.outputLanguage,
+    summaryRetrievalManifest: state.retrievalEvidence.summary,
+    briefingRetrievalManifest: state.retrievalEvidence.briefing,
     cvDocument: state.documents.cv,
     jdDocument: state.documents.jd
   });
@@ -2867,11 +2893,11 @@ async function generateSummary() {
     state.templateLabel = result.templateLabel;
     state.workbenchTab = nextWorkbenchTab;
     state.summaryStatus = 'Ready';
-    state.summaryMessage = state.outputMode === 'anonymous'
-      ? (state.approvalWarnings.length > 0
-        ? 'Candidate summary is ready. Hiring-manager outputs are anonymous; review the residual privacy warnings before approval.'
-        : 'Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.')
-      : 'Candidate summary and hiring-manager briefing are ready for review and approval.';
+    state.summaryMessage = state.approvalWarnings.length > 0
+      ? 'Candidate summary and hiring-manager briefing are ready. Review the highlighted checks before approval or sharing.'
+      : (state.outputMode === 'anonymous'
+        ? 'Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.'
+        : 'Candidate summary and hiring-manager briefing are ready for review and approval.');
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
     state.workbenchTab = nextWorkbenchTab;

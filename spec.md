@@ -768,6 +768,7 @@ Current implemented slices inside Release 6:
   - Word export
   - open / reveal saved draft
 - unsupported source files are rejected early in the workbench and surfaced as an explicit import issue instead of failing silently during manual or drag-and-drop intake
+- generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
@@ -779,6 +780,7 @@ Acceptance criteria:
 - Common user-facing failures are recoverable.
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.
+- Recruiter review highlights clearly signal when a generated draft is structurally incomplete or may be overstating evidence.
 
 ### Release 7: LLM Ops Artifact Registry and Promotion
 Value:

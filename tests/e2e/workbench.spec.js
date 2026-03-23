@@ -237,6 +237,8 @@ test.describe('Candidate Match Workbench', () => {
 
     await page.locator('#source-folder-jd-select').selectOption(smallWorkspaceCvPath);
     await expect(page.locator('#source-folder-cv-select')).toHaveValue(smallWorkspaceJdPath);
+    await expect(page.locator('#current-candidate-field')).toHaveClass(/is-hidden/);
+    await expect(page.locator('#current-role-field')).toHaveClass(/is-hidden/);
 
     await page.locator('#source-folder-jd-select').selectOption(smallWorkspaceJdPath);
     await expect(page.locator('#source-folder-cv-select')).toHaveValue(smallWorkspaceCvPath);

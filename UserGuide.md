@@ -180,6 +180,8 @@ Typical cases include:
 
 When available, use the retry button in that panel to rerun the failed action directly.
 
+After generation or translation, a `Review Checks` panel may also appear in the summary review. Use it to catch incomplete sections, weak evidence coverage, generic candidate/role labels, or overconfident wording before approval or sharing.
+
 ## Recent Work
 Open the `Recent Work` tab to reopen prior role/candidate workspaces.
 

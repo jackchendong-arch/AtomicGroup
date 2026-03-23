@@ -63,6 +63,8 @@ This lets you keep the role context stable while switching candidates.
 
 The loaded JD and CV should then appear in the main workbench context and document tabs.
 
+If opening or refreshing a role workspace fails, the main stage shows a failure panel with a retry action so you can try again without resetting the whole app.
+
 ## Manual Import Fallback
 If you are not using a role workspace folder, open the `Import Manually` tab.
 
@@ -72,6 +74,10 @@ Then you can:
 - click `Choose JD`
 
 This is useful for one-off testing or quick review, but the role-workspace flow is the preferred working model.
+
+If a selected file cannot be imported or extracted cleanly, the app now surfaces an `Import Issue` panel with a retry action.
+
+Unsupported source files such as images are rejected explicitly and shown as an import issue instead of being treated as silent no-ops.
 
 ## Generate A Draft
 1. Confirm the correct CV and JD are loaded.
@@ -161,6 +167,19 @@ In anonymous mode:
 
 Always review anonymous outputs before sharing.
 
+## Failure And Retry
+When a recoverable problem happens, the main stage now shows a structured failure panel instead of only a raw error string.
+
+Typical cases include:
+- source import problems
+- role workspace reopen / refresh problems
+- summary generation failures
+- translation failures
+- email handoff failures
+- Word export failures
+
+When available, use the retry button in that panel to rerun the failed action directly.
+
 ## Recent Work
 Open the `Recent Work` tab to reopen prior role/candidate workspaces.
 
@@ -195,6 +214,7 @@ If something looks wrong:
 - confirm you are in the expected language mode
 - regenerate after switching to a different candidate
 - reopen the case from `Recent Work` if needed
+- use the failure-panel retry action for recoverable import, generation, translation, email, or export problems
 - if a language switch seems slow on a long case, wait for the current translation to finish instead of toggling again while the busy indicator is visible
 
 For technical debugging, the app may also write local diagnostics used during development.

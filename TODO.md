@@ -251,6 +251,8 @@ Mark a release complete only when the work is:
   - when a new CV or JD starts loading, the previous slot content, current candidate context, and derived draft state are cleared immediately instead of lingering in memory until the replacement import finishes
   - role-workspace selector recovery hardened for two-file folders so switching the JD to the wrong file and then back again also reloads the implied CV selection and refreshes current-candidate context correctly
   - main-process IPC handlers now validate higher-risk payloads before acting on them, including slot selection, absolute local file paths, workspace IDs, draft-generation/translation payload shape, clipboard text bounds, and shell-open targets
+  - shared recruiter-facing failure panel with retry/dismiss actions for import issues, workspace reopen/refresh issues, summary generation, translation, email handoff, and Word export failures
+  - unsupported source files such as dragged image files now surface a clear `Import Issue` state in the workbench instead of failing silently
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slice removes plaintext fallback and scrubs old plaintext records, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
@@ -269,8 +271,8 @@ Mark a release complete only when the work is:
 - Review preload-exposed IPC methods and narrow them to validated, least-privilege operations only. Current slice adds shared handler-side payload validation; a later pass can still reduce or refactor the exposed surface further if needed.
 - Preserve minimum-necessary content rules for LLM calls and apply anonymous mode consistently to hiring-manager-facing briefing, email, and export outputs before sharing.
 - Add explicit clearing of in-memory workspace source content on workspace reset / close and when loading a new candidate.
-- Add structured error states for file import, extraction, generation, anonymization, and email handoff.
-- Add recruiter-friendly retry actions for recoverable failures.
+- Add structured error states for file import, extraction, generation, anonymization, and email handoff. Current slice covers the primary recruiter actions in the workbench; remaining secondary settings/review edge cases can still be tightened.
+- Add recruiter-friendly retry actions for recoverable failures. Current slice covers import, workspace reopen/refresh, generation, translation, email handoff, export, and open/reveal draft actions.
 - Add local logging that is useful for diagnosing extraction and generation problems.
 - Add output quality checks for missing required sections in generated summaries.
 - Add safeguards against overconfident unsupported claims in the generated profile.

@@ -70,6 +70,7 @@ const state = {
   summaryStatus: 'No Draft',
   summaryMessage: 'Load the CV and JD, then generate the summary.',
   generationError: '',
+  lastFailure: null,
   templateLabel: 'Default Recruiter Profile Template'
 };
 
@@ -162,6 +163,11 @@ const elements = {
   summaryMessage: document.getElementById('summary-message'),
   generationProgress: document.getElementById('generation-progress'),
   generationProgressLabel: document.getElementById('generation-progress-label'),
+  operationFailurePanel: document.getElementById('operation-failure-panel'),
+  operationFailureTitle: document.getElementById('operation-failure-title'),
+  operationFailureMessage: document.getElementById('operation-failure-message'),
+  retryFailureActionButton: document.getElementById('retry-failure-action-button'),
+  dismissFailureActionButton: document.getElementById('dismiss-failure-action-button'),
   summaryEditor: document.getElementById('summary-editor'),
   approveDraftButton: document.getElementById('approve-draft-button'),
   copySummaryButton: document.getElementById('copy-summary-button'),
@@ -204,6 +210,8 @@ function createEmptyDocumentSlot(slot) {
   };
 }
 
+const SUPPORTED_SOURCE_EXTENSIONS = new Set(['.pdf', '.docx', '.txt']);
+
 function formatExtension(extension) {
   if (!extension || extension === 'unknown') {
     return 'File type pending';
@@ -224,6 +232,37 @@ function formatFileSize(sizeBytes) {
   }
 
   return `${(numeric / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
+}
+
+function getPathExtension(filePath) {
+  const normalizedPath = String(filePath || '').trim().toLowerCase();
+  const lastDotIndex = normalizedPath.lastIndexOf('.');
+  const lastSlashIndex = Math.max(normalizedPath.lastIndexOf('/'), normalizedPath.lastIndexOf('\\'));
+
+  if (lastDotIndex === -1 || lastDotIndex < lastSlashIndex) {
+    return '';
+  }
+
+  return normalizedPath.slice(lastDotIndex);
+}
+
+function buildUnsupportedImportResult(filePath) {
+  const normalizedPath = String(filePath || '').trim();
+  const extension = getPathExtension(normalizedPath) || 'unknown';
+
+  return {
+    file: {
+      path: normalizedPath,
+      name: normalizedPath.split(/[\\/]/).pop() || normalizedPath || 'Unsupported file',
+      extension,
+      sizeBytes: 0,
+      importStatus: 'error'
+    },
+    text: '',
+    previewText: '',
+    warnings: [],
+    error: 'Unsupported file type. Only PDF, DOCX, and TXT files can be loaded as source documents.'
+  };
 }
 
 function getSlotDefaultNote(slot) {
@@ -1472,9 +1511,18 @@ function renderSummary() {
   renderCurrentContext();
   elements.summaryStatus.textContent = state.summaryStatus;
   elements.summaryNavStatus.textContent = state.summaryStatus;
-  elements.summaryMessage.textContent = state.generationError || state.summaryMessage;
+  elements.summaryMessage.textContent = state.lastFailure
+    ? state.summaryMessage
+    : (state.generationError || state.summaryMessage);
   elements.generationProgress.classList.toggle('is-hidden', !busy);
   elements.generationProgressLabel.textContent = state.progressLabel;
+  elements.operationFailurePanel.classList.toggle('is-hidden', !state.lastFailure);
+  elements.operationFailureTitle.textContent = state.lastFailure?.title || 'Action failed';
+  elements.operationFailureMessage.textContent = state.lastFailure?.message || '';
+  elements.retryFailureActionButton.classList.toggle('is-hidden', !state.lastFailure?.actionType);
+  elements.retryFailureActionButton.textContent = state.lastFailure?.actionLabel || 'Retry';
+  elements.retryFailureActionButton.disabled = busy || !state.lastFailure?.actionType;
+  elements.dismissFailureActionButton.disabled = busy;
   elements.toggleAnonymousModeButton.classList.toggle('is-on', state.outputMode === 'anonymous');
   elements.toggleAnonymousModeButton.setAttribute('aria-pressed', state.outputMode === 'anonymous' ? 'true' : 'false');
   elements.toggleAnonymousModeButton.disabled = busy;
@@ -1567,6 +1615,32 @@ function render() {
 function setSummaryMessage(message) {
   state.summaryMessage = message;
   state.generationError = '';
+  state.lastFailure = null;
+}
+
+function clearOperationFailure() {
+  state.generationError = '';
+  state.lastFailure = null;
+}
+
+function setOperationFailure({
+  status = 'Failed',
+  title = 'Action failed',
+  message = 'The last action could not be completed.',
+  actionType = '',
+  actionLabel = '',
+  actionPayload = null
+} = {}) {
+  state.summaryStatus = status;
+  state.generationError = '';
+  state.summaryMessage = 'Review the issue below and retry when ready.';
+  state.lastFailure = {
+    title,
+    message,
+    actionType,
+    actionLabel,
+    actionPayload
+  };
 }
 
 function formatDebugTrace() {
@@ -1619,6 +1693,56 @@ function invalidateSummary(message) {
   state.summaryStatus = 'No Draft';
   state.progressLabel = 'Generating summary with the configured model...';
   setSummaryMessage(message);
+}
+
+async function retryLastFailureAction() {
+  if (!state.lastFailure?.actionType || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  const { actionType, actionPayload } = state.lastFailure;
+  clearOperationFailure();
+  render();
+
+  switch (actionType) {
+    case 'generateSummary':
+      await generateSummary();
+      return;
+    case 'translateDraft':
+      await setOutputLanguage(actionPayload?.language || state.outputLanguage);
+      return;
+    case 'switchOutputMode':
+      await setOutputMode(actionPayload?.mode || state.outputMode);
+      return;
+    case 'shareByEmail':
+      await shareByEmail();
+      return;
+    case 'exportWordDraft':
+      await exportWordDraft();
+      return;
+    case 'refreshSourceFolder':
+      await refreshSourceFolder();
+      return;
+    case 'chooseSourceFolder':
+      await chooseSourceFolder();
+      return;
+    case 'openRecentWorkspace':
+      await openRecentWorkspace(actionPayload?.workspaceId || '');
+      return;
+    case 'importDocument':
+      if (actionPayload?.filePath && actionPayload?.slot) {
+        await importDocumentIntoSlot(actionPayload.filePath, actionPayload.slot);
+      }
+      return;
+    case 'openWordDraft':
+      await openWordDraft();
+      return;
+    case 'revealWordDraft':
+      await revealWordDraft();
+      return;
+    default:
+      return;
+  }
 }
 
 function clearCurrentContextProfile() {
@@ -1763,6 +1887,7 @@ async function setOutputMode(mode) {
   state.isSwitchingMode = true;
   state.lastExportPath = '';
   state.summaryStatus = 'Updating';
+  clearOperationFailure();
   state.summaryMessage = normalizedMode === 'anonymous'
     ? 'Applying anonymous mode to the hiring-manager output without rerunning candidate assessment.'
     : 'Restoring the named hiring-manager output without rerunning candidate assessment.';
@@ -1792,10 +1917,16 @@ async function setOutputMode(mode) {
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
-    state.summaryStatus = 'Failed';
-    state.generationError = error instanceof Error
-      ? error.message
-      : 'Unable to switch the hiring-manager output mode for the current draft.';
+    setOperationFailure({
+      status: 'Mode Update Failed',
+      title: 'Output mode update failed',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to switch the hiring-manager output mode for the current draft.',
+      actionType: 'switchOutputMode',
+      actionLabel: 'Retry Mode Switch',
+      actionPayload: { mode: normalizedMode }
+    });
   } finally {
     state.isSwitchingMode = false;
     state.progressLabel = 'Generating summary with the configured model...';
@@ -1849,7 +1980,7 @@ async function translateCurrentDraft(targetLanguage) {
   state.lastExportPath = '';
   state.isTranslating = true;
   state.pendingOutputLanguage = targetLanguage;
-  state.generationError = '';
+  clearOperationFailure();
   state.summaryStatus = 'Translating';
   state.summaryMessage = targetLanguage === 'zh'
     ? '正在将当前摘要与Hiring Manager Briefing翻译为中文，不重新执行CV/JD评估。'
@@ -1889,10 +2020,16 @@ async function translateCurrentDraft(targetLanguage) {
   } catch (error) {
     state.outputLanguage = previousLanguage;
     state.pendingOutputLanguage = '';
-    state.summaryStatus = 'Failed';
-    state.generationError = error instanceof Error
-      ? error.message
-      : 'Unable to translate the current draft.';
+    setOperationFailure({
+      status: 'Translation Failed',
+      title: 'Draft translation failed',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to translate the current draft.',
+      actionType: 'translateDraft',
+      actionLabel: 'Retry Translation',
+      actionPayload: { language: targetLanguage }
+    });
   } finally {
     state.isTranslating = false;
     state.progressLabel = 'Generating summary with the configured model...';
@@ -1910,7 +2047,7 @@ function approveDraft() {
   state.summaryMessage = state.outputMode === 'anonymous'
     ? 'Anonymous hiring-manager output approved. Summary copy, email handoff, and Word export are now enabled.'
     : 'Draft approved. Summary copy, email handoff, and Word export are now enabled.';
-  state.generationError = '';
+  clearOperationFailure();
   renderSummary();
   persistCurrentWorkspaceSnapshot();
 }
@@ -2132,7 +2269,7 @@ async function openRecentWorkspace(workspaceId) {
   state.isLoadingWorkspace = true;
   state.view = 'workbench';
   state.summaryStatus = 'Loading';
-  state.generationError = '';
+  clearOperationFailure();
   state.summaryMessage = 'Reopening the saved role workspace.';
   state.progressLabel = 'Loading the saved role workspace...';
   state.workbenchTab = 'summary';
@@ -2243,10 +2380,16 @@ async function openRecentWorkspace(workspaceId) {
         : 'Saved role workspace reopened. Load or generate as needed.');
     await refreshCurrentContextProfile();
   } catch (error) {
-    state.summaryStatus = 'Failed';
-    state.generationError = error instanceof Error
-      ? error.message
-      : 'Unable to reopen the selected recent workspace.';
+    setOperationFailure({
+      status: 'Workspace Issue',
+      title: 'Unable to reopen recent work',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to reopen the selected recent workspace.',
+      actionType: 'openRecentWorkspace',
+      actionLabel: 'Retry Reopen',
+      actionPayload: { workspaceId }
+    });
   } finally {
     state.isLoadingWorkspace = false;
     state.progressLabel = 'Generating summary with the configured model...';
@@ -2274,8 +2417,32 @@ async function importDocumentIntoSlot(filePath, slot) {
   );
   render();
 
-  const result = await window.recruitmentApi.importDocument({ filePath });
-  await applyImportedDocument(result, slot);
+  const extension = getPathExtension(filePath);
+
+  if (extension && !SUPPORTED_SOURCE_EXTENSIONS.has(extension)) {
+    await applyImportedDocument(buildUnsupportedImportResult(filePath), slot);
+    return;
+  }
+
+  try {
+    const result = await window.recruitmentApi.importDocument({ filePath });
+    await applyImportedDocument(result, slot);
+  } catch (error) {
+    setOperationFailure({
+      status: 'Import Issue',
+      title: slot === 'cv' ? 'Candidate CV import failed' : 'Role JD import failed',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to import the selected source file.',
+      actionType: 'importDocument',
+      actionLabel: 'Retry Import',
+      actionPayload: {
+        filePath,
+        slot
+      }
+    });
+    render();
+  }
 }
 
 function setDocumentSlotFromImportResult(result, slot, { invalidate = true } = {}) {
@@ -2369,6 +2536,7 @@ async function chooseSourceFolder() {
   }
 
   try {
+    clearOperationFailure();
     state.contextTab = 'workspace';
     const result = await window.recruitmentApi.pickSourceFolder();
 
@@ -2388,6 +2556,13 @@ async function chooseSourceFolder() {
         ? error.message
         : 'Unable to load the selected source folder.'
     };
+    setOperationFailure({
+      status: 'Workspace Issue',
+      title: 'Role workspace could not be opened',
+      message: state.sourceFolder.error,
+      actionType: 'chooseSourceFolder',
+      actionLabel: 'Open Folder Again'
+    });
     render();
   }
 }
@@ -2398,6 +2573,7 @@ async function refreshSourceFolder() {
   }
 
   try {
+    clearOperationFailure();
     state.contextTab = 'workspace';
     const result = await window.recruitmentApi.listSourceFolder({
       folderPath: state.sourceFolder.path
@@ -2414,6 +2590,13 @@ async function refreshSourceFolder() {
         ? error.message
         : 'Unable to refresh the selected source folder.'
     };
+    setOperationFailure({
+      status: 'Workspace Issue',
+      title: 'Role workspace refresh failed',
+      message: state.sourceFolder.error,
+      actionType: 'refreshSourceFolder',
+      actionLabel: 'Retry Refresh'
+    });
     render();
   }
 }
@@ -2514,6 +2697,21 @@ async function applyImportedDocument(result, slot) {
   render();
   await refreshCurrentContextProfile();
   await persistCurrentWorkspaceSnapshot();
+
+  if (result?.error) {
+    setOperationFailure({
+      status: 'Import Issue',
+      title: slot === 'cv' ? 'Candidate CV import issue' : 'Role JD import issue',
+      message: result.error,
+      actionType: 'importDocument',
+      actionLabel: 'Retry Import',
+      actionPayload: {
+        filePath: result?.file?.path || '',
+        slot
+      }
+    });
+    render();
+  }
 }
 
 async function chooseDocument(slot) {
@@ -2639,7 +2837,7 @@ async function generateSummary() {
   state.lastExportPath = '';
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.debugTrace = [];
-  state.generationError = '';
+  clearOperationFailure();
   state.summaryMessage = 'Generating the candidate summary and hiring-manager briefing review.';
   state.progressLabel = 'Generating candidate summary and hiring-manager briefing review...';
   state.workbenchTab = nextWorkbenchTab;
@@ -2681,11 +2879,16 @@ async function generateSummary() {
     render();
   } catch (error) {
     state.isGenerating = false;
-    state.summaryStatus = 'Failed';
     state.progressLabel = 'Generating summary with the configured model...';
-    state.generationError = error instanceof Error
-      ? error.message
-      : 'Unable to generate a summary. Review the settings and imported documents, then try again.';
+    setOperationFailure({
+      status: 'Generation Failed',
+      title: 'Summary generation failed',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to generate a summary. Review the settings and imported documents, then try again.',
+      actionType: 'generateSummary',
+      actionLabel: 'Retry Generation'
+    });
     state.workbenchTab = nextWorkbenchTab;
     render();
   }
@@ -2699,6 +2902,7 @@ async function copySummary() {
   await window.recruitmentApi.writeClipboard(state.summary);
   state.summaryStatus = 'Copied';
   state.summaryMessage = 'Summary copied to the clipboard.';
+  clearOperationFailure();
   renderSummary();
 }
 
@@ -2717,7 +2921,7 @@ async function shareByEmail() {
   ];
   state.summaryStatus = 'Preparing Email';
   state.isSharingEmail = true;
-  state.generationError = '';
+  clearOperationFailure();
   state.summaryMessage = 'Refreshing the briefing review and preparing the email draft.';
   state.progressLabel = 'Preparing the email draft...';
   state.workbenchTab = 'briefing';
@@ -2764,8 +2968,13 @@ async function shareByEmail() {
       state.debugTrace = parsed.debugTrace;
     }
 
-    state.summaryStatus = 'Failed';
-    state.generationError = parsed.userMessage || 'Unable to prepare the email draft.';
+    setOperationFailure({
+      status: 'Email Failed',
+      title: 'Email handoff failed',
+      message: parsed.userMessage || 'Unable to prepare the email draft.',
+      actionType: 'shareByEmail',
+      actionLabel: 'Retry Email'
+    });
     state.workbenchTab = 'summary';
   } finally {
     state.isSharingEmail = false;
@@ -2791,7 +3000,7 @@ async function exportWordDraft() {
   ];
   state.summaryStatus = 'Saving';
   state.isSavingWordDraft = true;
-  state.generationError = '';
+  clearOperationFailure();
   state.summaryMessage = 'Refreshing the briefing review and preparing the Word draft.';
   state.progressLabel = 'Preparing the hiring-manager Word draft...';
   state.workbenchTab = 'briefing';
@@ -2832,8 +3041,13 @@ async function exportWordDraft() {
       state.debugTrace = parsed.debugTrace;
     }
 
-    state.summaryStatus = 'Failed';
-    state.generationError = parsed.userMessage || 'Unable to export the hiring-manager Word draft.';
+    setOperationFailure({
+      status: 'Export Failed',
+      title: 'Word draft export failed',
+      message: parsed.userMessage || 'Unable to export the hiring-manager Word draft.',
+      actionType: 'exportWordDraft',
+      actionLabel: 'Retry Export'
+    });
     state.workbenchTab = 'briefing';
   } finally {
     state.isSavingWordDraft = false;
@@ -2851,13 +3065,19 @@ async function revealWordDraft() {
     await window.recruitmentApi.revealInFolder(state.lastExportPath);
     state.summaryStatus = 'Saved';
     state.summaryMessage = `Revealed saved Word draft in Finder: ${state.lastExportPath}.`;
+    clearOperationFailure();
     state.workbenchTab = 'summary';
     renderSummary();
   } catch (error) {
-    state.summaryStatus = 'Failed';
-    state.generationError = error instanceof Error
-      ? error.message
-      : 'Unable to reveal the saved Word draft.';
+    setOperationFailure({
+      status: 'Reveal Failed',
+      title: 'Saved draft could not be revealed',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to reveal the saved Word draft.',
+      actionType: 'revealWordDraft',
+      actionLabel: 'Retry Reveal'
+    });
     renderSummary();
   }
 }
@@ -2871,13 +3091,18 @@ async function openWordDraft() {
     await window.recruitmentApi.openPath(state.lastExportPath);
     state.summaryStatus = 'Saved';
     state.summaryMessage = `Opened hiring-manager Word draft: ${state.lastExportPath}.`;
-    state.generationError = '';
+    clearOperationFailure();
     renderSummary();
   } catch (error) {
-    state.summaryStatus = 'Failed';
-    state.generationError = error instanceof Error
-      ? error.message
-      : 'Unable to open the generated hiring-manager briefing.';
+    setOperationFailure({
+      status: 'Open Failed',
+      title: 'Saved draft could not be opened',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to open the generated hiring-manager briefing.',
+      actionType: 'openWordDraft',
+      actionLabel: 'Retry Open'
+    });
     renderSummary();
   }
 }
@@ -2906,7 +3131,7 @@ function resetWorkspace() {
   state.summaryMessage = state.settingsValidation.isValid
     ? 'Workspace reset. Import both documents to generate a new draft.'
     : 'Workspace reset. Save valid settings, then import both documents.';
-  state.generationError = '';
+  clearOperationFailure();
   state.templateLabel = 'Default Recruiter Profile Template';
   state.workbenchTab = 'summary';
   render();
@@ -3138,6 +3363,11 @@ elements.shareByEmailButton.addEventListener('click', shareByEmail);
 elements.exportWordDraftButton.addEventListener('click', exportWordDraft);
 elements.revealWordDraftButton.addEventListener('click', revealWordDraft);
 elements.openWordDraftButton.addEventListener('click', openWordDraft);
+elements.retryFailureActionButton.addEventListener('click', retryLastFailureAction);
+elements.dismissFailureActionButton.addEventListener('click', () => {
+  clearOperationFailure();
+  render();
+});
 elements.resetButton.addEventListener('click', resetWorkspace);
 elements.summaryEditor.addEventListener('input', () => {
   state.summary = readSummaryEditorText();

@@ -759,6 +759,15 @@ Current implemented slices inside Release 6:
   - draft generation / translation / render payload shape
   - clipboard text bounds
   - local shell open / reveal targets
+- the workbench now surfaces a shared structured failure panel with recruiter-facing retry actions for the main recoverable operations:
+  - source import
+  - role-workspace reopen / refresh
+  - summary generation
+  - draft translation
+  - email handoff
+  - Word export
+  - open / reveal saved draft
+- unsupported source files are rejected early in the workbench and surfaced as an explicit import issue instead of failing silently during manual or drag-and-drop intake
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
@@ -766,6 +775,7 @@ Acceptance criteria:
 - Legacy plaintext API key records are removed from disk the next time settings load.
 - Electron window security settings and renderer guardrails match the security baseline.
 - Main-process IPC handlers reject malformed or unexpectedly broad payloads before touching the filesystem, shell integration, or generation flows.
+- Primary workbench failures expose a structured recruiter-facing state and a retry path instead of only a raw error string.
 - Common user-facing failures are recoverable.
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.

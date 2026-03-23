@@ -16,6 +16,7 @@ const sampleWorkspaceJordanCvPath = path.join(sampleWorkspacePath, 'CV-jordan.tx
 const smallWorkspacePath = path.join(appRoot, 'samples', 'two-file-workspace');
 const smallWorkspaceJdPath = path.join(smallWorkspacePath, 'JD-small.txt');
 const smallWorkspaceCvPath = path.join(smallWorkspacePath, 'CV-small.txt');
+const unsupportedImagePath = path.join(appRoot, 'samples', 'unsupported-image.png');
 const defaultSystemPrompt =
   'You are an executive search recruiter assistant. Produce grounded, evidence-based candidate profile summaries for hiring managers. Do not invent facts. Call out strengths and gaps clearly.';
 
@@ -256,6 +257,48 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#cv-preview-text .cv-entry-title').first()).toHaveText(/Director of Product/i);
     await expect(page.locator('#cv-preview-text .cv-entry-meta').first()).toHaveText(/Atom Search Partners.*2022 - Present/i);
     await expect(page.locator('#cv-preview-text h3')).toHaveText(['Employment Experience', 'Education', 'Skills']);
+  });
+
+  test('shows a retryable failure panel for import issues and recovers on retry', async () => {
+    const retryImportPath = path.join(userDataPath, 'retry-import-cv.txt');
+    const sampleCvText = await fs.readFile(sampleCvPath, 'utf8');
+
+    await fs.rm(retryImportPath, { force: true });
+    await page.locator('#open-manual-context-tab').click();
+    await page.evaluate(async ({ slot, filePath }) => {
+      await window.__atomicgroupTest.importDocument(slot, filePath);
+    }, {
+      slot: 'cv',
+      filePath: retryImportPath
+    });
+
+    await expect(page.locator('#operation-failure-panel')).toBeVisible();
+    await expect(page.locator('#operation-failure-title')).toHaveText(/Candidate CV import failed/i);
+    await expect(page.locator('#retry-failure-action-button')).toHaveText('Retry Import');
+
+    await fs.writeFile(retryImportPath, sampleCvText, 'utf8');
+    await page.locator('#retry-failure-action-button').click();
+
+    await expect(page.locator('#operation-failure-panel')).toBeHidden();
+    await page.locator('#open-cv-tab').click();
+    await expect(page.locator('#cv-preview-status')).toHaveText(/Ready|Warning/i);
+    await expect(page.locator('#cv-preview-text')).toContainText('Jordan Lee');
+  });
+
+  test('shows a clear import issue for unsupported source files', async () => {
+    await page.locator('#open-manual-context-tab').click();
+    await page.evaluate(async ({ slot, filePath }) => {
+      await window.__atomicgroupTest.importDocument(slot, filePath);
+    }, {
+      slot: 'jd',
+      filePath: unsupportedImagePath
+    });
+
+    await expect(page.locator('#operation-failure-panel')).toBeVisible();
+    await expect(page.locator('#operation-failure-title')).toHaveText(/Role JD import issue/i);
+    await expect(page.locator('#operation-failure-message')).toContainText('Unsupported file type');
+    await page.locator('#dismiss-failure-action-button').click();
+    await expect(page.locator('#operation-failure-panel')).toBeHidden();
   });
 
   test('keeps long-form reading inside the main panels', async () => {

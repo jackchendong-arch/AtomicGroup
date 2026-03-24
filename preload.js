@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-contextBridge.exposeInMainWorld('recruitmentApi', {
+const recruitmentApi = Object.freeze({
   pickDocument(payload) {
     return ipcRenderer.invoke('document:pick', payload);
   },
@@ -12,9 +12,6 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
   },
   listSourceFolder(payload) {
     return ipcRenderer.invoke('workspace:list-source-folder', payload);
-  },
-  isE2ETestMode() {
-    return process.env.ATOMICGROUP_E2E_TEST_API === '1';
   },
   deriveWorkspaceProfile(payload) {
     return ipcRenderer.invoke('workspace:derive-profile', payload);
@@ -77,3 +74,11 @@ contextBridge.exposeInMainWorld('recruitmentApi', {
     return file?.path || webUtils.getPathForFile(file) || '';
   }
 });
+
+contextBridge.exposeInMainWorld('recruitmentApi', recruitmentApi);
+
+if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
+  contextBridge.exposeInMainWorld('__atomicgroupTestMode', Object.freeze({
+    enabled: true
+  }));
+}

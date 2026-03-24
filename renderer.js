@@ -85,6 +85,10 @@ const e2eFailureInjection = {
   refreshBriefingReview: ''
 };
 
+function isE2ETestModeEnabled() {
+  return Boolean(window.__atomicgroupTestMode?.enabled);
+}
+
 const elements = {
   workbenchView: document.getElementById('workbench-view'),
   settingsView: document.getElementById('settings-view'),
@@ -1813,7 +1817,7 @@ function splitErrorMessageAndTrace(message) {
 }
 
 function consumeE2EFailure(actionType) {
-  if (!window.recruitmentApi?.isE2ETestMode || !window.recruitmentApi.isE2ETestMode()) {
+  if (!isE2ETestModeEnabled()) {
     return '';
   }
 
@@ -2958,7 +2962,7 @@ async function autoLoadWorkspaceSelections({ loadJd = true, loadCv = true } = {}
 }
 
 function exposeE2ETestApi() {
-  if (!window.recruitmentApi?.isE2ETestMode || !window.recruitmentApi.isE2ETestMode()) {
+  if (!isE2ETestModeEnabled()) {
     return;
   }
 

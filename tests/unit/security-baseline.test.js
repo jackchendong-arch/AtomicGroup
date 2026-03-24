@@ -6,6 +6,7 @@ const path = require('node:path');
 const mainSource = fs.readFileSync(path.join(__dirname, '../../main.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8');
 const diagnosticLogSource = fs.readFileSync(path.join(__dirname, '../../services/diagnostic-log-service.js'), 'utf8');
+const preloadSource = fs.readFileSync(path.join(__dirname, '../../preload.js'), 'utf8');
 
 test('main window keeps explicit Electron hardening enabled', () => {
   assert.match(mainSource, /nodeIntegration:\s*false/);
@@ -44,4 +45,11 @@ test('main-process IPC routes through shared payload validation helpers', () => 
   assert.match(mainSource, /validateSummaryGenerationPayload/);
   assert.match(mainSource, /validateDraftTranslationPayload/);
   assert.match(mainSource, /validateShellPathPayload/);
+});
+
+test('preload bridge stays frozen and keeps test mode off the production API surface', () => {
+  assert.match(preloadSource, /const recruitmentApi = Object\.freeze\(\{/);
+  assert.match(preloadSource, /exposeInMainWorld\('recruitmentApi', recruitmentApi\)/);
+  assert.doesNotMatch(preloadSource, /isE2ETestMode\(\)/);
+  assert.match(preloadSource, /__atomicgroupTestMode/);
 });

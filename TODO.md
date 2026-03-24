@@ -262,6 +262,7 @@ Mark a release complete only when the work is:
   - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
   - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed on tab switch or summary blur
   - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
+  - preload now exposes a frozen production API surface and keeps E2E test-mode signaling on a separate test-only bridge instead of the main renderer API
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slices remove plaintext fallback, scrub old plaintext records, and add a session-only memory fallback with explicit support-code messaging, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
@@ -277,7 +278,7 @@ Mark a release complete only when the work is:
   - `webSecurity: true`
 - Add a strict renderer Content Security Policy and remove any need for unsafe script execution.
 - Block unexpected navigation and window creation in the main app surface; do not allow remote URLs to load inside the main app window.
-- Review preload-exposed IPC methods and narrow them to validated, least-privilege operations only. Current slice adds shared handler-side payload validation; a later pass can still reduce or refactor the exposed surface further if needed.
+- Review preload-exposed IPC methods and narrow them to validated, least-privilege operations only. Current slices add shared handler-side payload validation, freeze the exposed production bridge, and separate E2E test-mode signaling from the main renderer API; a later pass can still reduce or refactor the exposed surface further if needed.
 - Preserve minimum-necessary content rules for LLM calls and apply anonymous mode consistently to hiring-manager-facing briefing, email, and export outputs before sharing.
 - Add explicit clearing of in-memory workspace source content on workspace reset / close and when loading a new candidate.
 - Add structured error states for file import, extraction, generation, anonymization, and email handoff. Current slice now also covers secondary settings and briefing-review refresh failures.

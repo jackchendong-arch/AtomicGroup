@@ -776,6 +776,7 @@ Current implemented slices inside Release 6:
 - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
 - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed during tab changes or summary edits
 - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
+- preload now exposes a frozen production API surface and keeps E2E test-mode signaling on a separate test-only bridge instead of the main renderer API
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.

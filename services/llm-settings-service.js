@@ -20,8 +20,70 @@ function createDefaultSettings() {
     outputTemplatePath: '',
     outputTemplateName: '',
     outputTemplateExtension: '',
-    outputBriefingFolderPath: ''
+    outputBriefingFolderPath: '',
+    apiKeyStorageMode: 'empty',
+    apiKeyStatusCode: '',
+    apiKeyStatusMessage: ''
   };
+}
+
+function createApiKeyStatus({
+  storageMode = 'empty',
+  statusCode = '',
+  message = ''
+} = {}) {
+  return {
+    storageMode,
+    statusCode,
+    message
+  };
+}
+
+function applyApiKeyStatus(settings, apiKeyStatus = createApiKeyStatus()) {
+  return {
+    ...settings,
+    apiKeyStorageMode: apiKeyStatus.storageMode,
+    apiKeyStatusCode: apiKeyStatus.statusCode,
+    apiKeyStatusMessage: apiKeyStatus.message
+  };
+}
+
+function classifySecureStorageFailure({ phase = 'save', error, secureStorageAvailable = true } = {}) {
+  const message = String(error?.message || '').toLowerCase();
+
+  if (!secureStorageAvailable) {
+    return createApiKeyStatus({
+      storageMode: phase === 'save' ? 'session' : 'error',
+      statusCode: 'secure-storage-unavailable',
+      message: phase === 'save'
+        ? 'Secure OS-backed storage is unavailable. The API key will be used only for this session and must be entered again after restart. Support code: secure-storage-unavailable.'
+        : 'Secure OS-backed storage is unavailable, so the saved API key cannot be read on this device. Re-enter the API key or restore secure storage availability. Support code: secure-storage-unavailable.'
+    });
+  }
+
+  if (
+    message.includes('policy') ||
+    message.includes('denied') ||
+    message.includes('permission') ||
+    message.includes('not permitted') ||
+    message.includes('access')
+  ) {
+    return createApiKeyStatus({
+      storageMode: phase === 'save' ? 'session' : 'error',
+      statusCode: 'secure-storage-policy-blocked',
+      message: phase === 'save'
+        ? 'Secure credential storage is blocked by local policy or profile restrictions. The API key will be used only for this session. Support code: secure-storage-policy-blocked.'
+        : 'The saved API key cannot be read because secure credential storage is blocked by local policy or profile restrictions. Re-enter the API key or contact support. Support code: secure-storage-policy-blocked.'
+    });
+  }
+
+  return createApiKeyStatus({
+    storageMode: phase === 'save' ? 'session' : 'error',
+    statusCode: phase === 'save' ? 'secure-storage-write-failed' : 'secure-storage-read-failed',
+    message: phase === 'save'
+      ? 'Secure OS-backed storage failed while saving the API key. The API key will be used only for this session. Support code: secure-storage-write-failed.'
+      : 'The saved API key could not be read from secure storage. Re-enter the API key or contact support. Support code: secure-storage-read-failed.'
+  });
 }
 
 function normalizeNumericValue(value, fallback) {
@@ -57,7 +119,10 @@ function normalizeSettings(input = {}) {
     outputTemplatePath: String(merged.outputTemplatePath || '').trim(),
     outputTemplateName: String(merged.outputTemplateName || '').trim(),
     outputTemplateExtension: String(merged.outputTemplateExtension || '').trim().toLowerCase(),
-    outputBriefingFolderPath: String(merged.outputBriefingFolderPath || '').trim()
+    outputBriefingFolderPath: String(merged.outputBriefingFolderPath || '').trim(),
+    apiKeyStorageMode: String(merged.apiKeyStorageMode || 'empty').trim() || 'empty',
+    apiKeyStatusCode: String(merged.apiKeyStatusCode || '').trim(),
+    apiKeyStatusMessage: String(merged.apiKeyStatusMessage || '').trim()
   };
 }
 
@@ -82,7 +147,15 @@ function validateSettings(input = {}) {
   }
 
   if (!settings.apiKey) {
-    errors.push('API key is required.');
+    if (settings.apiKeyStatusCode === 'secure-storage-unavailable') {
+      errors.push('Secure storage is unavailable, so the saved API key could not be loaded. Re-enter the API key for this session.');
+    } else if (settings.apiKeyStatusCode === 'secure-storage-policy-blocked') {
+      errors.push('Secure credential storage is blocked by local policy or profile restrictions. Re-enter the API key or contact support.');
+    } else if (settings.apiKeyStatusCode === 'secure-storage-read-failed') {
+      errors.push('The saved API key could not be read from secure storage. Re-enter the API key or contact support.');
+    } else {
+      errors.push('API key is required.');
+    }
   }
 
   if (settings.temperature < 0 || settings.temperature > 2) {
@@ -156,6 +229,7 @@ class LlmSettingsStore {
     this.filePath = path.join(userDataPath, 'llm-settings.json');
     this.templateDirectoryPath = path.join(userDataPath, 'templates');
     this.safeStorage = safeStorage;
+    this.sessionApiKey = '';
   }
 
   isManagedTemplatePath(filePath) {
@@ -237,15 +311,53 @@ class LlmSettingsStore {
 
   decryptApiKey(record = {}) {
     if (record.apiKeyMode === 'encrypted' && record.apiKey) {
+      if (!this.hasSecureApiKeyStorage()) {
+        return {
+          apiKey: '',
+          apiKeyStatus: classifySecureStorageFailure({
+            phase: 'load',
+            secureStorageAvailable: false
+          })
+        };
+      }
+
       try {
         const decrypted = this.safeStorage.decryptString(Buffer.from(record.apiKey, 'base64'));
-        return decrypted;
-      } catch (_error) {
-        return '';
+        return {
+          apiKey: decrypted,
+          apiKeyStatus: createApiKeyStatus({
+            storageMode: 'persistent'
+          })
+        };
+      } catch (error) {
+        return {
+          apiKey: '',
+          apiKeyStatus: classifySecureStorageFailure({
+            phase: 'load',
+            error,
+            secureStorageAvailable: true
+          })
+        };
       }
     }
 
-    return '';
+    if (this.sessionApiKey) {
+      return {
+        apiKey: this.sessionApiKey,
+        apiKeyStatus: createApiKeyStatus({
+          storageMode: 'session',
+          statusCode: 'session-only',
+          message: 'The API key is available only for this running app session and must be entered again after restart. Support code: session-only.'
+        })
+      };
+    }
+
+    return {
+      apiKey: '',
+      apiKeyStatus: createApiKeyStatus({
+        storageMode: 'empty'
+      })
+    };
   }
 
   async load() {
@@ -263,13 +375,24 @@ class LlmSettingsStore {
         await fs.writeFile(this.filePath, JSON.stringify(sanitizedRecord, null, 2));
       }
 
-      return normalizeSettings({
+      const decrypted = this.decryptApiKey(parsed);
+
+      return applyApiKeyStatus(normalizeSettings({
         ...parsed,
-        apiKey: this.decryptApiKey(parsed)
-      });
+        apiKey: decrypted.apiKey
+      }), decrypted.apiKeyStatus);
     } catch (error) {
       if (error && error.code === 'ENOENT') {
-        return createDefaultSettings();
+        return applyApiKeyStatus(normalizeSettings({
+          ...createDefaultSettings(),
+          apiKey: this.sessionApiKey
+        }), this.sessionApiKey
+          ? createApiKeyStatus({
+            storageMode: 'session',
+            statusCode: 'session-only',
+            message: 'The API key is available only for this running app session and must be entered again after restart. Support code: session-only.'
+          })
+          : createApiKeyStatus({ storageMode: 'empty' }));
       }
 
       throw error;
@@ -280,7 +403,6 @@ class LlmSettingsStore {
     const validation = validateSettings(input);
     const existingSettings = await this.load();
     let settings = validation.settings;
-    const validationErrors = [...validation.errors];
 
     if (!validation.isValid) {
       return {
@@ -306,19 +428,24 @@ class LlmSettingsStore {
     }
 
     let encrypted;
+    let apiKeyStatus = createApiKeyStatus({
+      storageMode: settings.apiKey ? 'persistent' : 'empty'
+    });
 
     try {
       encrypted = this.encryptApiKey(settings.apiKey);
+      this.sessionApiKey = '';
     } catch (error) {
-      validationErrors.push(error instanceof Error ? error.message : 'Unable to save the API key securely.');
-      return {
-        settings,
-        validation: {
-          isValid: false,
-          errors: validationErrors,
-          settings
-        }
+      encrypted = {
+        apiKeyMode: 'empty',
+        apiKey: ''
       };
+      this.sessionApiKey = settings.apiKey;
+      apiKeyStatus = classifySecureStorageFailure({
+        phase: 'save',
+        error,
+        secureStorageAvailable: this.hasSecureApiKeyStorage()
+      });
     }
 
     const storedRecord = {
@@ -344,9 +471,15 @@ class LlmSettingsStore {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     await fs.writeFile(this.filePath, JSON.stringify(storedRecord, null, 2));
 
+    const returnedSettings = applyApiKeyStatus(settings, apiKeyStatus);
+
     return {
-      settings,
-      validation
+      settings: returnedSettings,
+      validation: {
+        ...validation,
+        settings: returnedSettings
+      },
+      apiKeyStatus
     };
   }
 }

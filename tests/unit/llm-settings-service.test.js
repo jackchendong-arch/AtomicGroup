@@ -120,10 +120,16 @@ test('LlmSettingsStore rejects saving API keys when secure storage is unavailabl
   };
 
   const result = await store.save(settings);
+  const persisted = JSON.parse(await fs.readFile(path.join(userDataPath, 'llm-settings.json'), 'utf8'));
+  const loaded = await store.load();
 
-  assert.equal(result.validation.isValid, false);
-  assert.match(result.validation.errors.join(' '), /cannot be saved/i);
-  await assert.rejects(() => fs.access(path.join(userDataPath, 'llm-settings.json')), /ENOENT/);
+  assert.equal(result.validation.isValid, true);
+  assert.equal(result.settings.apiKeyStorageMode, 'session');
+  assert.equal(result.apiKeyStatus.statusCode, 'secure-storage-unavailable');
+  assert.equal(persisted.apiKeyMode, 'empty');
+  assert.equal(persisted.apiKey, '');
+  assert.equal(loaded.apiKey, 'test-only-placeholder');
+  assert.equal(loaded.apiKeyStorageMode, 'session');
 
   await fs.rm(userDataPath, { recursive: true, force: true });
 });
@@ -158,6 +164,43 @@ test('LlmSettingsStore strips any legacy plaintext API key from disk on load', a
   assert.equal(loaded.apiKey, '');
   assert.equal(sanitized.apiKeyMode, 'empty');
   assert.equal(sanitized.apiKey, '');
+
+  await fs.rm(userDataPath, { recursive: true, force: true });
+});
+
+test('LlmSettingsStore reports a secure-storage read failure when encrypted keys cannot be decrypted', async () => {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-llm-settings-'));
+  const filePath = path.join(userDataPath, 'llm-settings.json');
+  await fs.writeFile(filePath, JSON.stringify({
+    ...createDefaultSettings(),
+    apiKeyMode: 'encrypted',
+    apiKey: Buffer.from('enc:test-only-placeholder', 'utf8').toString('base64')
+  }, null, 2));
+
+  const store = new LlmSettingsStore({
+    userDataPath,
+    safeStorage: {
+      isEncryptionAvailable() {
+        return true;
+      },
+      encryptString(value) {
+        return Buffer.from(`enc:${value}`, 'utf8');
+      },
+      decryptString() {
+        throw new Error('Access denied by policy');
+      }
+    }
+  });
+
+  const loaded = await store.load();
+  const validation = validateSettings(loaded);
+
+  assert.equal(loaded.apiKey, '');
+  assert.equal(loaded.apiKeyStorageMode, 'error');
+  assert.equal(loaded.apiKeyStatusCode, 'secure-storage-policy-blocked');
+  assert.match(loaded.apiKeyStatusMessage, /Support code: secure-storage-policy-blocked/i);
+  assert.equal(validation.isValid, false);
+  assert.match(validation.errors.join(' '), /policy|profile restrictions/i);
 
   await fs.rm(userDataPath, { recursive: true, force: true });
 });

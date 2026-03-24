@@ -751,6 +751,8 @@ Current implemented slices inside Release 6:
 - deterministic Playwright Electron end-to-end coverage for the current recruiter workflow using a local mock-generation mode so generation, translation, recent-work reopen, and role-workspace switching can be tested without live provider dependencies
 - a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
 - settings persistence no longer writes plaintext API keys; saving now requires secure OS-backed encryption availability, and legacy plaintext key records are scrubbed from disk on load
+- when secure storage cannot persist the API key, the app now saves non-secret configuration and keeps the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback
+- secure-storage load failures now distinguish unavailable storage, policy/profile blocking, and saved-key read failures so the recruiter can report the right support code
 - when a new candidate CV or role JD begins loading, the previous source slot and derived workspace draft state are cleared immediately so old source content does not linger in renderer memory while the replacement file imports
 - higher-risk preload/IPC operations now validate payloads in the main process before side effects occur, including:
   - `cv` / `jd` slot selection
@@ -773,11 +775,13 @@ Current implemented slices inside Release 6:
 - privacy-safe diagnostics now include operation run IDs and normalized error categories for summary generation, translation, export, and email support traces
 - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
 - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed during tab changes or summary edits
+- switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
 - The LLM API key is not stored in plaintext files or file-based fallback config.
 - Legacy plaintext API key records are removed from disk the next time settings load.
+- If secure storage is unavailable or blocked, the app does not fall back to plaintext; it either uses a session-only key or asks the recruiter to re-enter the key with a clear support code.
 - Electron window security settings and renderer guardrails match the security baseline.
 - Main-process IPC handlers reject malformed or unexpectedly broad payloads before touching the filesystem, shell integration, or generation flows.
 - Primary workbench failures expose a structured recruiter-facing state and a retry path instead of only a raw error string.

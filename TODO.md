@@ -247,6 +247,8 @@ Mark a release complete only when the work is:
   - deterministic Playwright Electron E2E coverage for import, generation, language switching, source evidence, recent-work reopen, and role-workspace candidate switching using a local mock-generation mode instead of live provider calls
   - human-observable Playwright run mode via `npm run test:e2e:observe` so end-to-end flows can be watched at slowed-down interaction speed during manual review
   - API-key persistence no longer falls back to plaintext storage; settings save now requires secure OS-backed encryption availability, and any legacy plaintext key record is scrubbed from disk on load
+  - when secure storage cannot persist the API key, settings now save non-secret configuration and keep the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback
+  - secure-storage read failures now surface clearer settings errors that distinguish unavailable storage, policy/profile blocking, and saved-key read failure cases
   - generating while the recruiter is on `Hiring Manager Briefing` now refreshes that briefing view in place instead of leaving stale content until another tab navigation occurs
   - when a new CV or JD starts loading, the previous slot content, current candidate context, and derived draft state are cleared immediately instead of lingering in memory until the replacement import finishes
   - role-workspace selector recovery hardened for two-file folders so switching the JD to the wrong file and then back again also reloads the implied CV selection and refreshes current-candidate context correctly
@@ -259,7 +261,8 @@ Mark a release complete only when the work is:
   - privacy-safe diagnostics now include per-operation run IDs and error categories for summary generation, translation, export, and email handoff support traces
   - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
   - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed on tab switch or summary blur
-- Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slice removes plaintext fallback and scrubs old plaintext records, but a fuller credential-store-only design remains open.
+  - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
+- Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slices remove plaintext fallback, scrub old plaintext records, and add a session-only memory fallback with explicit support-code messaging, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
   - file names or file hashes

@@ -1493,11 +1493,82 @@ function renderSlot(slot) {
 
 function renderSettingsStatus() {
   const isValid = Boolean(state.settingsValidation?.isValid);
+  const apiKeyStorageMode = state.settings?.apiKeyStorageMode || 'empty';
+
+  if (isValid && apiKeyStorageMode === 'session') {
+    elements.settingsStatusChip.textContent = 'Session Only';
+    elements.settingsStatusMessage.textContent = state.settings?.apiKeyStatusMessage ||
+      'The API key is available only for this session and must be entered again after restart.';
+    return;
+  }
 
   elements.settingsStatusChip.textContent = isValid ? 'Ready' : 'Settings Required';
   elements.settingsStatusMessage.textContent = isValid
     ? 'Settings saved. Summary generation is ready.'
     : (state.settingsValidation.errors[0] || 'Save a valid provider configuration before generating summaries.');
+}
+
+function getSettingsIssuePresentation(apiKeyStatus = {}, fallbackActionType = '') {
+  const statusCode = String(apiKeyStatus?.statusCode || '').trim();
+  const message = String(apiKeyStatus?.message || '').trim();
+
+  if (!statusCode || ['empty', 'persistent'].includes(statusCode)) {
+    return null;
+  }
+
+  if (statusCode === 'session-only' || statusCode === 'secure-storage-unavailable') {
+    return {
+      title: 'API key is session-only',
+      message,
+      actionType: fallbackActionType,
+      actionLabel: fallbackActionType === 'saveSettings' ? 'Retry Save' : (fallbackActionType ? 'Retry' : '')
+    };
+  }
+
+  if (statusCode === 'secure-storage-policy-blocked') {
+    return {
+      title: 'Secure storage is blocked',
+      message,
+      actionType: fallbackActionType,
+      actionLabel: fallbackActionType === 'loadConfiguration' ? 'Retry Load' : 'Retry Save'
+    };
+  }
+
+  if (statusCode === 'secure-storage-read-failed') {
+    return {
+      title: 'Saved API key could not be read',
+      message,
+      actionType: fallbackActionType || 'loadConfiguration',
+      actionLabel: 'Retry Load'
+    };
+  }
+
+  if (statusCode === 'secure-storage-write-failed') {
+    return {
+      title: 'API key could not be saved persistently',
+      message,
+      actionType: fallbackActionType || 'saveSettings',
+      actionLabel: 'Retry Save'
+    };
+  }
+
+  return {
+    title: 'Settings issue',
+    message,
+    actionType: fallbackActionType,
+    actionLabel: fallbackActionType ? 'Retry' : ''
+  };
+}
+
+function applySettingsApiKeyStatus(apiKeyStatus, fallbackActionType = '') {
+  const issue = getSettingsIssuePresentation(apiKeyStatus, fallbackActionType);
+
+  if (!issue) {
+    clearSettingsIssue();
+    return;
+  }
+
+  setSettingsIssue(issue);
 }
 
 function renderSettingsIssue() {
@@ -2220,7 +2291,7 @@ async function loadConfiguration({ forceSettingsView = false } = {}) {
     const result = await window.recruitmentApi.loadLlmSettings();
     state.settings = result.settings;
     state.settingsValidation = result.validation;
-    clearSettingsIssue();
+    applySettingsApiKeyStatus(result.apiKeyStatus, 'loadConfiguration');
 
     if (forceSettingsView || !result.validation.isValid) {
       state.view = 'settings';
@@ -2253,7 +2324,7 @@ async function saveSettings() {
 
     state.settings = result.settings;
     state.settingsValidation = result.validation;
-    clearSettingsIssue();
+    applySettingsApiKeyStatus(result.apiKeyStatus, 'saveSettings');
 
     if (!result.validation.isValid) {
       state.view = 'settings';
@@ -2620,7 +2691,36 @@ async function clearRecentWorkspaces() {
   render();
 }
 
-async function importDocumentIntoSlot(filePath, slot) {
+function findMatchingRecentWorkspaceForCurrentSelection() {
+  const sourceFolderPath = String(state.sourceFolder.path || '').trim();
+  const selectedJdPath = String(state.sourceFolder.selectedJdPath || '').trim();
+  const selectedCvPath = String(state.sourceFolder.selectedCvPath || '').trim();
+  const loadedJdPath = String(state.documents.jd.file?.path || selectedJdPath).trim();
+  const loadedCvPath = String(state.documents.cv.file?.path || selectedCvPath).trim();
+
+  if (!sourceFolderPath || !loadedJdPath || !loadedCvPath) {
+    return null;
+  }
+
+  return state.recentWorkspaces.find((workspace) =>
+    String(workspace.sourceFolderPath || '').trim() === sourceFolderPath &&
+    String(workspace.loadedJdPath || workspace.selectedJdPath || '').trim() === loadedJdPath &&
+    String(workspace.loadedCvPath || workspace.selectedCvPath || '').trim() === loadedCvPath
+  ) || null;
+}
+
+async function restoreMatchingWorkspaceSelectionSnapshot() {
+  const match = findMatchingRecentWorkspaceForCurrentSelection();
+
+  if (!match || !match.workspaceId || match.workspaceId === state.currentWorkspaceId) {
+    return false;
+  }
+
+  await openRecentWorkspace(match.workspaceId);
+  return true;
+}
+
+async function importDocumentIntoSlot(filePath, slot, { persistSnapshot = true } = {}) {
   beginSensitiveSourceReload(
     slot,
     slot === 'cv'
@@ -2632,13 +2732,13 @@ async function importDocumentIntoSlot(filePath, slot) {
   const extension = getPathExtension(filePath);
 
   if (extension && !SUPPORTED_SOURCE_EXTENSIONS.has(extension)) {
-    await applyImportedDocument(buildUnsupportedImportResult(filePath), slot);
+    await applyImportedDocument(buildUnsupportedImportResult(filePath), slot, { persistSnapshot });
     return;
   }
 
   try {
     const result = await window.recruitmentApi.importDocument({ filePath });
-    await applyImportedDocument(result, slot);
+    await applyImportedDocument(result, slot, { persistSnapshot });
   } catch (error) {
     setOperationFailure({
       status: 'Import Issue',
@@ -2823,7 +2923,9 @@ async function loadSelectedWorkspaceJd() {
   }
 
   state.contextTab = 'workspace';
-  await importDocumentIntoSlot(state.sourceFolder.selectedJdPath, 'jd');
+  await importDocumentIntoSlot(state.sourceFolder.selectedJdPath, 'jd', {
+    persistSnapshot: false
+  });
 }
 
 async function loadSelectedWorkspaceCv() {
@@ -2836,7 +2938,9 @@ async function loadSelectedWorkspaceCv() {
   }
 
   state.contextTab = 'workspace';
-  await importDocumentIntoSlot(state.sourceFolder.selectedCvPath, 'cv');
+  await importDocumentIntoSlot(state.sourceFolder.selectedCvPath, 'cv', {
+    persistSnapshot: false
+  });
 }
 
 async function autoLoadWorkspaceSelections({ loadJd = true, loadCv = true } = {}) {
@@ -2909,11 +3013,14 @@ function exposeE2ETestApi() {
   };
 }
 
-async function applyImportedDocument(result, slot) {
+async function applyImportedDocument(result, slot, { persistSnapshot = true } = {}) {
   setDocumentSlotFromImportResult(result, slot);
   render();
   await refreshCurrentContextProfile();
-  await persistCurrentWorkspaceSnapshot();
+
+  if (persistSnapshot) {
+    await persistCurrentWorkspaceSnapshot();
+  }
 
   if (result?.error) {
     setOperationFailure({
@@ -3576,14 +3683,24 @@ elements.sourceFolderJdSelect.addEventListener('change', async () => {
     loadCv: previousSelectedCvPath !== state.sourceFolder.selectedCvPath
       || state.documents.cv.file?.path !== state.sourceFolder.selectedCvPath
   });
-  await persistCurrentWorkspaceSnapshot();
+
+  const restored = await restoreMatchingWorkspaceSelectionSnapshot();
+
+  if (!restored) {
+    await persistCurrentWorkspaceSnapshot();
+  }
 });
 elements.sourceFolderCvSelect.addEventListener('change', async () => {
   const nextPath = elements.sourceFolderCvSelect.value;
   setSelectedSourceFolderCvPath(nextPath);
   render();
   await autoLoadWorkspaceSelections({ loadJd: false, loadCv: true });
-  await persistCurrentWorkspaceSnapshot();
+
+  const restored = await restoreMatchingWorkspaceSelectionSnapshot();
+
+  if (!restored) {
+    await persistCurrentWorkspaceSnapshot();
+  }
 });
 elements.recentWorkList.addEventListener('click', (event) => {
   const trigger = event.target.closest('[data-workspace-id]');

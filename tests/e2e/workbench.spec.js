@@ -269,6 +269,24 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#summary-editor')).not.toContainText('Alex Tan');
   });
 
+  test('restores a previously generated candidate draft when switching back inside the same role workspace', async () => {
+    await openSourceFolderViaTestApi(page, sampleWorkspacePath);
+
+    await page.locator('#source-folder-cv-select').selectOption(sampleWorkspaceAlexCvPath);
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#summary-editor')).toContainText('Alex Tan');
+
+    await page.locator('#source-folder-cv-select').selectOption(sampleWorkspaceJordanCvPath);
+    await expect(page.locator('#summary-status')).toHaveText('No Draft');
+    await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
+
+    await page.locator('#source-folder-cv-select').selectOption(sampleWorkspaceAlexCvPath);
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#current-candidate-name')).toContainText('Alex Tan');
+    await expect(page.locator('#summary-editor')).toContainText('Alex Tan');
+  });
+
   test('recovers correctly when a two-file workspace is temporarily assigned into the wrong JD/CV slots', async () => {
     await openSourceFolderViaTestApi(page, smallWorkspacePath);
 

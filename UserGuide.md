@@ -182,10 +182,14 @@ Typical cases include:
 
 When available, use the retry button in that panel to rerun the failed action directly.
 
+If secure storage cannot save your API key, the app now keeps the key only for the current session instead of falling back to plaintext storage. The settings page will show a clear support code such as `secure-storage-unavailable`, `secure-storage-policy-blocked`, or `secure-storage-read-failed` so you know what to report.
+
 After generation or translation, a `Review Checks` panel may also appear in the summary review. Use it to catch incomplete sections, weak evidence coverage, generic candidate/role labels, or overconfident wording before approval or sharing.
 
 ## Recent Work
 Open the `Recent Work` tab to reopen prior role/candidate workspaces.
+
+When you switch back to a candidate you have already generated inside the same role workspace, the app now restores that saved draft automatically instead of making you reopen it manually from `Recent Work`.
 
 When reopened, the app restores:
 - source folder

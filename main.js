@@ -934,7 +934,12 @@ ipcMain.handle('llm:load-settings', async () => {
 
   return {
     settings,
-    validation
+    validation,
+    apiKeyStatus: {
+      storageMode: settings.apiKeyStorageMode || 'empty',
+      statusCode: settings.apiKeyStatusCode || '',
+      message: settings.apiKeyStatusMessage || ''
+    }
   };
 });
 

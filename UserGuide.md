@@ -173,6 +173,8 @@ When a recoverable problem happens, the main stage now shows a structured failur
 Typical cases include:
 - source import problems
 - role workspace reopen / refresh problems
+- settings load/save or template/output-folder picker problems
+- hiring-manager briefing refresh problems
 - summary generation failures
 - translation failures
 - email handoff failures

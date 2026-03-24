@@ -256,6 +256,9 @@ Mark a release complete only when the work is:
   - generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
   - current-candidate context no longer falls back to file-derived candidate or role labels when the loaded source assignment is weak or incorrect
   - import results and summary/translation diagnostics now record basic operation timings so support reviews can see import, extraction, and generation/translation durations without raw candidate-content logging
+  - privacy-safe diagnostics now include per-operation run IDs and error categories for summary generation, translation, export, and email handoff support traces
+  - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
+  - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed on tab switch or summary blur
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slice removes plaintext fallback and scrubs old plaintext records, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
 - Replace current summary/export debug traces with privacy-safe diagnostics that record only:
@@ -274,8 +277,8 @@ Mark a release complete only when the work is:
 - Review preload-exposed IPC methods and narrow them to validated, least-privilege operations only. Current slice adds shared handler-side payload validation; a later pass can still reduce or refactor the exposed surface further if needed.
 - Preserve minimum-necessary content rules for LLM calls and apply anonymous mode consistently to hiring-manager-facing briefing, email, and export outputs before sharing.
 - Add explicit clearing of in-memory workspace source content on workspace reset / close and when loading a new candidate.
-- Add structured error states for file import, extraction, generation, anonymization, and email handoff. Current slice covers the primary recruiter actions in the workbench; remaining secondary settings/review edge cases can still be tightened.
-- Add recruiter-friendly retry actions for recoverable failures. Current slice covers import, workspace reopen/refresh, generation, translation, email handoff, export, and open/reveal draft actions.
+- Add structured error states for file import, extraction, generation, anonymization, and email handoff. Current slice now also covers secondary settings and briefing-review refresh failures.
+- Add recruiter-friendly retry actions for recoverable failures. Current slice now covers import, workspace reopen/refresh, settings load/save/template picks, briefing review refresh, generation, translation, email handoff, export, and open/reveal draft actions.
 - Add local logging that is useful for diagnosing extraction and generation problems.
 - Add output quality checks for any remaining edge cases where generated summaries or briefings are structurally incomplete. Current slice now flags the main missing-section and weak-evidence cases in the review UI.
 - Add safeguards against overconfident unsupported claims in the generated profile. Current slice now flags strong certainty language and generic source-derived labels; future tightening can still deepen those heuristics.

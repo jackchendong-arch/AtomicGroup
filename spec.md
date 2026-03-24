@@ -770,6 +770,9 @@ Current implemented slices inside Release 6:
 - unsupported source files are rejected early in the workbench and surfaced as an explicit import issue instead of failing silently during manual or drag-and-drop intake
 - generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
 - import results and summary/translation diagnostics now record basic timing metrics so support reviews can see import, extraction, and generation/translation duration without exposing raw candidate content
+- privacy-safe diagnostics now include operation run IDs and normalized error categories for summary generation, translation, export, and email support traces
+- settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
+- hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed during tab changes or summary edits
 
 Acceptance criteria:
 - The app no longer persists raw CV/JD text or generated candidate content to debug logs by default.
@@ -778,6 +781,7 @@ Acceptance criteria:
 - Electron window security settings and renderer guardrails match the security baseline.
 - Main-process IPC handlers reject malformed or unexpectedly broad payloads before touching the filesystem, shell integration, or generation flows.
 - Primary workbench failures expose a structured recruiter-facing state and a retry path instead of only a raw error string.
+- Secondary settings and review-refresh failures also expose a recruiter-facing state and retry path instead of being silently swallowed or reduced to passive status text.
 - Common user-facing failures are recoverable.
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.

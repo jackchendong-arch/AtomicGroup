@@ -71,10 +71,19 @@ const state = {
   summaryMessage: 'Load the CV and JD, then generate the summary.',
   generationError: '',
   lastFailure: null,
+  settingsIssue: null,
   templateLabel: 'Default Recruiter Profile Template'
 };
 
 let currentContextProfileRequestId = 0;
+const e2eFailureInjection = {
+  loadConfiguration: '',
+  saveSettings: '',
+  chooseReferenceTemplate: '',
+  chooseWordTemplate: '',
+  chooseBriefingOutputFolder: '',
+  refreshBriefingReview: ''
+};
 
 const elements = {
   workbenchView: document.getElementById('workbench-view'),
@@ -110,6 +119,11 @@ const elements = {
   llmSettingsPanel: document.getElementById('llm-settings-panel'),
   summaryGuidanceSettingsPanel: document.getElementById('summary-guidance-settings-panel'),
   wordTemplateSettingsPanel: document.getElementById('word-template-settings-panel'),
+  settingsIssuePanel: document.getElementById('settings-issue-panel'),
+  settingsIssueTitle: document.getElementById('settings-issue-title'),
+  settingsIssueMessage: document.getElementById('settings-issue-message'),
+  retrySettingsIssueButton: document.getElementById('retry-settings-issue-button'),
+  dismissSettingsIssueButton: document.getElementById('dismiss-settings-issue-button'),
   chooseWordTemplateButton: document.getElementById('choose-word-template-button'),
   clearWordTemplateButton: document.getElementById('clear-word-template-button'),
   chooseBriefingOutputFolderButton: document.getElementById('choose-briefing-output-folder-button'),
@@ -1486,6 +1500,17 @@ function renderSettingsStatus() {
     : (state.settingsValidation.errors[0] || 'Save a valid provider configuration before generating summaries.');
 }
 
+function renderSettingsIssue() {
+  const hasSettingsIssue = Boolean(state.settingsIssue);
+
+  elements.settingsIssuePanel.classList.toggle('is-hidden', !hasSettingsIssue);
+  elements.settingsIssueTitle.textContent = state.settingsIssue?.title || 'Settings issue';
+  elements.settingsIssueMessage.textContent = state.settingsIssue?.message || '';
+  elements.retrySettingsIssueButton.classList.toggle('is-hidden', !state.settingsIssue?.actionType);
+  elements.retrySettingsIssueButton.textContent = state.settingsIssue?.actionLabel || 'Retry';
+  elements.retrySettingsIssueButton.disabled = Boolean(state.settingsIssue?.actionType) === false;
+}
+
 function renderSettingsForm() {
   if (!state.settings) {
     return;
@@ -1623,6 +1648,7 @@ function render() {
   renderRecentWork();
   renderSettingsForm();
   renderSettingsStatus();
+  renderSettingsIssue();
   renderCurrentContext();
   renderSummary();
   renderBriefing();
@@ -1641,6 +1667,26 @@ function setSummaryMessage(message) {
 function clearOperationFailure() {
   state.generationError = '';
   state.lastFailure = null;
+}
+
+function clearSettingsIssue() {
+  state.settingsIssue = null;
+}
+
+function setSettingsIssue({
+  title = 'Settings issue',
+  message = 'The settings action could not be completed.',
+  actionType = '',
+  actionLabel = '',
+  actionPayload = null
+} = {}) {
+  state.settingsIssue = {
+    title,
+    message,
+    actionType,
+    actionLabel,
+    actionPayload
+  };
 }
 
 function setOperationFailure({
@@ -1693,6 +1739,20 @@ function splitErrorMessageAndTrace(message) {
       .map((line) => line.replace(/^- /, '').trim())
       .filter(Boolean)
   };
+}
+
+function consumeE2EFailure(actionType) {
+  if (!window.recruitmentApi?.isE2ETestMode || !window.recruitmentApi.isE2ETestMode()) {
+    return '';
+  }
+
+  const injectedMessage = e2eFailureInjection[actionType] || '';
+
+  if (injectedMessage) {
+    e2eFailureInjection[actionType] = '';
+  }
+
+  return injectedMessage;
 }
 
 function invalidateSummary(message) {
@@ -1759,6 +1819,39 @@ async function retryLastFailureAction() {
       return;
     case 'revealWordDraft':
       await revealWordDraft();
+      return;
+    case 'refreshBriefingReview':
+      await refreshBriefingReview();
+      return;
+    default:
+      return;
+  }
+}
+
+async function retrySettingsIssueAction() {
+  if (!state.settingsIssue?.actionType) {
+    return;
+  }
+
+  const { actionType } = state.settingsIssue;
+  clearSettingsIssue();
+  render();
+
+  switch (actionType) {
+    case 'loadConfiguration':
+      await loadConfiguration({ forceSettingsView: true });
+      return;
+    case 'saveSettings':
+      await saveSettings();
+      return;
+    case 'chooseReferenceTemplate':
+      await chooseReferenceTemplate();
+      return;
+    case 'chooseWordTemplate':
+      await chooseWordTemplate();
+      return;
+    case 'chooseBriefingOutputFolder':
+      await chooseBriefingOutputFolder();
       return;
     default:
       return;
@@ -2116,52 +2209,109 @@ function applyProviderPreset(providerId) {
 }
 
 async function loadConfiguration({ forceSettingsView = false } = {}) {
-  state.providers = await window.recruitmentApi.getLlmProviders();
-  const result = await window.recruitmentApi.loadLlmSettings();
-  state.settings = result.settings;
-  state.settingsValidation = result.validation;
+  try {
+    const injectedFailure = consumeE2EFailure('loadConfiguration');
 
-  if (forceSettingsView || !result.validation.isValid) {
+    if (injectedFailure) {
+      throw new Error(injectedFailure);
+    }
+
+    state.providers = await window.recruitmentApi.getLlmProviders();
+    const result = await window.recruitmentApi.loadLlmSettings();
+    state.settings = result.settings;
+    state.settingsValidation = result.validation;
+    clearSettingsIssue();
+
+    if (forceSettingsView || !result.validation.isValid) {
+      state.view = 'settings';
+    }
+  } catch (error) {
     state.view = 'settings';
+    setSettingsIssue({
+      title: 'Settings could not be loaded',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to load the current configuration.',
+      actionType: 'loadConfiguration',
+      actionLabel: 'Retry Load'
+    });
   }
 
   render();
 }
 
 async function saveSettings() {
-  const payload = buildSettingsPayloadFromForm();
-  const result = await window.recruitmentApi.saveLlmSettings(payload);
+  try {
+    const injectedFailure = consumeE2EFailure('saveSettings');
 
-  state.settings = result.settings;
-  state.settingsValidation = result.validation;
+    if (injectedFailure) {
+      throw new Error(injectedFailure);
+    }
 
-  if (!result.validation.isValid) {
+    const payload = buildSettingsPayloadFromForm();
+    const result = await window.recruitmentApi.saveLlmSettings(payload);
+
+    state.settings = result.settings;
+    state.settingsValidation = result.validation;
+    clearSettingsIssue();
+
+    if (!result.validation.isValid) {
+      state.view = 'settings';
+      state.settingsTab = result.validation.errors.some((error) => /reference template/i.test(error))
+        ? 'summary-guidance'
+        : (result.validation.errors.some((error) => /output template|word/i.test(error))
+          ? 'word-template'
+          : 'llm');
+    }
+  } catch (error) {
     state.view = 'settings';
-    state.settingsTab = result.validation.errors.some((error) => /reference template/i.test(error))
-      ? 'summary-guidance'
-      : (result.validation.errors.some((error) => /output template|word/i.test(error))
-        ? 'word-template'
-        : 'llm');
+    setSettingsIssue({
+      title: 'Settings could not be saved',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to save the current configuration.',
+      actionType: 'saveSettings',
+      actionLabel: 'Retry Save'
+    });
   }
 
   render();
 }
 
 async function chooseReferenceTemplate() {
-  const result = await window.recruitmentApi.pickReferenceTemplate();
+  try {
+    const injectedFailure = consumeE2EFailure('chooseReferenceTemplate');
 
-  if (!result || !state.settings) {
-    return;
+    if (injectedFailure) {
+      throw new Error(injectedFailure);
+    }
+
+    const result = await window.recruitmentApi.pickReferenceTemplate();
+
+    if (!result || !state.settings) {
+      return;
+    }
+
+    state.settings = {
+      ...state.settings,
+      referenceTemplateMode: 'local-file',
+      referenceTemplatePath: result.path,
+      referenceTemplateName: result.name,
+      referenceTemplateExtension: result.extension
+    };
+    clearSettingsIssue();
+    state.settingsTab = 'summary-guidance';
+  } catch (error) {
+    setSettingsIssue({
+      title: 'Reference template could not be selected',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to pick the Markdown guidance template.',
+      actionType: 'chooseReferenceTemplate',
+      actionLabel: 'Retry Pick'
+    });
   }
 
-  state.settings = {
-    ...state.settings,
-    referenceTemplateMode: 'local-file',
-    referenceTemplatePath: result.path,
-    referenceTemplateName: result.name,
-    referenceTemplateExtension: result.extension
-  };
-  state.settingsTab = 'summary-guidance';
   render();
 }
 
@@ -2181,34 +2331,72 @@ function clearReferenceTemplate() {
 }
 
 async function chooseWordTemplate() {
-  const result = await window.recruitmentApi.pickWordTemplate();
+  try {
+    const injectedFailure = consumeE2EFailure('chooseWordTemplate');
 
-  if (!result || !state.settings) {
-    return;
+    if (injectedFailure) {
+      throw new Error(injectedFailure);
+    }
+
+    const result = await window.recruitmentApi.pickWordTemplate();
+
+    if (!result || !state.settings) {
+      return;
+    }
+
+    state.settings = {
+      ...state.settings,
+      outputTemplatePath: result.path,
+      outputTemplateName: result.name,
+      outputTemplateExtension: result.extension
+    };
+    clearSettingsIssue();
+    state.settingsTab = 'word-template';
+  } catch (error) {
+    setSettingsIssue({
+      title: 'Word template could not be selected',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to pick the hiring-manager Word template.',
+      actionType: 'chooseWordTemplate',
+      actionLabel: 'Retry Pick'
+    });
   }
 
-  state.settings = {
-    ...state.settings,
-    outputTemplatePath: result.path,
-    outputTemplateName: result.name,
-    outputTemplateExtension: result.extension
-  };
-  state.settingsTab = 'word-template';
   render();
 }
 
 async function chooseBriefingOutputFolder() {
-  const result = await window.recruitmentApi.pickBriefingOutputFolder();
+  try {
+    const injectedFailure = consumeE2EFailure('chooseBriefingOutputFolder');
 
-  if (!result || !state.settings) {
-    return;
+    if (injectedFailure) {
+      throw new Error(injectedFailure);
+    }
+
+    const result = await window.recruitmentApi.pickBriefingOutputFolder();
+
+    if (!result || !state.settings) {
+      return;
+    }
+
+    state.settings = {
+      ...state.settings,
+      outputBriefingFolderPath: result.path
+    };
+    clearSettingsIssue();
+    state.settingsTab = 'word-template';
+  } catch (error) {
+    setSettingsIssue({
+      title: 'Briefing output folder could not be selected',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to pick the output folder for Word briefings.',
+      actionType: 'chooseBriefingOutputFolder',
+      actionLabel: 'Retry Pick'
+    });
   }
 
-  state.settings = {
-    ...state.settings,
-    outputBriefingFolderPath: result.path
-  };
-  state.settingsTab = 'word-template';
   render();
 }
 
@@ -2675,6 +2863,11 @@ function exposeE2ETestApi() {
       await loadConfiguration();
       render();
     },
+    injectFailure(actionType, message) {
+      if (typeof actionType === 'string' && actionType in e2eFailureInjection) {
+        e2eFailureInjection[actionType] = String(message || '');
+      }
+    },
     async openSourceFolder(folderPath) {
       const result = await window.recruitmentApi.listSourceFolder({ folderPath });
       state.contextTab = 'workspace';
@@ -2827,10 +3020,36 @@ async function syncBriefingReviewFromCurrentSummary() {
 async function refreshBriefingReview() {
   if (!state.briefing) {
     state.briefingReview = '';
-    return;
+    return true;
   }
 
-  await syncBriefingReviewFromCurrentSummary();
+  try {
+    const injectedFailure = consumeE2EFailure('refreshBriefingReview');
+
+    if (injectedFailure) {
+      throw new Error(injectedFailure);
+    }
+
+    await syncBriefingReviewFromCurrentSummary();
+
+    if (state.lastFailure?.actionType === 'refreshBriefingReview') {
+      clearOperationFailure();
+    }
+
+    return true;
+  } catch (error) {
+    setOperationFailure({
+      status: 'Review Refresh Failed',
+      title: 'Hiring-manager briefing refresh failed',
+      message: error instanceof Error
+        ? error.message
+        : 'Unable to refresh the hiring-manager briefing review.',
+      actionType: 'refreshBriefingReview',
+      actionLabel: 'Retry Review'
+    });
+    render();
+    return false;
+  }
 }
 
 function isGenerationWorkflowBusy() {
@@ -3277,11 +3496,7 @@ elements.openBriefingTab.addEventListener('click', async () => {
   state.workbenchTab = 'briefing';
 
   if (state.briefing) {
-    try {
-      await refreshBriefingReview();
-    } catch (_error) {
-      // Keep the last rendered review if the refresh fails.
-    }
+    await refreshBriefingReview();
   }
 
   render();
@@ -3341,6 +3556,11 @@ elements.chooseWordTemplateButton.addEventListener('click', chooseWordTemplate);
 elements.clearWordTemplateButton.addEventListener('click', clearWordTemplate);
 elements.chooseBriefingOutputFolderButton.addEventListener('click', chooseBriefingOutputFolder);
 elements.clearBriefingOutputFolderButton.addEventListener('click', clearBriefingOutputFolder);
+elements.retrySettingsIssueButton.addEventListener('click', retrySettingsIssueAction);
+elements.dismissSettingsIssueButton.addEventListener('click', () => {
+  clearSettingsIssue();
+  render();
+});
 elements.cv.chooseButton.addEventListener('click', () => chooseDocument('cv'));
 elements.jd.chooseButton.addEventListener('click', () => chooseDocument('jd'));
 elements.chooseSourceFolderButton.addEventListener('click', chooseSourceFolder);
@@ -3409,11 +3629,7 @@ elements.summaryEditor.addEventListener('blur', async () => {
   state.summary = readSummaryEditorText();
 
   if (state.briefing) {
-    try {
-      await refreshBriefingReview();
-    } catch (_error) {
-      // Keep the current review state if the refresh fails.
-    }
+    await refreshBriefingReview();
   }
 
   setRichDocumentContent(elements.summaryEditor, state.summary);
@@ -3431,7 +3647,12 @@ Promise.all([
 ]).then(() => {
   render();
 }).catch((error) => {
-  state.generationError = error instanceof Error ? error.message : 'Unable to load configuration.';
+  setSettingsIssue({
+    title: 'Settings could not be loaded',
+    message: error instanceof Error ? error.message : 'Unable to load configuration.',
+    actionType: 'loadConfiguration',
+    actionLabel: 'Retry Load'
+  });
   state.view = 'settings';
   render();
 });

@@ -155,6 +155,25 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#summary-panel')).toBeVisible();
   });
 
+  test('shows a retryable settings issue when configuration save fails', async () => {
+    await page.locator('#open-settings-view').click();
+    await expect(page.locator('#settings-view')).toBeVisible();
+
+    await page.evaluate(() => {
+      window.__atomicgroupTest.injectFailure('saveSettings', 'Settings save failed for test.');
+    });
+    await page.locator('#save-settings-button').click();
+
+    await expect(page.locator('#settings-issue-panel')).toBeVisible();
+    await expect(page.locator('#settings-issue-title')).toHaveText(/Settings could not be saved/i);
+    await expect(page.locator('#settings-issue-message')).toContainText('Settings save failed for test.');
+    await expect(page.locator('#retry-settings-issue-button')).toHaveText('Retry Save');
+
+    await page.locator('#retry-settings-issue-button').click();
+    await expect(page.locator('#settings-issue-panel')).toBeHidden();
+    await expect(page.locator('#settings-status-chip')).toHaveText(/Ready/i);
+  });
+
   test('supports manual import, deterministic generation, evidence, translation, and recent-work reopen', async () => {
     await page.locator('#open-manual-context-tab').click();
     await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
@@ -198,6 +217,28 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
     await expect(page.locator('#summary-status')).toHaveText(/Ready|Approved/);
     await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
+  });
+
+  test('shows a retryable workbench issue when briefing review refresh fails', async () => {
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
+
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+
+    await page.evaluate(() => {
+      window.__atomicgroupTest.injectFailure('refreshBriefingReview', 'Briefing refresh failed for test.');
+    });
+    await page.locator('#open-briefing-tab').click();
+
+    await expect(page.locator('#operation-failure-panel')).toBeVisible();
+    await expect(page.locator('#operation-failure-title')).toHaveText(/Hiring-manager briefing refresh failed/i);
+    await expect(page.locator('#operation-failure-message')).toContainText('Briefing refresh failed for test.');
+    await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
+
+    await page.locator('#retry-failure-action-button').click();
+    await expect(page.locator('#operation-failure-panel')).toBeHidden();
+    await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
   });
 
   test('supports role workspace candidate switching without stale previews', async () => {

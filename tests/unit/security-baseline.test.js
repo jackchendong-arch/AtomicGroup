@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const mainSource = fs.readFileSync(path.join(__dirname, '../../main.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8');
+const diagnosticLogSource = fs.readFileSync(path.join(__dirname, '../../services/diagnostic-log-service.js'), 'utf8');
 
 test('main window keeps explicit Electron hardening enabled', () => {
   assert.match(mainSource, /nodeIntegration:\s*false/);
@@ -30,6 +31,11 @@ test('persistent diagnostics avoid raw candidate-content log lines', () => {
   assert.doesNotMatch(mainSource, /candidate name:/);
   assert.doesNotMatch(mainSource, /candidate location:/);
   assert.match(mainSource, /Structured briefing raw response digest:/);
+  assert.match(mainSource, /services\/diagnostic-log-service/);
+  assert.match(mainSource, /pushDiagnosticContext/);
+  assert.match(mainSource, /pushDiagnosticResult/);
+  assert.match(diagnosticLogSource, /Run ID:/);
+  assert.match(diagnosticLogSource, /Error category:/);
 });
 
 test('main-process IPC routes through shared payload validation helpers', () => {

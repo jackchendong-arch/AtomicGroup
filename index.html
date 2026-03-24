@@ -1960,6 +1960,20 @@
             </section>
 
             <div class="settings-content">
+              <section class="operation-failure-panel is-hidden" id="settings-issue-panel" aria-live="polite">
+                <div class="operation-failure-head">
+                  <div class="operation-failure-copy">
+                    <h3 class="operation-failure-title" id="settings-issue-title">Settings issue</h3>
+                    <p class="operation-failure-message" id="settings-issue-message"></p>
+                  </div>
+                  <span class="status-chip">Attention</span>
+                </div>
+                <div class="operation-failure-actions">
+                  <button class="btn-secondary" id="retry-settings-issue-button" type="button">Retry</button>
+                  <button class="btn-ghost" id="dismiss-settings-issue-button" type="button">Dismiss</button>
+                </div>
+              </section>
+
               <section class="settings-panel" id="llm-settings-panel">
                 <div class="settings-section-head">
                   <h3>Model Access</h3>

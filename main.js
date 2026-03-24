@@ -55,6 +55,11 @@ const {
   parseTranslatedDraftResponse,
   parseTranslatedSummaryResponse
 } = require('./services/draft-translation-service');
+const {
+  createDiagnosticRunId,
+  pushDiagnosticContext,
+  pushDiagnosticResult
+} = require('./services/diagnostic-log-service');
 const { briefingNeedsLanguageNormalization } = require('./services/briefing-language-service');
 const {
   validateClipboardTextPayload,
@@ -1006,9 +1011,12 @@ ipcMain.handle('template:pick-briefing-output-folder', async () => {
 
 ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   const normalizedPayload = validateRenderBriefingPayload(payload);
-  const debugTrace = [
-    `Export started at ${new Date().toISOString()}`
-  ];
+  const runId = createDiagnosticRunId('export');
+  const debugTrace = [];
+  pushDiagnosticContext(debugTrace, {
+    operation: 'Word export',
+    runId
+  });
 
   const settings = await getSettingsStore().load();
   const preparedPayload = normalizeOutputMode(normalizedPayload.outputMode) === 'anonymous'
@@ -1033,6 +1041,10 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
       debugTrace
     }));
   } catch (error) {
+    pushDiagnosticResult(debugTrace, {
+      status: 'failed',
+      error
+    });
     await appendExportDebugLog(debugTrace);
     throw new Error(`${error instanceof Error ? error.message : 'Unable to prepare the hiring-manager draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`);
   }
@@ -1052,6 +1064,9 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   debugTrace.push(`Save dialog returned file: ${getDebugFileLabel(filePath)}`);
 
   if (canceled || !filePath) {
+    pushDiagnosticResult(debugTrace, {
+      status: 'canceled'
+    });
     await appendExportDebugLog(debugTrace);
     return {
       canceled: true,
@@ -1071,6 +1086,9 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     });
     shell.showItemInFolder(outputPath);
     debugTrace.push('Finder reveal requested.');
+    pushDiagnosticResult(debugTrace, {
+      status: 'success'
+    });
     debugTrace.push(`Debug log path: ${getExportDebugLogPath()}`);
     await appendExportDebugLog(debugTrace);
 
@@ -1080,6 +1098,10 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     };
   } catch (error) {
     debugTrace.push(`Export failed: ${error instanceof Error ? error.message : 'Unknown export failure.'}`);
+    pushDiagnosticResult(debugTrace, {
+      status: 'failed',
+      error
+    });
     debugTrace.push(`Debug log path: ${getExportDebugLogPath()}`);
     await appendExportDebugLog(debugTrace);
     throw new Error(
@@ -1090,9 +1112,12 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
 
 ipcMain.handle('email:share-draft', async (_event, payload) => {
   const normalizedPayload = validateRenderBriefingPayload(payload);
-  const debugTrace = [
-    `Email draft handoff started at ${new Date().toISOString()}`
-  ];
+  const runId = createDiagnosticRunId('email');
+  const debugTrace = [];
+  pushDiagnosticContext(debugTrace, {
+    operation: 'Email draft handoff',
+    runId
+  });
   const settings = await getSettingsStore().load();
   const outputMode = normalizeOutputMode(normalizedPayload.outputMode);
   const outputLanguage = normalizeOutputLanguage(normalizedPayload.outputLanguage);
@@ -1190,6 +1215,9 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
   try {
     await shell.openExternal(emailDraft.mailtoUrl);
     debugTrace.push('Default email client open requested.');
+    pushDiagnosticResult(debugTrace, {
+      status: 'success'
+    });
     await appendExportDebugLog(debugTrace);
 
     return {
@@ -1202,6 +1230,10 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
   } catch (error) {
     clipboard.writeText(emailDraft.clipboardText);
     debugTrace.push(`Email handoff fallback used: ${error instanceof Error ? error.message : 'Unknown email client handoff failure.'}`);
+    pushDiagnosticResult(debugTrace, {
+      status: 'fallback',
+      error
+    });
     await appendExportDebugLog(debugTrace);
 
     return {
@@ -1218,9 +1250,12 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
 ipcMain.handle('summary:generate', async (_event, payload) => {
   const normalizedPayload = validateSummaryGenerationPayload(payload);
   const totalTimer = startTimer();
-  const debugTrace = [
-    `Summary generation started at ${new Date().toISOString()}`
-  ];
+  const runId = createDiagnosticRunId('summary');
+  const debugTrace = [];
+  pushDiagnosticContext(debugTrace, {
+    operation: 'Summary generation',
+    runId
+  });
 
   try {
     const settings = await getSettingsStore().load();
@@ -1405,6 +1440,9 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputLanguage
     });
     debugTrace.push('Prepared hiring-manager briefing review successfully.');
+    pushDiagnosticResult(debugTrace, {
+      status: 'success'
+    });
     pushTimingDebugTrace(debugTrace, 'Total summary generation', totalTimer());
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
@@ -1426,6 +1464,10 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     };
   } catch (error) {
     debugTrace.push(`Summary generation failed: ${error instanceof Error ? error.message : 'Unknown summary generation failure.'}`);
+    pushDiagnosticResult(debugTrace, {
+      status: 'failed',
+      error
+    });
     pushTimingDebugTrace(debugTrace, 'Total summary generation', totalTimer());
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
@@ -1437,16 +1479,19 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const normalizedPayload = validateDraftTranslationPayload(payload);
   const settings = await getSettingsStore().load();
   const validation = validateSettings(settings);
-  const debugTrace = [
-    `Draft translation requested at ${new Date().toISOString()}`,
-    `Source language: ${normalizeOutputLanguage(normalizedPayload.sourceLanguage)}`,
-    `Target language: ${normalizeOutputLanguage(normalizedPayload.targetLanguage)}`,
-    `Output mode: ${normalizedPayload.outputMode === 'anonymous' ? 'anonymous' : 'named'}`,
-    `CV source file: ${path.basename(normalizedPayload?.cvDocument?.file?.path || normalizedPayload?.cvDocument?.file?.name || '') || '(unknown)'}`,
-    `JD source file: ${path.basename(normalizedPayload?.jdDocument?.file?.path || normalizedPayload?.jdDocument?.file?.name || '') || '(unknown)'}`,
-    `Summary length: ${String(normalizedPayload.summary || '').length}`,
-    `Briefing payload length: ${JSON.stringify(normalizedPayload.briefing || {}).length}`
-  ];
+  const runId = createDiagnosticRunId('translation');
+  const debugTrace = [];
+  pushDiagnosticContext(debugTrace, {
+    operation: 'Draft translation',
+    runId
+  });
+  debugTrace.push(`Source language: ${normalizeOutputLanguage(normalizedPayload.sourceLanguage)}`);
+  debugTrace.push(`Target language: ${normalizeOutputLanguage(normalizedPayload.targetLanguage)}`);
+  debugTrace.push(`Output mode: ${normalizedPayload.outputMode === 'anonymous' ? 'anonymous' : 'named'}`);
+  debugTrace.push(`CV source file: ${path.basename(normalizedPayload?.cvDocument?.file?.path || normalizedPayload?.cvDocument?.file?.name || '') || '(unknown)'}`);
+  debugTrace.push(`JD source file: ${path.basename(normalizedPayload?.jdDocument?.file?.path || normalizedPayload?.jdDocument?.file?.name || '') || '(unknown)'}`);
+  debugTrace.push(`Summary length: ${String(normalizedPayload.summary || '').length}`);
+  debugTrace.push(`Briefing payload length: ${JSON.stringify(normalizedPayload.briefing || {}).length}`);
 
   if (!validation.isValid) {
     debugTrace.push(`Settings validation failed: ${validation.errors.join(' | ')}`);
@@ -1480,6 +1525,11 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       outputLanguage: targetLanguage
     });
 
+    pushDiagnosticResult(debugTrace, {
+      status: 'skipped'
+    });
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
     return {
       summary: normalizedPayload.summary,
       briefing: normalizedPayload.briefing,
@@ -1502,6 +1552,9 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       payload: normalizedPayload,
       targetLanguage,
       debugTrace
+    });
+    pushDiagnosticResult(debugTrace, {
+      status: 'success'
     });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
@@ -1541,6 +1594,11 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       outputLanguage: targetLanguage
     });
 
+    pushDiagnosticResult(debugTrace, {
+      status: 'success'
+    });
+    debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    await appendSummaryGenerationDebugLog(debugTrace);
     return {
       summary: translated.summary,
       briefing: translated.briefing,
@@ -1550,6 +1608,10 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     };
   } catch (error) {
     debugTrace.push(`Draft translation failed: ${error instanceof Error ? error.message : 'Unknown translation failure.'}`);
+    pushDiagnosticResult(debugTrace, {
+      status: 'failed',
+      error
+    });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
     throw error;

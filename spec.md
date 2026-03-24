@@ -750,10 +750,12 @@ Current implemented slices inside Release 6:
 - privacy-safe summary/export diagnostics that record metadata, counts, and digests instead of raw CV/JD text, generated summaries, or full structured briefing content
 - deterministic Playwright Electron end-to-end coverage for the current recruiter workflow using a local mock-generation mode so generation, translation, recent-work reopen, and role-workspace switching can be tested without live provider dependencies
 - deterministic Playwright Electron coverage now also exercises approved Word export and email handoff through test-only mock paths so the shipped end-to-end workflow can be regression-tested without native save-dialog or mail-client side effects
+- Release 6 now includes a single `npm run test:release-hardening` smoke command that runs the shipped unit and deterministic Playwright workflow suites together as the release gate
 - a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
 - settings persistence no longer writes plaintext API keys; saving now requires secure OS-backed encryption availability, and legacy plaintext key records are scrubbed from disk on load
 - when secure storage cannot persist the API key, the app now saves non-secret configuration and keeps the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback
 - secure-storage load failures now distinguish unavailable storage, policy/profile blocking, and saved-key read failures so the recruiter can report the right support code
+- deterministic Playwright coverage now exercises both session-only save behavior and saved-key read-failure behavior through the real settings UI
 - when a new candidate CV or role JD begins loading, the previous source slot and derived workspace draft state are cleared immediately so old source content does not linger in renderer memory while the replacement file imports
 - higher-risk preload/IPC operations now validate payloads in the main process before side effects occur, including:
   - `cv` / `jd` slot selection
@@ -790,6 +792,7 @@ Acceptance criteria:
 - Primary workbench failures expose a structured recruiter-facing state and a retry path instead of only a raw error string.
 - Secondary settings and review-refresh failures also expose a recruiter-facing state and retry path instead of being silently swallowed or reduced to passive status text.
 - Common user-facing failures are recoverable.
+- Release hardening can be verified from one command that reruns the current shipped unit and deterministic Electron workflow regressions together.
 - Logs help diagnose extraction or generation problems.
 - Existing workflows remain stable under failure conditions.
 - Recruiter review highlights clearly signal when a generated draft is structurally incomplete or may be overstating evidence.

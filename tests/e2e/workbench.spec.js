@@ -206,6 +206,50 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#settings-status-chip')).toHaveText(/Ready/i);
   });
 
+  test('surfaces a session-only settings state when secure storage is unavailable', async () => {
+    await page.locator('#open-settings-view').click();
+    await expect(page.locator('#settings-view')).toBeVisible();
+
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.setSecureStorageMode('unavailable');
+    });
+    await page.locator('#save-settings-button').click();
+
+    await expect(page.locator('#settings-issue-panel')).toBeVisible();
+    await expect(page.locator('#settings-issue-title')).toHaveText(/API key is session-only/i);
+    await expect(page.locator('#settings-issue-message')).toContainText('secure-storage-unavailable');
+    await expect(page.locator('#settings-status-chip')).toHaveText('Session Only');
+
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.setSecureStorageMode('normal');
+    });
+    await page.locator('#retry-settings-issue-button').click();
+
+    await expect(page.locator('#settings-issue-panel')).toBeHidden();
+    await expect(page.locator('#settings-status-chip')).toHaveText(/Ready/i);
+  });
+
+  test('surfaces a saved-key read failure when secure storage cannot reload the key', async () => {
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.setSecureStorageMode('read-failed');
+      await window.__atomicgroupTest.reloadConfiguration();
+    });
+
+    await expect(page.locator('#settings-view')).toBeVisible();
+    await expect(page.locator('#settings-issue-panel')).toBeVisible();
+    await expect(page.locator('#settings-issue-title')).toHaveText(/Saved API key could not be read/i);
+    await expect(page.locator('#settings-issue-message')).toContainText('secure-storage-read-failed');
+    await expect(page.locator('#retry-settings-issue-button')).toHaveText('Retry Load');
+
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.setSecureStorageMode('normal');
+    });
+    await page.locator('#retry-settings-issue-button').click();
+
+    await expect(page.locator('#settings-issue-panel')).toBeHidden();
+    await expect(page.locator('#settings-status-chip')).toHaveText(/Ready/i);
+  });
+
   test('supports manual import, deterministic generation, evidence, translation, and recent-work reopen', async () => {
     await page.locator('#open-manual-context-tab').click();
     await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);

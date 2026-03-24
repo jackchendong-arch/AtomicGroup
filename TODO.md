@@ -246,10 +246,12 @@ Mark a release complete only when the work is:
   - privacy-safe summary/export diagnostics that keep metadata, counts, and digests instead of raw CV/JD or generated candidate content
   - deterministic Playwright Electron E2E coverage for import, generation, language switching, source evidence, recent-work reopen, and role-workspace candidate switching using a local mock-generation mode instead of live provider calls
   - deterministic Playwright Electron E2E coverage now also exercises approved Word export and email handoff through test-only mock paths so the shipped end-to-end workflow can be regression-tested without a native save dialog or real mail client launch
+  - Release 6 now has a single `npm run test:release-hardening` smoke command that runs the shipped unit and deterministic Playwright workflow suites together as the release gate
   - human-observable Playwright run mode via `npm run test:e2e:observe` so end-to-end flows can be watched at slowed-down interaction speed during manual review
   - API-key persistence no longer falls back to plaintext storage; settings save now requires secure OS-backed encryption availability, and any legacy plaintext key record is scrubbed from disk on load
   - when secure storage cannot persist the API key, settings now save non-secret configuration and keep the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback
   - secure-storage read failures now surface clearer settings errors that distinguish unavailable storage, policy/profile blocking, and saved-key read failure cases
+  - deterministic Playwright settings coverage now exercises both session-only save behavior and saved-key read-failure behavior through the real settings UI
   - generating while the recruiter is on `Hiring Manager Briefing` now refreshes that briefing view in place instead of leaving stale content until another tab navigation occurs
   - when a new CV or JD starts loading, the previous slot content, current candidate context, and derived draft state are cleared immediately instead of lingering in memory until the replacement import finishes
   - role-workspace selector recovery hardened for two-file folders so switching the JD to the wrong file and then back again also reloads the implied CV selection and refreshes current-candidate context correctly
@@ -296,6 +298,7 @@ Mark a release complete only when the work is:
   - navigation / window-open restrictions
 - Decide whether product-approved telemetry is allowed and implement it only if approved.
 - Run regression testing across all previously shipped workflows.
+  - Current release-gate command: `npm run test:release-hardening`
 
 ## Release 7: LLM Ops Artifact Registry and Promotion
 - [ ] Release 7 shipped, completed, and tested.

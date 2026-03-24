@@ -184,6 +184,8 @@ When available, use the retry button in that panel to rerun the failed action di
 
 If secure storage cannot save your API key, the app now keeps the key only for the current session instead of falling back to plaintext storage. The settings page will show a clear support code such as `secure-storage-unavailable`, `secure-storage-policy-blocked`, or `secure-storage-read-failed` so you know what to report.
 
+If secure storage becomes available again, use the retry action in the settings issue panel to save or reload the key cleanly instead of restarting the whole app.
+
 After generation or translation, a `Review Checks` panel may also appear in the summary review. Use it to catch incomplete sections, weak evidence coverage, generic candidate/role labels, or overconfident wording before approval or sharing.
 
 ## Recent Work

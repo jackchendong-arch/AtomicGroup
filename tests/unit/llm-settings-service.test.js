@@ -204,3 +204,66 @@ test('LlmSettingsStore reports a secure-storage read failure when encrypted keys
 
   await fs.rm(userDataPath, { recursive: true, force: true });
 });
+
+test('LlmSettingsStore test override can force session-only save behavior', async () => {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-llm-settings-'));
+  const store = new LlmSettingsStore({
+    userDataPath,
+    safeStorage: {
+      isEncryptionAvailable() {
+        return true;
+      },
+      encryptString(value) {
+        return Buffer.from(`enc:${value}`, 'utf8');
+      },
+      decryptString(buffer) {
+        return String(buffer).replace(/^enc:/, '');
+      }
+    }
+  });
+
+  store.setTestSecureStorageMode('unavailable');
+
+  const result = await store.save({
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder'
+  });
+
+  assert.equal(result.settings.apiKeyStorageMode, 'session');
+  assert.equal(result.apiKeyStatus.statusCode, 'secure-storage-unavailable');
+
+  await fs.rm(userDataPath, { recursive: true, force: true });
+});
+
+test('LlmSettingsStore test override can force a secure-storage read failure on load', async () => {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-llm-settings-'));
+  const store = new LlmSettingsStore({
+    userDataPath,
+    safeStorage: {
+      isEncryptionAvailable() {
+        return true;
+      },
+      encryptString(value) {
+        return Buffer.from(`enc:${value}`, 'utf8');
+      },
+      decryptString(buffer) {
+        return String(buffer).replace(/^enc:/, '');
+      }
+    }
+  });
+
+  await store.save({
+    ...createDefaultSettings(),
+    apiKey: 'test-only-placeholder'
+  });
+
+  store.setTestSecureStorageMode('read-failed');
+
+  const loaded = await store.load();
+
+  assert.equal(loaded.apiKey, '');
+  assert.equal(loaded.apiKeyStorageMode, 'error');
+  assert.equal(loaded.apiKeyStatusCode, 'secure-storage-read-failed');
+
+  await fs.rm(userDataPath, { recursive: true, force: true });
+});

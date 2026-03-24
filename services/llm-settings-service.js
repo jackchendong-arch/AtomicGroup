@@ -230,6 +230,12 @@ class LlmSettingsStore {
     this.templateDirectoryPath = path.join(userDataPath, 'templates');
     this.safeStorage = safeStorage;
     this.sessionApiKey = '';
+    this.testSecureStorageMode = 'normal';
+  }
+
+  setTestSecureStorageMode(mode = 'normal') {
+    const normalizedMode = String(mode || 'normal').trim().toLowerCase();
+    this.testSecureStorageMode = normalizedMode || 'normal';
   }
 
   isManagedTemplatePath(filePath) {
@@ -282,6 +288,10 @@ class LlmSettingsStore {
   }
 
   hasSecureApiKeyStorage() {
+    if (this.testSecureStorageMode === 'unavailable') {
+      return false;
+    }
+
     return Boolean(
       this.safeStorage &&
       typeof this.safeStorage.isEncryptionAvailable === 'function' &&
@@ -300,6 +310,14 @@ class LlmSettingsStore {
     }
 
     if (this.hasSecureApiKeyStorage()) {
+      if (this.testSecureStorageMode === 'policy-blocked') {
+        throw new Error('Secure credential storage access denied by local policy.');
+      }
+
+      if (this.testSecureStorageMode === 'write-failed') {
+        throw new Error('Secure credential storage write failed.');
+      }
+
       return {
         apiKeyMode: 'encrypted',
         apiKey: this.safeStorage.encryptString(apiKey).toString('base64')
@@ -322,6 +340,14 @@ class LlmSettingsStore {
       }
 
       try {
+        if (this.testSecureStorageMode === 'policy-blocked') {
+          throw new Error('Secure credential storage access denied by local policy.');
+        }
+
+        if (this.testSecureStorageMode === 'read-failed') {
+          throw new Error('Secure credential storage read failed.');
+        }
+
         const decrypted = this.safeStorage.decryptString(Buffer.from(record.apiKey, 'base64'));
         return {
           apiKey: decrypted,

@@ -52,4 +52,5 @@ test('preload bridge stays frozen and keeps test mode off the production API sur
   assert.match(preloadSource, /exposeInMainWorld\('recruitmentApi', recruitmentApi\)/);
   assert.doesNotMatch(preloadSource, /isE2ETestMode\(\)/);
   assert.match(preloadSource, /__atomicgroupTestMode/);
+  assert.match(preloadSource, /setSecureStorageMode\(mode\)/);
 });

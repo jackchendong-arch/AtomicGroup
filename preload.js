@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld('recruitmentApi', recruitmentApi);
 
 if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
   contextBridge.exposeInMainWorld('__atomicgroupTestMode', Object.freeze({
-    enabled: true
+    enabled: true,
+    setSecureStorageMode(mode) {
+      return ipcRenderer.invoke('e2e:set-secure-storage-mode', { mode });
+    }
   }));
 }

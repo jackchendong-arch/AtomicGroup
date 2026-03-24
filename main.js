@@ -947,6 +947,14 @@ ipcMain.handle('llm:save-settings', async (_event, payload) => {
   return getSettingsStore().save(validateLlmSettingsPayload(payload));
 });
 
+if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
+  ipcMain.handle('e2e:set-secure-storage-mode', async (_event, payload) => {
+    const mode = String(payload?.mode || 'normal').trim().toLowerCase();
+    getSettingsStore().setTestSecureStorageMode(mode || 'normal');
+    return { mode: mode || 'normal' };
+  });
+}
+
 ipcMain.handle('template:pick-word-template', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: 'Select hiring manager Word template (.docx or .dotx)',

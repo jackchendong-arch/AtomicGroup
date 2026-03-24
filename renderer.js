@@ -2977,6 +2977,11 @@ function exposeE2ETestApi() {
         e2eFailureInjection[actionType] = String(message || '');
       }
     },
+    async setSecureStorageMode(mode) {
+      if (typeof window.__atomicgroupTestMode?.setSecureStorageMode === 'function') {
+        await window.__atomicgroupTestMode.setSecureStorageMode(mode);
+      }
+    },
     async openSourceFolder(folderPath) {
       const result = await window.recruitmentApi.listSourceFolder({ folderPath });
       state.contextTab = 'workspace';

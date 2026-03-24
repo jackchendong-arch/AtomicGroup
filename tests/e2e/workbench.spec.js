@@ -9,6 +9,7 @@ const appRoot = path.resolve(__dirname, '..', '..');
 const sampleCvPath = path.join(appRoot, 'samples', 'sample-cv.txt');
 const sampleJdPath = path.join(appRoot, 'samples', 'sample-jd.txt');
 const structuredCvPath = path.join(appRoot, 'samples', 'structured-cv.txt');
+const sampleHiringManagerTemplatePath = path.join(appRoot, 'samples', 'hiring-manager-template.docx');
 const sampleWorkspacePath = path.join(appRoot, 'samples', 'role-workspace');
 const sampleWorkspaceJdPath = path.join(sampleWorkspacePath, 'JD-role.txt');
 const sampleWorkspaceAlexCvPath = path.join(sampleWorkspacePath, 'CV-alex.txt');
@@ -46,6 +47,37 @@ async function openSourceFolderViaTestApi(page, folderPath) {
 
 async function getSummaryEditorText(page) {
   return page.locator('#summary-editor').innerText();
+}
+
+async function configureWordTemplate(page, outputFolderPath) {
+  await page.evaluate(async ({ templatePath, templateName, outputFolder }) => {
+    await window.recruitmentApi.saveLlmSettings({
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-chat',
+      apiKey: 'test-only-placeholder',
+      temperature: 0.2,
+      maxTokens: 1200,
+      systemPrompt: 'You are an executive search recruiter assistant. Produce grounded, evidence-based candidate profile summaries for hiring managers. Do not invent facts. Call out strengths and gaps clearly.',
+      referenceTemplateMode: 'default',
+      referenceTemplatePath: '',
+      referenceTemplateName: '',
+      referenceTemplateExtension: '',
+      outputTemplatePath: templatePath,
+      outputTemplateName: templateName,
+      outputTemplateExtension: '.docx',
+      outputBriefingFolderPath: outputFolder
+    });
+  }, {
+    templatePath: sampleHiringManagerTemplatePath,
+    templateName: path.basename(sampleHiringManagerTemplatePath),
+    outputFolder: outputFolderPath
+  });
+
+  await page.evaluate(async () => {
+    await window.__atomicgroupTest.reloadConfiguration();
+  });
 }
 
 test.describe('Candidate Match Workbench', () => {
@@ -239,6 +271,41 @@ test.describe('Candidate Match Workbench', () => {
     await page.locator('#retry-failure-action-button').click();
     await expect(page.locator('#operation-failure-panel')).toBeHidden();
     await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
+  });
+
+  test('exports the approved hiring-manager Word draft through the deterministic mock path', async () => {
+    const outputFolderPath = path.join(userDataPath, 'briefings');
+    await configureWordTemplate(page, outputFolderPath);
+
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await page.locator('#approve-draft-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+
+    await page.locator('#export-word-draft-button').click();
+
+    await expect(page.locator('#summary-status')).toHaveText('Saved');
+    await expect(page.locator('#draft-meta')).toContainText('Latest saved Word draft:');
+    await page.locator('#open-summary-tab').click();
+    await expect(page.locator('#open-word-draft-button')).toBeVisible();
+  });
+
+  test('prepares email handoff for an approved draft through the deterministic mock path', async () => {
+    const outputFolderPath = path.join(userDataPath, 'briefings');
+    await configureWordTemplate(page, outputFolderPath);
+
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await page.locator('#approve-draft-button').click();
+
+    await page.locator('#share-by-email-button').click();
+
+    await expect(page.locator('#summary-status')).toHaveText('Email Ready');
+    await expect(page.locator('#summary-message')).toContainText('Opened the default email client with a prepared draft.');
   });
 
   test('supports role workspace candidate switching without stale previews', async () => {

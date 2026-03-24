@@ -2707,6 +2707,7 @@ function findMatchingRecentWorkspaceForCurrentSelection() {
   }
 
   return state.recentWorkspaces.find((workspace) =>
+    Boolean(workspace.hasDraft) &&
     String(workspace.sourceFolderPath || '').trim() === sourceFolderPath &&
     String(workspace.loadedJdPath || workspace.selectedJdPath || '').trim() === loadedJdPath &&
     String(workspace.loadedCvPath || workspace.selectedCvPath || '').trim() === loadedCvPath

@@ -245,6 +245,7 @@ Mark a release complete only when the work is:
   - renderer Content Security Policy for local-only script execution and blocked embedded/remote framing paths
   - privacy-safe summary/export diagnostics that keep metadata, counts, and digests instead of raw CV/JD or generated candidate content
   - deterministic Playwright Electron E2E coverage for import, generation, language switching, source evidence, recent-work reopen, and role-workspace candidate switching using a local mock-generation mode instead of live provider calls
+  - deterministic Playwright Electron E2E coverage now also exercises approved Word export and email handoff through test-only mock paths so the shipped end-to-end workflow can be regression-tested without a native save dialog or real mail client launch
   - human-observable Playwright run mode via `npm run test:e2e:observe` so end-to-end flows can be watched at slowed-down interaction speed during manual review
   - API-key persistence no longer falls back to plaintext storage; settings save now requires secure OS-backed encryption availability, and any legacy plaintext key record is scrubbed from disk on load
   - when secure storage cannot persist the API key, settings now save non-secret configuration and keep the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback
@@ -262,6 +263,7 @@ Mark a release complete only when the work is:
   - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
   - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed on tab switch or summary blur
   - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
+  - role-workspace auto-restore now only revives previously generated draft snapshots, so source-only selector changes do not incorrectly overwrite or rehydrate blank workspace state
   - preload now exposes a frozen production API surface and keeps E2E test-mode signaling on a separate test-only bridge instead of the main renderer API
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slices remove plaintext fallback, scrub old plaintext records, and add a session-only memory fallback with explicit support-code messaging, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.

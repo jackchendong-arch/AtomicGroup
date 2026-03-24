@@ -1055,6 +1055,45 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
   }
 
   debugTrace.push(`Suggested output filename: ${getDebugFileLabel(suggestedName)}`);
+
+  if (isE2EMockLlmEnabled()) {
+    const outputDirectory = path.join(getUserDataPath(), 'e2e-generated-briefings');
+    await fs.mkdir(outputDirectory, { recursive: true });
+    const outputPath = path.join(outputDirectory, suggestedName);
+    debugTrace.push(`E2E mock Word export path: ${getDebugFileLabel(outputPath)}`);
+
+    try {
+      const result = await writeWordDraftToPath({
+        settings,
+        outputPath,
+        templateData,
+        debugTrace
+      });
+      debugTrace.push('E2E mock Word export completed without save dialog or shell reveal.');
+      pushDiagnosticResult(debugTrace, {
+        status: 'success'
+      });
+      debugTrace.push(`Debug log path: ${getExportDebugLogPath()}`);
+      await appendExportDebugLog(debugTrace);
+
+      return {
+        canceled: false,
+        ...result
+      };
+    } catch (error) {
+      debugTrace.push(`Export failed: ${error instanceof Error ? error.message : 'Unknown export failure.'}`);
+      pushDiagnosticResult(debugTrace, {
+        status: 'failed',
+        error
+      });
+      debugTrace.push(`Debug log path: ${getExportDebugLogPath()}`);
+      await appendExportDebugLog(debugTrace);
+      throw new Error(
+        `${error instanceof Error ? error.message : 'Unable to export the hiring-manager Word draft.'}\nDebug trace:\n- ${debugTrace.join('\n- ')}`
+      );
+    }
+  }
+
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'Save hiring-manager Word draft',
     defaultPath: path.join(app.getPath('documents'), suggestedName),
@@ -1185,26 +1224,38 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
   let emailDraft;
 
   try {
-    const emailDraftRequest = buildEmailDraftRequest({
-      summary: preparedPayload.summary,
-      briefing: composedOutput.briefing,
-      outputMode,
-      systemPrompt: settings.systemPrompt,
-      attachmentExpected: Boolean(attachmentPath),
-      outputLanguage
-    });
-    const emailResult = await generateWithConfiguredProvider({
-      settings,
-      messages: emailDraftRequest.messages,
-      fetchImpl: (...args) => net.fetch(...args)
-    });
-    const parsedEmailDraft = parseEmailDraftResponse(emailResult.text);
+    if (isE2EMockLlmEnabled()) {
+      emailDraft = buildFallbackEmailDraft({
+        summary: preparedPayload.summary,
+        briefing: composedOutput.briefing,
+        outputMode,
+        attachmentPath,
+        attachmentExpected: Boolean(attachmentPath),
+        outputLanguage
+      });
+      debugTrace.push('E2E mock email draft generated from deterministic fallback.');
+    } else {
+      const emailDraftRequest = buildEmailDraftRequest({
+        summary: preparedPayload.summary,
+        briefing: composedOutput.briefing,
+        outputMode,
+        systemPrompt: settings.systemPrompt,
+        attachmentExpected: Boolean(attachmentPath),
+        outputLanguage
+      });
+      const emailResult = await generateWithConfiguredProvider({
+        settings,
+        messages: emailDraftRequest.messages,
+        fetchImpl: (...args) => net.fetch(...args)
+      });
+      const parsedEmailDraft = parseEmailDraftResponse(emailResult.text);
 
-    emailDraft = finalizeEmailDraft({
-      ...parsedEmailDraft,
-      attachmentPath
-    });
-    debugTrace.push('LLM email draft generated successfully.');
+      emailDraft = finalizeEmailDraft({
+        ...parsedEmailDraft,
+        attachmentPath
+      });
+      debugTrace.push('LLM email draft generated successfully.');
+    }
   } catch (error) {
     debugTrace.push(`Email draft fallback used: ${error instanceof Error ? error.message : 'Unknown LLM email draft failure.'}`);
     emailDraft = buildFallbackEmailDraft({
@@ -1215,6 +1266,22 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
       attachmentExpected: Boolean(attachmentPath),
       outputLanguage
     });
+  }
+
+  if (isE2EMockLlmEnabled()) {
+    debugTrace.push('E2E mock email handoff completed without shell open.');
+    pushDiagnosticResult(debugTrace, {
+      status: 'success'
+    });
+    await appendExportDebugLog(debugTrace);
+
+    return {
+      mode: 'mailto',
+      subject: emailDraft.subject,
+      body: emailDraft.body,
+      attachmentPath,
+      debugTrace
+    };
   }
 
   try {

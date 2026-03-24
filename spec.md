@@ -749,6 +749,7 @@ Current implemented slices inside Release 6:
 - renderer Content Security Policy restricted to local scripts and blocked embedded/remote frame paths
 - privacy-safe summary/export diagnostics that record metadata, counts, and digests instead of raw CV/JD text, generated summaries, or full structured briefing content
 - deterministic Playwright Electron end-to-end coverage for the current recruiter workflow using a local mock-generation mode so generation, translation, recent-work reopen, and role-workspace switching can be tested without live provider dependencies
+- deterministic Playwright Electron coverage now also exercises approved Word export and email handoff through test-only mock paths so the shipped end-to-end workflow can be regression-tested without native save-dialog or mail-client side effects
 - a dedicated headed observe mode for Playwright so important workbench flows can run at slower, human-readable speed during review sessions
 - settings persistence no longer writes plaintext API keys; saving now requires secure OS-backed encryption availability, and legacy plaintext key records are scrubbed from disk on load
 - when secure storage cannot persist the API key, the app now saves non-secret configuration and keeps the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback
@@ -776,6 +777,7 @@ Current implemented slices inside Release 6:
 - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
 - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed during tab changes or summary edits
 - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
+- role-workspace auto-restore now only revives snapshots that actually contain a saved draft, so source-only selector changes do not unexpectedly restore or overwrite blank workspace state
 - preload now exposes a frozen production API surface and keeps E2E test-mode signaling on a separate test-only bridge instead of the main renderer API
 
 Acceptance criteria:

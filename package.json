@@ -1,6 +1,6 @@
 {
   "name": "atomicgroup-electron-hello-world",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "AI-enabled recruitment intelligence workbench",
   "main": "main.js",
   "scripts": {

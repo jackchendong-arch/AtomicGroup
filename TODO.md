@@ -247,6 +247,7 @@ Mark a release complete only when the work is:
   - deterministic Playwright Electron E2E coverage for import, generation, language switching, source evidence, recent-work reopen, and role-workspace candidate switching using a local mock-generation mode instead of live provider calls
   - deterministic Playwright Electron E2E coverage now also exercises approved Word export and email handoff through test-only mock paths so the shipped end-to-end workflow can be regression-tested without a native save dialog or real mail client launch
   - Release 6 now has a single `npm run test:release-hardening` smoke command that runs the shipped unit and deterministic Playwright workflow suites together as the release gate
+  - GitHub Actions now runs the same release-hardening suite on `main`, pull requests, and Windows release builds so shipped workflow regressions are checked automatically instead of only manually
   - human-observable Playwright run mode via `npm run test:e2e:observe` so end-to-end flows can be watched at slowed-down interaction speed during manual review
   - API-key persistence no longer falls back to plaintext storage; settings save now requires secure OS-backed encryption availability, and any legacy plaintext key record is scrubbed from disk on load
   - when secure storage cannot persist the API key, settings now save non-secret configuration and keep the key in session memory only, with explicit support-code messaging instead of silent failure or plaintext fallback

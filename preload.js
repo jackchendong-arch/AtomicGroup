@@ -82,6 +82,9 @@ if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
     enabled: true,
     setSecureStorageMode(mode) {
       return ipcRenderer.invoke('e2e:set-secure-storage-mode', { mode });
+    },
+    setMockSummaryMode(mode) {
+      return ipcRenderer.invoke('e2e:set-mock-summary-mode', { mode });
     }
   }));
 }

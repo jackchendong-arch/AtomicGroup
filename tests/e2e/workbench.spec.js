@@ -264,6 +264,7 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#briefing-panel')).toBeVisible();
     await page.locator('#generate-summary-button').click();
     await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#approval-warning-panel')).toBeHidden();
     await expect(page.locator('#briefing-panel')).toBeVisible();
     await expect(page.locator('#briefing-status')).toHaveText('Ready');
     await expect(page.locator('#briefing-preview')).toContainText('Jordan Lee');
@@ -293,6 +294,23 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#current-candidate-name')).toContainText('Jordan Lee');
     await expect(page.locator('#summary-status')).toHaveText(/Ready|Approved/);
     await expect(page.locator('#summary-editor')).toContainText('Jordan Lee');
+  });
+
+  test('surfaces review checks when the generated draft is intentionally weak', async () => {
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.setMockSummaryMode('weak-review');
+    });
+
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
+    await page.locator('#generate-summary-button').click();
+
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#summary-message')).toContainText('Review the highlighted checks');
+    await expect(page.locator('#approval-warning-panel')).toBeVisible();
+    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the fit summary section.');
+    await expect(page.locator('#approval-warning-list')).toContainText('Hiring-manager briefing is missing employment history details.');
+    await expect(page.locator('#approval-warning-list')).toContainText('Source evidence is incomplete for this draft.');
   });
 
   test('shows a retryable workbench issue when briefing review refresh fails', async () => {

@@ -421,6 +421,20 @@ The intended split is:
 - The preferred first implementation is local lexical retrieval over section-aware source blocks, not embeddings stored in a persistent vector DB.
 - A vector store is not ruled out forever, but it is not the right default for this app because the current use case is one active JD plus one active candidate CV within a recruiter workspace.
 
+### Source Block Metadata Contract
+The normalized source model should preserve enough structure for deterministic employment/project handling, not only retrieval relevance. Each source block should retain:
+- source block ID
+- source order
+- section type
+- parent-child structural relationship where known
+- paragraph/list/table origin
+- language hint
+- page or document-position lineage where available
+- parser confidence
+- OCR-fallback flag when extraction quality was weak
+
+This is important because project-role linkage often depends on structural nesting and table/list context, not just plain text content.
+
 ### Template Design
 There are two different template systems in the product and they should remain separate:
 
@@ -438,23 +452,45 @@ There are two different template systems in the product and they should remain s
 - not the source of truth for candidate facts or narrative content
 
 ### Proposed End-to-End Flow
-1. Extract raw text from CV and JD locally.
-2. Normalize and segment the source text into stable source blocks for prompting, validation, and retrieval.
+1. Extract raw text and structural hints from CV and JD locally.
+2. Normalize the active CV and JD into stable source blocks with section metadata, language hints, source order, and document-position references.
 3. Build an ephemeral workspace-level retrieval set over the active CV, JD, and optional Markdown guidance template.
 4. Ask the LLM to complete the recruiter-facing `Candidate Summary Review` template using relevant workspace-scoped source material.
-5. Ask the LLM and/or extraction layer to produce a strict grounded structured briefing object from CV + JD + template guidance.
-6. Require evidence or source-grounding for material facts and fit claims.
-7. Validate the structured output before any rendering step.
-8. Show `Candidate Summary Review` to the consultant for editing and approval.
-9. Compose the in-app `Hiring Manager Briefing` from:
-   - the key summary / fit summary from `Candidate Summary Review`
-   - the validated structured briefing object
-10. Only when the consultant explicitly exports or sends the briefing:
-   - render the hiring-manager Word document through the configured Word template
-11. Keep recruiter review and approval as a mandatory human step before sharing.
+5. Ask the LLM and/or extraction layer to produce a strict canonical candidate schema from the normalized CV and JD source blocks.
+6. Keep employment history and project experience as separate structures, with explicit role/project linkage metadata instead of flattening all experience into one list.
+7. Validate the canonical candidate schema before any report projection step.
+8. Ask the LLM to produce the fit assessment and hiring-manager recommendation narrative from the validated source-grounded candidate schema plus the JD.
+9. Show the recruiter:
+   - `Candidate Summary Review`
+   - the in-app `Hiring Manager Briefing`
+   - the structured employment/project view when factual mapping is weak or ambiguous
+10. Build a deterministic report view model from:
+   - the validated canonical candidate schema
+   - the recruiter-reviewed fit/recommendation narrative
+11. Only when the consultant explicitly exports or sends the briefing:
+   - render the hiring-manager Word document from the report view model through the configured Word template
+12. Keep recruiter review and approval as a mandatory human step before sharing.
 
-### Recommended Structured Briefing Schema
-The exact field set can evolve, but the data model should be explicit and stable. A representative structure is:
+### Canonical Data Layers
+The report pipeline should separate four layers explicitly:
+
+1. `Canonical Candidate Schema`
+- deterministic source of truth for candidate facts derived from the CV/JD evidence
+- includes employment history, project experience, education, languages, certifications, and evidence references
+
+2. `Derived Assessment Model`
+- LLM-generated recruiter assessment and hiring-manager recommendation narrative
+- should be grounded in the canonical schema and JD requirements
+
+3. `Hiring Manager Briefing`
+- composed review surface combining recruiter-reviewed narrative with validated candidate facts
+
+4. `Report View Model`
+- deterministic export projection tailored to the chosen Word template
+- the only structure consumed by Word rendering
+
+### Recommended Canonical Candidate Schema
+The exact field set can evolve, but the canonical model should distinguish factual candidate structure from narrative assessment. A representative structure is:
 
 ```json
 {
@@ -464,43 +500,142 @@ The exact field set can evolve, but the data model should be explicit and stable
     "nationality": "",
     "languages": [],
     "notice_period": "",
-    "education": []
+    "education": [],
+    "certifications": [],
+    "skills": []
   },
   "role": {
     "title": "",
     "company": ""
   },
+  "employment_history": [
+    {
+      "employment_id": "",
+      "company_name": "",
+      "company_normalized_name": "",
+      "employment_start_date": "",
+      "employment_end_date": "",
+      "location": "",
+      "titles": [
+        {
+          "role_id": "",
+          "job_title": "",
+          "start_date": "",
+          "end_date": "",
+          "responsibilities": [],
+          "achievements": [],
+          "evidence_refs": []
+        }
+      ],
+      "validation_flags": [],
+      "evidence_refs": []
+    }
+  ],
+  "project_experiences": [
+    {
+      "project_id": "",
+      "project_name": "",
+      "project_summary": "",
+      "project_start_date": "",
+      "project_end_date": "",
+      "timeline_basis": "explicit | inherited_from_role | unknown",
+      "linked_employment_id": "",
+      "linked_role_id": "",
+      "link_method": "nested_structure | explicit_text | timeline_match | recruiter_confirmed | unresolved",
+      "link_confidence": "high | medium | low",
+      "technologies": [],
+      "outcomes": [],
+      "validation_flags": [],
+      "evidence_refs": []
+    }
+  ],
   "key_summary": "",
   "fit_summary": "",
   "relevant_experience": "",
   "match_requirements": [],
   "potential_concerns": [],
   "recommended_next_step": "",
-  "employment_history": [
-    {
-      "job_title": "",
-      "company_name": "",
-      "start_date": "",
-      "end_date": "",
-      "responsibilities": [],
-      "evidence_refs": []
-    }
-  ],
   "evidence_refs": []
 }
 ```
 
 Notes:
+- The original CV is evidence, not the final report structure.
+- Employment history should represent real employers and role chronology, not standalone projects.
+- `project_experiences` should remain separate from `employment_history` even when projects are later rendered under a linked role in the report.
 - `fit_summary` / `key_summary` is the narrative bridge from recruiter assessment into the hiring-manager briefing.
-- Exact candidate profile values such as name, nationality, education, notice period, and employment history should come from grounded CV/JD extraction, not from unconstrained narrative generation.
+- Exact candidate profile values such as name, nationality, education, notice period, employment history, and project relationships should come from grounded extraction and validation, not from unconstrained narrative generation.
 - The Word template controls how these values are laid out in the final document, but it is not the source of truth for the values themselves.
-- The same structured briefing object should drive both the in-app `Hiring Manager Briefing` review and the final Word export.
+- The same validated candidate schema plus approved narrative should drive both the in-app `Hiring Manager Briefing` review and the final Word export.
+
+### Project Experience Handling Rules
+- A project should never be treated as an employment record just because it contains responsibilities or outcomes.
+- If a project is structurally nested under a role section, the app should link it to that role and may inherit role dates when project dates are absent.
+- If a project appears in a separate project section, the app should store it first as a standalone `project_experiences` entry instead of forcing it into employment history.
+- Timeline-based role linkage should only happen when the dates and evidence support it clearly.
+- If project-role linkage remains ambiguous, the project should remain unresolved, be preserved in the model, and be surfaced for recruiter review instead of being silently dropped.
+- The final report may render linked projects under the relevant role and unresolved or standalone projects in a dedicated project-experience section.
+
+### Project-Role Mapping Precedence
+When project-linkage signals conflict, the app should apply a deterministic precedence order:
+1. recruiter-confirmed override
+2. explicit structural nesting under a role section
+3. explicit text naming the employer or role
+4. unambiguous timeline match
+5. unresolved
+
+If multiple lower-priority signals conflict or two candidate roles remain plausible, the mapping should stay unresolved and require recruiter review rather than silently choosing one.
+
+### Recruiter Override Model
+The recruiter should be able to review and correct factual employment/project mapping when extraction is weak. Overrides should:
+- allow direct confirmation or change of project-role linkage
+- allow correction of chronology, employer grouping, and role assignment
+- be stored as first-class structured data, not only UI text edits
+- record that the final value came from recruiter confirmation rather than pure model extraction
+
+The corrected structured data should become the source of truth for later briefing composition and Word export.
+
+### Report View Model
+The Word renderer should not read directly from raw extracted text or the full canonical schema. Instead, the app should build a deterministic report view model such as:
+
+```json
+{
+  "report_header": {
+    "candidate_name": "",
+    "role_title": "",
+    "company": ""
+  },
+  "profile_section": {
+    "location": "",
+    "languages": [],
+    "education": [],
+    "certifications": []
+  },
+  "assessment_section": {
+    "key_summary": "",
+    "fit_summary": "",
+    "potential_concerns": [],
+    "recommended_next_step": ""
+  },
+  "work_experience_section": [],
+  "selected_project_experience_section": []
+}
+```
+
+This keeps:
+- the canonical schema stable
+- Word-template mapping simple
+- template-specific formatting decisions in code and template configuration rather than in LLM output
 
 ### Validation Expectations
 Before the app renders the hiring-manager briefing or generates the Word document, it should validate:
-- required fields are present
+- required candidate fields are present
 - dates are internally consistent
 - employers, titles, and profile facts are grounded in the source documents
+- employment chronology is coherent
+- project records are not misclassified as jobs
+- project-role linkage is consistent with structure or timeline evidence
+- unresolved project-role mapping is flagged rather than silently assumed
 - fit claims are evidence-based rather than invented
 - output can be mapped fully into the chosen summary template and Word template
 
@@ -508,6 +643,91 @@ Before the app presents `Candidate Summary Review`, it should validate:
 - the recruiter summary follows the expected review template
 - fit claims are evidence-based rather than invented
 - unsupported information is surfaced as a gap rather than asserted as a fact
+- factual ambiguities in employment/project mapping are surfaced for recruiter review before export
+
+### Validation Severity And Export Policy
+Validation should distinguish:
+- blocking errors
+  - export is not allowed
+  - examples: missing candidate name, empty employment history, impossible chronology, unmappable required Word fields
+- review-required warnings
+  - export is allowed only after recruiter confirmation or explicit override
+  - examples: unresolved project-role linkage, weak parser confidence on key roles, incomplete but partially grounded timeline data
+- informational warnings
+  - export may proceed, but the recruiter is reminded to review
+  - examples: optional fields missing, standalone projects with low business importance, minor evidence sparsity in secondary sections
+
+The blocking and override rules should be explicit so the app behaves consistently instead of treating all validation findings as equivalent warnings.
+
+### Evidence Reference Contract
+`evidence_refs` should not remain a loose placeholder. The contract should define:
+- the source block ID referenced
+- document type and section type
+- page or source-position hint where available
+- whether the evidence supports:
+  - candidate facts
+  - employment chronology
+  - project-role linkage
+  - fit/recommendation claims
+
+Fit claims as well as factual candidate records should carry evidence references where practical so recruiter review can trace both facts and interpretation.
+
+### Deterministic Rendering Rules
+The report projection layer should define deterministic behavior for:
+- one employer with multiple titles or promotions
+- chronology sorting across employers and titles
+- date formatting when month/day precision is missing
+- rendering of linked projects under roles
+- rendering of unresolved or standalone projects in a separate section
+- empty optional sections in the Word template
+
+These rules belong in the report view model and template-mapping layer, not in the LLM output contract.
+
+### Word Reporting Fidelity, Translation Policy, And Regression Quality Gates
+#### Source-Preserving Factual Sections
+Factual sections in the report should be source-preserving once the canonical schema is approved. For employment history and project experience:
+- the renderer may reformat for the template
+- the renderer may reorder only according to deterministic chronology/grouping rules
+- the renderer must not silently shorten, summarize, or selectively omit factual experience content for neatness
+- the original CV remains authoritative for factual wording, while the report projection controls layout only
+
+#### Translation Policy For Factual Sections
+- translated display copy is the default report output when the recruiter selects a different report language
+- the original source-derived factual text remains authoritative
+- translation of factual sections should happen at bounded field or bullet level, not as one large free-form rewrite
+- the product may optionally render the authoritative original text in an appendix or reviewer-facing trace when needed for auditability
+- the renderer must not let translation introduce or remove factual employment/project records
+
+#### Word Template Contract
+The Word template integration should define:
+- required placeholders
+- optional placeholders
+- repeatable section placeholders for employment and project sections
+- compatible report-view-model version
+- export-blocking behavior when required placeholders cannot be populated
+
+The template contract should be explicit so template validation is based on a known interface rather than best-effort placeholder discovery only.
+
+#### Post-Render Word Validation
+After `.docx` rendering, the app should validate that:
+- no unexpanded placeholders remain
+- expected headings and repeated sections rendered correctly
+- required employment/project sections appear in the final file
+- anonymous mode, when selected, is reflected in the final document
+- template/export metadata needed for support or audit is recorded
+
+This validation is separate from pre-render schema validation and is intended to catch renderer/template failures rather than source-extraction failures.
+
+#### Word-Report Regression Strategy
+The release-quality regression strategy for Word reporting should include:
+- canonical-schema correctness tests for employment and project extraction
+- report-view-model projection tests
+- `.docx` structural assertions for placeholder expansion and repeated-section rendering
+- negative export-path tests for unmappable required fields or broken templates
+- template-version compatibility checks
+- curated visual review packs for key templates where structural assertions are not enough
+
+The release-hardening and future CI gates should treat Word-report correctness as its own quality domain, not only as a side effect of summary-generation tests.
 
 ### Why the LLM Should Not Generate the Word Document Directly
 Direct LLM generation of the final Word document would weaken the parts of the system that need to stay deterministic.
@@ -538,9 +758,10 @@ Tradeoffs:
 
 ### Target Structured-Briefing Approach
 - LLM completes the recruiter-facing `Candidate Summary Review` from CV + JD.
-- A grounded structured candidate briefing model is produced from CV + JD for exact candidate facts and employment history.
-- The hiring-manager briefing combines the recruiter-reviewed key summary with the grounded structured model.
-- The Word document is only created on explicit export or send.
+- A canonical candidate schema is produced from CV + JD for exact candidate facts, employment history, and project experience.
+- A separate assessment model is produced for fit analysis and recommendation narrative.
+- The hiring-manager briefing combines the recruiter-reviewed key summary with the validated canonical candidate schema.
+- The Word document is only created on explicit export or send from a deterministic report view model.
 - Word layout remains deterministic through the template engine.
 
 Tradeoffs:
@@ -556,7 +777,10 @@ The recommended next architecture step is:
 - keep the existing Word-template rendering engine
 - keep `Candidate Summary Review` as the recruiter-facing LLM assessment surface
 - replace brittle rule-based profile extraction with LLM-assisted structured extraction for grounded candidate facts
-- make the in-app `Hiring Manager Briefing` a composed output built from recruiter-reviewed key summary plus grounded structured data
+- introduce a canonical candidate schema that separates employment history from project experience
+- introduce explicit project-role mapping rules, confidence, and ambiguity flags instead of flattening projects into employment history
+- add a deterministic report view model between the canonical schema and Word export
+- make the in-app `Hiring Manager Briefing` a composed output built from recruiter-reviewed key summary plus validated canonical candidate data
 - preserve deterministic Word templating instead of allowing the LLM to control final document layout
 - create the final Word document only at explicit export / send time
 
@@ -775,6 +999,7 @@ Current implemented slices inside Release 6:
   - open / reveal saved draft
 - unsupported source files are rejected early in the workbench and surfaced as an explicit import issue instead of failing silently during manual or drag-and-drop intake
 - generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
+- deterministic Playwright coverage now proves both the healthy hidden state and the surfaced weak-draft state of the `Review Checks` panel through the real workbench UI
 - import results and summary/translation diagnostics now record basic timing metrics so support reviews can see import, extraction, and generation/translation duration without exposing raw candidate content
 - privacy-safe diagnostics now include operation run IDs and normalized error categories for summary generation, translation, export, and email support traces
 - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text

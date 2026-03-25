@@ -103,8 +103,9 @@ Mark a release complete only when the work is:
 - Limit local reference template guidance to Markdown files and remove the unused template-folder workflow.
 - Persist the recruiter's last selected template reference as a local preference.
 - Load the selected Markdown guidance template into generation context.
-- Define a canonical structured candidate briefing schema that becomes the shared source of truth for both the recruiter summary and the hiring-manager Word document.
-- Use the LLM to extract grounded candidate facts, employment history, and role-fit content from the CV and JD into that structured briefing schema instead of relying only on heuristic field extraction.
+- Define a canonical candidate schema that becomes the shared factual source of truth for both the recruiter summary workflow and the hiring-manager Word document.
+- Extend that canonical schema so employment history and project experience are modeled separately instead of forcing all experience into one flattened employment list.
+- Use the LLM to extract grounded candidate facts, employment history, project experience, and role-fit content from the CV and JD into that canonical schema instead of relying only on heuristic field extraction.
 - Require source-grounding or evidence references for material candidate facts and fit claims so recruiter review can distinguish supported content from inferred content.
 - Enforce a structured output schema for the generated summary.
 - Detect malformed model output that does not match the expected summary structure.
@@ -112,9 +113,14 @@ Mark a release complete only when the work is:
 - Reject malformed output and show a useful error when repair is not safe.
 - Validate the LLM-produced briefing schema before rendering so missing required fields, inconsistent dates, and unsupported claims are caught before summary or Word export.
 - Keep `Candidate Summary Review` as the recruiter-facing LLM-completed assessment surface.
-- Build the in-app `Hiring Manager Briefing` from the recruiter-reviewed key summary plus the grounded structured briefing model so recruiter assessment and hiring-manager output stay aligned without becoming the same surface.
+- Build the in-app `Hiring Manager Briefing` from the recruiter-reviewed key summary plus the validated canonical candidate schema so recruiter assessment and hiring-manager output stay aligned without becoming the same surface.
 - Keep Word document rendering deterministic through the configured template engine rather than asking the LLM to generate `.docx` content or layout directly.
+- Add deterministic project-role association rules so project records can be linked to roles through nested structure, explicit text, or timeline evidence without misclassifying projects as jobs.
+- Preserve unresolved or ambiguous project-role links as explicit review flags instead of silently dropping project experience during export.
+- Define project-role mapping precedence so recruiter confirmation, nested structure, explicit text, and timeline matches do not produce conflicting implementation behavior.
 - Generate an in-app hiring-manager briefing review from the same validated structured briefing object immediately after summary generation so the consultant can validate both outputs side by side.
+- Add a report-specific deterministic view model between the canonical schema and the Word template so final export consumes approved factual sections and summaries without re-reading raw CV structure.
+- Add recruiter override support for factual employment/project corrections and persist those overrides as first-class structured data.
 - Add a dedicated `Hiring Manager Briefing` review tab in the primary workbench.
 - Defer physical Word document creation until the consultant explicitly exports or sends the briefing, using the configured Word template to govern final fields, formatting, and layout.
 - Make `Save Word Draft` create the consultant-reviewable hiring-manager Word draft from the same composed briefing content shown in the `Hiring Manager Briefing` tab, and keep that draft-generation path reusable for future email attachment handoff.
@@ -260,6 +266,7 @@ Mark a release complete only when the work is:
   - shared recruiter-facing failure panel with retry/dismiss actions for import issues, workspace reopen/refresh issues, summary generation, translation, email handoff, and Word export failures
   - unsupported source files such as dragged image files now surface a clear `Import Issue` state in the workbench instead of failing silently
   - generated drafts now surface recruiter-facing review checks for missing summary sections, weak requirement evidence, generic candidate/role labels, incomplete source evidence, and overconfident unsupported-claim language before approval or sharing
+  - deterministic Playwright coverage now proves both the healthy hidden state and the surfaced weak-draft state of the `Review Checks` panel through the real workbench UI
   - current-candidate context no longer falls back to file-derived candidate or role labels when the loaded source assignment is weak or incorrect
   - import results and summary/translation diagnostics now record basic operation timings so support reviews can see import, extraction, and generation/translation durations without raw candidate-content logging
   - privacy-safe diagnostics now include per-operation run IDs and error categories for summary generation, translation, export, and email handoff support traces
@@ -338,7 +345,19 @@ Mark a release complete only when the work is:
 - Treat the active CV, JD, and guidance template as a workspace-scoped document set rather than a persistent global document library.
 - Keep retrieval ephemeral and local to the active workspace; do not start with a cross-candidate or cross-role vector store.
 - Keep recruiter summary guidance in Markdown and hiring-manager presentation in Word so template responsibilities stay distinct.
-- Use the grounded structured briefing model as the shared content source of truth for hiring-manager briefing review and Word export.
+- Use the validated canonical candidate schema plus approved narrative assessment as the shared content source of truth for hiring-manager briefing review and Word export.
+- Treat the original CV as evidence only; once normalized, downstream report generation should depend on canonical schema data and deterministic report projection rather than original CV styling, tables, or layout.
+- Keep a separate `project_experiences` model with explicit linkage metadata, confidence, and ambiguity flags instead of flattening project content into employment history.
+- Preserve richer source-block metadata such as structural parent/child relationships, paragraph/list/table origin, parser confidence, OCR fallback, and page lineage so project-role linkage stays explainable.
+- Add recruiter review of factual employment/project mapping when extraction confidence is weak before allowing final report export.
+- Define validation severity levels and explicit export-blocking versus override-required behavior for factual extraction issues.
+- Define a stricter `evidence_refs` contract for candidate facts, project-role linkage, and fit claims.
+- Keep deterministic rendering rules explicit for promotions, chronology sorting, partial dates, standalone projects, and empty report sections.
+- Keep factual report sections source-preserving after canonical-schema approval; allow deterministic reformatting but not silent shortening, summarization, or selective omission.
+- Define translated-display versus authoritative-original rules for factual sections, including optional original-text appendix behavior.
+- Define an explicit Word template contract covering required placeholders, optional placeholders, repeatable sections, report-view-model compatibility, and export-blocking behavior for unmapped required fields.
+- Add post-render `.docx` validation for unexpanded placeholders, repeated-section rendering, anonymous-mode application, and required heading/section presence.
+- Expand Word-report regression coverage beyond summary smoke tests to include canonical-schema correctness, report-view-model projection, `.docx` structural assertions, negative export-path tests, and template-version compatibility checks.
 - Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.
 - Never persist raw CV/JD text or generated candidate content to logs by default; use hashes, metadata, and explicit opt-in retention instead.
 - Treat the LLM API call as the primary PII egress point and keep minimum-necessary source retrieval plus explicit output-scoped anonymization as baseline controls.

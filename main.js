@@ -79,6 +79,7 @@ const { normalizeOutputLanguage } = require('./services/output-language-service'
 
 let settingsStore;
 let roleWorkspaceStore;
+let e2eMockSummaryMode = 'normal';
 
 function expandHomeDirectory(filePath) {
   if (typeof filePath !== 'string') {
@@ -710,16 +711,33 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     outputMode: 'named',
     outputLanguage
   });
-  const recruiterSummary = generateSummaryDraft({
+  let recruiterSummary = generateSummaryDraft({
     cvDocument: generationInputs.cvDocument,
     jdDocument: generationInputs.jdDocument,
     outputLanguage
   }).summary;
-  const validatedBriefing = validateBriefing(buildFallbackBriefing({
+  let validatedBriefing = validateBriefing(buildFallbackBriefing({
     cvDocument: generationInputs.cvDocument,
     jdDocument: generationInputs.jdDocument,
     outputLanguage
   })).briefing;
+  let summaryRetrievalManifest = summaryRequest.retrievalManifest;
+  let briefingRetrievalManifest = briefingRequest.retrievalManifest;
+
+  if (e2eMockSummaryMode === 'weak-review') {
+    recruiterSummary = outputLanguage === 'zh'
+      ? '候选人概览\n候选人具备一定相关背景，但当前草稿未完整展开关键匹配点。'
+      : 'Candidate snapshot\nThe candidate appears relevant, but this draft intentionally omits the normal structured recruiter sections.';
+    validatedBriefing = {
+      ...validatedBriefing,
+      employment_history: [],
+      role_requirements_match: []
+    };
+    summaryRetrievalManifest = [];
+    briefingRetrievalManifest = [];
+    debugTrace.push('E2E mock summary mode: weak-review');
+  }
+
   const preparedOutput = applyDraftOutputMode({
     outputMode,
     recruiterSummary,
@@ -732,8 +750,8 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     briefing: preparedOutput.briefing,
     outputMode,
     existingWarnings: preparedOutput.warnings,
-    summaryRetrievalManifest: summaryRequest.retrievalManifest,
-    briefingRetrievalManifest: briefingRequest.retrievalManifest
+    summaryRetrievalManifest,
+    briefingRetrievalManifest
   });
   const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
     briefing: preparedOutput.briefing,
@@ -744,8 +762,8 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
   debugTrace.push('E2E mock LLM mode enabled for deterministic summary generation.');
   debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
   debugTrace.push(`Briefing template label: ${briefingRequest.templateLabel}`);
-  pushRetrievalManifestDebugTrace(debugTrace, 'Summary request', summaryRequest.retrievalManifest);
-  pushRetrievalManifestDebugTrace(debugTrace, 'Briefing request', briefingRequest.retrievalManifest);
+  pushRetrievalManifestDebugTrace(debugTrace, 'Summary request', summaryRetrievalManifest);
+  pushRetrievalManifestDebugTrace(debugTrace, 'Briefing request', briefingRetrievalManifest);
   pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
 
   await waitForE2EMockDelay();
@@ -754,8 +772,8 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     templateLabel: summaryRequest.templateLabel,
     summary: recruiterSummary,
     hiringManagerBriefingReview: hiringManagerBriefing.review,
-    summaryRetrievalManifest: summaryRequest.retrievalManifest,
-    briefingRetrievalManifest: briefingRequest.retrievalManifest,
+    summaryRetrievalManifest,
+    briefingRetrievalManifest,
     prompt: summaryRequest.prompt,
     providerLabel: 'E2E Mock',
     model: 'deterministic-local',
@@ -952,6 +970,12 @@ if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
     const mode = String(payload?.mode || 'normal').trim().toLowerCase();
     getSettingsStore().setTestSecureStorageMode(mode || 'normal');
     return { mode: mode || 'normal' };
+  });
+
+  ipcMain.handle('e2e:set-mock-summary-mode', async (_event, payload) => {
+    const mode = String(payload?.mode || 'normal').trim().toLowerCase();
+    e2eMockSummaryMode = mode || 'normal';
+    return { mode: e2eMockSummaryMode };
   });
 }
 

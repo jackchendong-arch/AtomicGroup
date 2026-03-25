@@ -2982,6 +2982,11 @@ function exposeE2ETestApi() {
         await window.__atomicgroupTestMode.setSecureStorageMode(mode);
       }
     },
+    async setMockSummaryMode(mode) {
+      if (typeof window.__atomicgroupTestMode?.setMockSummaryMode === 'function') {
+        await window.__atomicgroupTestMode.setMockSummaryMode(mode);
+      }
+    },
     async openSourceFolder(folderPath) {
       const result = await window.recruitmentApi.listSourceFolder({ folderPath });
       state.contextTab = 'workspace';

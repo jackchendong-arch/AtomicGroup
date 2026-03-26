@@ -3,6 +3,9 @@
   "version": "1.0.8",
   "description": "AI-enabled recruitment intelligence workbench",
   "main": "main.js",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis --publish never",

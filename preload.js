@@ -77,7 +77,7 @@ const recruitmentApi = Object.freeze({
 
 contextBridge.exposeInMainWorld('recruitmentApi', recruitmentApi);
 
-if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
+if (process.argv.includes('--atomicgroup-e2e-test-api')) {
   contextBridge.exposeInMainWorld('__atomicgroupTestMode', Object.freeze({
     enabled: true,
     setSecureStorageMode(mode) {

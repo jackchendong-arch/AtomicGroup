@@ -93,6 +93,24 @@ let settingsStore;
 let roleWorkspaceStore;
 let e2eMockSummaryMode = 'normal';
 
+function getCliFlagValue(flagName) {
+  const normalizedFlag = `--${String(flagName || '').trim()}`;
+  const prefix = `${normalizedFlag}=`;
+  const matchingArgument = process.argv.find((argument) => argument === normalizedFlag || argument.startsWith(prefix));
+
+  if (!matchingArgument) {
+    return '';
+  }
+
+  return matchingArgument === normalizedFlag
+    ? '1'
+    : matchingArgument.slice(prefix.length);
+}
+
+function hasCliFlag(flagName) {
+  return Boolean(getCliFlagValue(flagName));
+}
+
 function expandHomeDirectory(filePath) {
   if (typeof filePath !== 'string') {
     return filePath;
@@ -110,9 +128,8 @@ function expandHomeDirectory(filePath) {
 }
 
 function getUserDataPath() {
-  return process.env.ELECTRON_USER_DATA_PATH &&
-    process.env.ELECTRON_USER_DATA_PATH.trim()
-    ? path.resolve(process.env.ELECTRON_USER_DATA_PATH)
+  return getCliFlagValue('atomicgroup-user-data-path')
+    ? path.resolve(getCliFlagValue('atomicgroup-user-data-path'))
     : app.getPath('userData');
 }
 
@@ -797,16 +814,16 @@ function buildWorkspaceDerivedProfilePayload({ cvDocument, jdDocument }) {
 }
 
 function isE2EMockLlmEnabled() {
-  return process.env.ATOMICGROUP_E2E_MOCK_LLM === '1';
+  return hasCliFlag('atomicgroup-e2e-mock-llm');
 }
 
 function getE2EMockDelayMs() {
-  const parsedValue = Number.parseInt(process.env.ATOMICGROUP_E2E_DELAY_MS || '0', 10);
+  const parsedValue = Number.parseInt(getCliFlagValue('atomicgroup-e2e-delay-ms') || '0', 10);
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
 function getE2EImportDelayMs() {
-  const parsedValue = Number.parseInt(process.env.ATOMICGROUP_E2E_IMPORT_DELAY_MS || '0', 10);
+  const parsedValue = Number.parseInt(getCliFlagValue('atomicgroup-e2e-import-delay-ms') || '0', 10);
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
@@ -1007,7 +1024,10 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: hasCliFlag('atomicgroup-e2e-test-api')
+        ? ['--atomicgroup-e2e-test-api']
+        : []
     }
   });
 
@@ -1127,7 +1147,7 @@ ipcMain.handle('llm:save-settings', async (_event, payload) => {
   return getSettingsStore().save(validateLlmSettingsPayload(payload));
 });
 
-if (process.env.ATOMICGROUP_E2E_TEST_API === '1') {
+if (hasCliFlag('atomicgroup-e2e-test-api')) {
   ipcMain.handle('e2e:set-secure-storage-mode', async (_event, payload) => {
     const mode = String(payload?.mode || 'normal').trim().toLowerCase();
     getSettingsStore().setTestSecureStorageMode(mode || 'normal');

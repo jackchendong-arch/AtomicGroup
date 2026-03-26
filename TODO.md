@@ -309,7 +309,7 @@ Mark a release complete only when the work is:
   - no raw content in persisted diagnostics
   - hardened Electron webPreferences
   - navigation / window-open restrictions
-- Decide whether product-approved telemetry is allowed and implement it only if approved.
+- Defer product-level telemetry and observability to a separate dedicated release.
 - Run regression testing across all previously shipped workflows.
   - Current release-gate command: `npm run test:release-hardening`
 
@@ -334,6 +334,15 @@ Mark a release complete only when the work is:
   - allowed-host/domain validation on download URLs
   - SHA-256 verification on every downloaded bundle before activation
   - CI-restricted publishing and documented release integrity checks
+
+## Release 8: AI Observability and STP Analytics
+- [ ] Release 8 shipped, completed, and tested.
+- Design a privacy-safe AI observability event contract that covers workflow usage, STP monitoring, intervention reasons, latency, token usage, and cost.
+- Define the external observability collection path so the desktop app emits privacy-safe event envelopes locally while aggregation, dashboards, and alerting live outside the app.
+- Track app-observable STP metrics for the Word-report flow, including export success without factual override, blocker, or retry.
+- Define normalized intervention reason codes for non-STP flows such as extraction-quality blocks, template-compatibility issues, report-quality blocks, translation failures, and manual recruiter overrides.
+- Capture provider-authoritative token usage and billing metadata when available, and clearly marked estimated token/cost values when only local estimation is possible.
+- Reuse run IDs, artifact/template versions, and source-document hashes across diagnostics and observability events so support traces and aggregated metrics can be correlated later.
 
 ## Cross-Cutting Product Decisions
 - Extend the provider abstraction cleanly when additional LLM vendors are added after DeepSeek.
@@ -381,6 +390,8 @@ Mark a release complete only when the work is:
 - Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.
 - Never persist raw CV/JD text or generated candidate content to logs by default; use hashes, metadata, and explicit opt-in retention instead.
 - Treat the LLM API call as the primary PII egress point and keep minimum-necessary source retrieval plus explicit output-scoped anonymization as baseline controls.
+- Treat observability as a separate privacy-safe external system: the app should emit structured event envelopes, but storage, aggregation, dashboards, and alerts should live outside the recruiter-facing desktop app.
+- Keep observability event schemas versioned and stable so STP, intervention, latency, and token-cost dashboards do not depend on ad hoc debug-log parsing.
 - Manage prompts, Markdown guidance templates, and Word templates through one app-managed artifact registry with type-specific metadata and versioning.
 - Replace consultant-edited free-form prompts with selection/import of approved prompt artifacts.
 - Persist generation run artifacts with prompt/template versions, input hashes, model settings, and later retrieval manifests so decisions remain traceable.

@@ -1,4 +1,7 @@
 const { spawnSync } = require('node:child_process');
+const path = require('node:path');
+
+const playwrightCliPath = path.join(process.cwd(), 'node_modules', 'playwright', 'cli.js');
 
 const steps = [
   {
@@ -8,8 +11,8 @@ const steps = [
   },
   {
     label: 'Playwright E2E',
-    command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    args: ['playwright', 'test']
+    command: process.execPath,
+    args: [playwrightCliPath, 'test']
   }
 ];
 

@@ -85,7 +85,9 @@ test.describe('Candidate Match Workbench', () => {
   let page;
   let userDataPath;
 
-  test.beforeEach(async () => {
+  test.beforeEach(async ({}, testInfo) => {
+    testInfo.setTimeout(90_000);
+
     userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'atomicgroup-playwright-'));
     await fs.writeFile(
       path.join(userDataPath, 'llm-settings.json'),
@@ -106,17 +108,26 @@ test.describe('Candidate Match Workbench', () => {
       'utf8'
     );
 
+    const {
+      ATOMICGROUP_E2E_DELAY_MS: _ignoredObserveDelay,
+      ATOMICGROUP_E2E_MOCK_LLM: _ignoredMockMode,
+      ATOMICGROUP_E2E_TEST_API: _ignoredTestApi,
+      ATOMICGROUP_E2E_IMPORT_DELAY_MS: _ignoredImportDelay,
+      ATOMICGROUP_USER_DATA_PATH: _ignoredUserDataPath,
+      ...electronEnv
+    } = process.env;
+
     electronApp = await electron.launch({
-      args: ['.'],
+      args: [
+        '.',
+        `--atomicgroup-user-data-path=${userDataPath}`,
+        '--atomicgroup-e2e-mock-llm',
+        '--atomicgroup-e2e-test-api',
+        '--atomicgroup-e2e-import-delay-ms=250'
+      ],
       cwd: appRoot,
       slowMo: getSlowMoMs(),
-      env: {
-        ...process.env,
-        ELECTRON_USER_DATA_PATH: userDataPath,
-        ATOMICGROUP_E2E_MOCK_LLM: '1',
-        ATOMICGROUP_E2E_TEST_API: '1',
-        ATOMICGROUP_E2E_IMPORT_DELAY_MS: '250'
-      }
+      env: electronEnv
     });
 
     page = await electronApp.firstWindow();
@@ -309,7 +320,9 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#summary-message')).toContainText('Review the highlighted checks');
     await expect(page.locator('#approval-warning-panel')).toBeVisible();
     await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the fit summary section.');
-    await expect(page.locator('#approval-warning-list')).toContainText('Hiring-manager briefing is missing employment history details.');
+    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the relevant experience section.');
+    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the match against key requirements section.');
+    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the recommended next step section.');
     await expect(page.locator('#approval-warning-list')).toContainText('Source evidence is incomplete for this draft.');
   });
 

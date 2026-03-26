@@ -280,6 +280,188 @@ Tier 1 priorities should be addressed before lower-priority production polish wo
   - `contextIsolation: true`
   - `sandbox: true`
   - `webSecurity: true`
+
+### 4D. AI Observability and STP Monitoring
+The product needs privacy-safe AI observability, but the full observability stack should not live inside the recruiter-facing desktop app itself. The app should emit structured, privacy-safe run events and metrics, while collection, aggregation, dashboards, alerting, and cost reporting should live in an external observability system.
+
+#### Observability Goals
+The observability design should answer at least:
+- how often the app is used
+- how many CV/JD candidate assessments are processed
+- how often generation, translation, review, export, and email handoff succeed
+- how often the Word-report path completes without manual intervention
+- why recruiters had to intervene when the flow was not straight-through
+- how long the LLM assessment and translation steps take
+- how much token usage and estimated provider cost the workflow creates
+
+#### Privacy Boundary
+Observability must remain privacy-safe by default. The exported event stream should not contain:
+- raw CV text
+- raw JD text
+- generated summaries
+- hiring-manager briefing text
+- employment-history bullets
+- project-description text
+- recruiter free-form edits
+
+It may contain:
+- run IDs
+- hashed workspace, CV, and JD identifiers
+- artifact/template versions
+- model/provider identifiers
+- output mode and language
+- timing metrics
+- token counts
+- normalized error categories
+- review-check categories
+- export/intervention reason codes
+
+#### Event Model
+The app should emit privacy-safe event envelopes for key workflow stages, such as:
+- `workspace_opened`
+- `cv_imported`
+- `jd_imported`
+- `summary_generation_started`
+- `summary_generation_completed`
+- `summary_generation_failed`
+- `translation_started`
+- `translation_completed`
+- `translation_failed`
+- `review_checks_raised`
+- `draft_approved`
+- `word_export_started`
+- `word_export_completed`
+- `word_export_blocked`
+- `word_export_failed`
+- `email_handoff_started`
+- `email_handoff_completed`
+- `email_handoff_failed`
+
+Each event should carry stable correlation identifiers where possible:
+- installation or tenant ID
+- recruiter/session ID
+- workspace/run ID
+- operation ID
+- source document hashes
+- artifact/template versions
+
+#### Metric Families
+The external observability layer should derive at least the following metric families:
+
+##### Product Usage
+- active recruiters or active installs
+- workspaces opened
+- CV imports
+- JD imports
+- generated candidate assessments
+- translations requested
+- Word exports attempted
+- Word exports completed
+- email handoffs attempted/completed
+
+##### Straight-Through Processing
+The system should define an app-observable STP metric for the Word-report flow. A practical initial definition is:
+
+`STP Word Export = a report export that completes successfully without recruiter factual override, without report-quality blocker, without retrying a failed export, and without the app surfacing a manual review-required state for factual extraction quality.`
+
+This should be measured at least as:
+- STP rate for Word export
+- STP rate by CV source type (`pdf`, `docx`, `txt`)
+- STP rate by language mix
+- STP rate by template version
+- STP rate by recruiter/team if multi-tenant rollout exists later
+
+##### Intervention Reasons
+When STP does not occur, the event stream should record normalized intervention reasons such as:
+- `source-quality-issue`
+- `ocr-required`
+- `extraction-quality-block`
+- `report-quality-block`
+- `template-compatibility-block`
+- `template-render-failure`
+- `translation-failure`
+- `provider-failure`
+- `settings-or-credential-issue`
+- `manual-factual-override`
+- `manual-narrative-edit`
+- `export-retry-required`
+
+These reason codes should be stable so dashboards can show intervention trends over time instead of support teams having to inspect logs manually.
+
+##### Reliability And Latency
+The system should track:
+- summary-generation success rate
+- translation success rate
+- export success rate
+- email handoff success rate
+- p50 / p90 / p95 latency for:
+  - import
+  - summary generation
+  - translation
+  - Word export
+  - email handoff
+
+Phase-level latency should remain available for analysis where possible, for example:
+- prompt preparation
+- provider wait
+- repair calls
+- review assembly
+- translation batches
+
+##### Token And Cost Monitoring
+The observability design should capture token and cost metrics for:
+- recruiter summary generation
+- structured briefing generation
+- translation
+- email draft generation
+
+When the provider returns usage metadata, that should be recorded as authoritative:
+- input tokens
+- output tokens
+- cached tokens if supported
+- provider-reported billing units
+
+When provider usage metadata is unavailable, the system may record:
+- local token estimate
+- local cost estimate
+
+Those estimates must be marked clearly as estimated rather than provider-authoritative.
+
+#### Collection Architecture
+The preferred architecture is:
+1. the desktop app emits privacy-safe structured event envelopes locally
+2. a local queue or run-artifact store batches those envelopes
+3. an external observability collector receives batched uploads over HTTPS
+4. the collector normalizes events into a metrics/warehouse layer
+5. dashboards and alerts are built outside the app
+
+This keeps:
+- product instrumentation inside the app
+- observability storage and analysis outside the app
+
+#### Data Contract Expectations
+The observability contract should define:
+- event name
+- event timestamp
+- correlation IDs
+- event version
+- tenant/install context
+- operation status
+- normalized error category
+- intervention reason codes
+- timing payload
+- token/cost payload
+- artifact/template version payload
+
+The contract should be versioned so dashboards and downstream pipelines do not break when new fields are added.
+
+#### Relationship To Local Diagnostics
+Local diagnostics and performance logs are still useful for support, but they are not the same thing as product-level AI observability.
+
+- local diagnostics help debug one run
+- observability metrics help measure fleet-wide usage, quality, latency, and cost
+
+Both should reuse the same run IDs and normalized reason codes where possible so support investigations can drill from aggregated metrics into a local run trace when appropriate.
 - Require a strict Content Security Policy in the renderer.
 - Never load remote URLs in the main app window.
 - Block unexpected navigation and window creation from the main app surface.
@@ -1044,7 +1226,7 @@ Scope:
 - Error handling and recovery paths
 - Logging suitable for support
 - Output quality checks
-- Basic usage telemetry if approved by product/privacy policy
+- Product-level telemetry and observability are deferred to a separate dedicated release
 
 Current implemented slices inside Release 6:
 - explicit Electron `BrowserWindow` hardening with:
@@ -1133,6 +1315,27 @@ Acceptance criteria:
   - hardcoded manifest endpoints
   - trusted-domain validation
   - SHA-256 bundle verification before activation
+
+### Release 8: AI Observability and STP Analytics
+Value:
+- Product, support, and AI-ops teams can measure how the workflow is actually being used, where straight-through processing breaks down, how long AI steps take, and what token/cost footprint the workflow creates.
+
+Scope:
+- Privacy-safe observability event contract for recruiter workflow events
+- External observability collection path outside the desktop app
+- STP metrics for Word-report generation and outward sharing readiness
+- Normalized intervention reason codes
+- Latency metrics for import, assessment, translation, export, and email handoff
+- Token usage and cost capture, including provider-authoritative vs estimated values
+- Correlation of observability events with run IDs, source hashes, and artifact/template versions
+
+Acceptance criteria:
+- The app can emit privacy-safe structured events for the main workflow stages without leaking raw CV/JD or generated candidate content.
+- The event contract is versioned and stable enough for downstream dashboards and alerting.
+- Straight-through Word-report metrics can be computed without parsing ad hoc debug logs.
+- Intervention reasons for non-STP flows are normalized and analysable over time.
+- Latency, token, and cost metrics can be aggregated per workflow stage.
+- Observability storage, aggregation, dashboards, and alerts remain outside the recruiter-facing desktop app.
 
 ### Placeholder: Future Artifact Ops Design Review
 This section is intentionally a placeholder for a later deeper design review. The current goal is to capture the main recommendation areas so artifact governance is treated as a product and operational capability, not just an implementation detail.
@@ -1251,5 +1454,6 @@ This separation reduces rework when the model provider, template system, or emai
 5. Release 5: Local Folder Intake and Job Workspace
 6. Release 6: Production Hardening
 7. Release 7: LLM Ops Artifact Registry and Promotion
+8. Release 8: AI Observability and STP Analytics
 
 This order keeps the first shipped version simple, usable, and recruiter-visible while deferring higher-risk platform work until the core drafting loop is already working.

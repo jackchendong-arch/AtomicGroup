@@ -191,6 +191,8 @@ npm run test:e2e:observe
 
 ## Local Development
 
+Use Node `20.x` for local development and CI-equivalent test runs.
+
 Install dependencies:
 
 ```bash

@@ -30,3 +30,13 @@ jobs:
 
       - name: Run release hardening suite
         run: xvfb-run -a npm run test:release-hardening
+
+      - name: Upload release hardening artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-hardening-artifacts
+          path: |
+            test-results/**
+            .tmp-e2e-userdata/**
+          if-no-files-found: ignore

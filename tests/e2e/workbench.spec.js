@@ -26,6 +26,25 @@ function getSlowMoMs() {
   return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
 }
 
+function buildElectronLaunchArgs(userDataPath) {
+  const args = [];
+
+  if (process.platform === 'linux') {
+    // Linux CI runners are more stable with Chromium sandboxing and GPU disabled.
+    args.push('--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage');
+  }
+
+  args.push(
+    '.',
+    `--atomicgroup-user-data-path=${userDataPath}`,
+    '--atomicgroup-e2e-mock-llm',
+    '--atomicgroup-e2e-test-api',
+    '--atomicgroup-e2e-import-delay-ms=250'
+  );
+
+  return args;
+}
+
 async function dispatchUriDrop(page, selector, filePaths) {
   const uriList = filePaths.map((filePath) => pathToFileURL(filePath).href).join('\n');
   await page.locator(selector).evaluate((element, payload) => {
@@ -118,13 +137,7 @@ test.describe('Candidate Match Workbench', () => {
     } = process.env;
 
     electronApp = await electron.launch({
-      args: [
-        '.',
-        `--atomicgroup-user-data-path=${userDataPath}`,
-        '--atomicgroup-e2e-mock-llm',
-        '--atomicgroup-e2e-test-api',
-        '--atomicgroup-e2e-import-delay-ms=250'
-      ],
+      args: buildElectronLaunchArgs(userDataPath),
       cwd: appRoot,
       slowMo: getSlowMoMs(),
       env: electronEnv

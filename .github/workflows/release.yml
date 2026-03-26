@@ -93,7 +93,11 @@ jobs:
         run: npx playwright install chromium
 
       - name: Run release hardening suite
-        run: npm run test:release-hardening
+        shell: bash
+        run: |
+          mkdir -p ci-artifacts
+          set -o pipefail
+          npm run test:release-hardening 2>&1 | tee ci-artifacts/release-hardening.log
 
       - name: Upload release hardening artifacts on failure
         if: failure()
@@ -101,6 +105,7 @@ jobs:
         with:
           name: release-hardening-artifacts-${{ env.RELEASE_TAG }}
           path: |
+            ci-artifacts/**
             test-results/**
             .tmp-e2e-userdata/**
           if-no-files-found: ignore

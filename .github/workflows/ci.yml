@@ -29,7 +29,11 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run release hardening suite
-        run: xvfb-run -a npm run test:release-hardening
+        shell: bash
+        run: |
+          mkdir -p ci-artifacts
+          set -o pipefail
+          xvfb-run -a npm run test:release-hardening 2>&1 | tee ci-artifacts/release-hardening.log
 
       - name: Upload release hardening artifacts on failure
         if: failure()
@@ -37,6 +41,7 @@ jobs:
         with:
           name: release-hardening-artifacts
           path: |
+            ci-artifacts/**
             test-results/**
             .tmp-e2e-userdata/**
           if-no-files-found: ignore

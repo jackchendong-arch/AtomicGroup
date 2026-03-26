@@ -79,6 +79,8 @@ If a selected file cannot be imported or extracted cleanly, the app now surfaces
 
 Unsupported source files such as images are rejected explicitly and shown as an import issue instead of being treated as silent no-ops.
 
+For weak image-based PDFs, the app will also try a local OCR fallback when supported OCR tools are available on the machine. If OCR fallback is used, the import keeps going and the document preview should include the recovered text instead of only the weak embedded PDF text layer.
+
 ## Generate A Draft
 1. Confirm the correct CV and JD are loaded.
 2. Choose:
@@ -148,6 +150,27 @@ If you edit an approved draft, it moves back to an editable state and must be ap
 
 The Word document is only created when explicitly requested. It is not automatically created every time summary generation runs.
 
+The current export path supports richer report templates with repeatable sections for:
+- education entries
+- requirement matches
+- employment experience entries with nested responsibility bullets
+- project experience entries
+
+For difficult image-heavy PDFs, the app may use a bounded local OCR fallback during import so the Word draft can still populate the structured employment and project sections from the recovered CV content.
+
+When a Word draft is created, factual report sections such as education, employment history, and project experience are rebuilt from the current CV/JD source documents instead of trusting older generated fact rows from a previously saved draft.
+
+If the rebuilt report view still looks unreliable, the app now blocks export instead of generating a misleading document. Current block conditions include:
+- generic or section-derived candidate identity
+- malformed education rows
+- employment rows that look like company names or skills headings instead of roles
+- project sections that look over-expanded or fragmentary
+
+These same issues now appear in `Review Checks` immediately after generation or translation. While they are present:
+- `Save Word Draft` stays disabled
+- `Share by Email` stays disabled
+- the draft can still be reviewed internally, but outward sharing should wait until the factual report content is trustworthy
+
 ## Share By Email
 `Share by Email`:
 - prepares a hiring-manager-facing recommendation email
@@ -187,6 +210,18 @@ If secure storage cannot save your API key, the app now keeps the key only for t
 If secure storage becomes available again, use the retry action in the settings issue panel to save or reload the key cleanly instead of restarting the whole app.
 
 After generation or translation, a `Review Checks` panel may also appear in the summary review. Use it to catch incomplete sections, weak evidence coverage, generic candidate/role labels, or overconfident wording before approval or sharing.
+
+The app now also records privacy-safe timing stats for summary generation and language translation in the debug folder under:
+- `performance-stats.jsonl`
+
+Each run captures total duration plus bounded phase timings such as:
+- prompt/retrieval preparation
+- provider wait
+- briefing repair
+- review assembly
+- translation batches
+
+The workbench summary message also shows the latest generation or translation duration so you can immediately spot slow runs.
 
 ## Recent Work
 Open the `Recent Work` tab to reopen prior role/candidate workspaces.

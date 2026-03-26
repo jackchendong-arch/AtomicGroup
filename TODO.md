@@ -120,6 +120,9 @@ Mark a release complete only when the work is:
 - Define project-role mapping precedence so recruiter confirmation, nested structure, explicit text, and timeline matches do not produce conflicting implementation behavior.
 - Generate an in-app hiring-manager briefing review from the same validated structured briefing object immediately after summary generation so the consultant can validate both outputs side by side.
 - Add a report-specific deterministic view model between the canonical schema and the Word template so final export consumes approved factual sections and summaries without re-reading raw CV structure.
+- Add a dedicated Word template adapter layer so each supported hiring-manager template version is populated through explicit code-owned mapping instead of generic raw-field placeholder inference.
+- Move optional-field display composition such as education, role/company, and project role/company lines into the template adapter so Word templates stay layout-only.
+- Version supported hiring-manager templates explicitly and bind each version to a tested adapter contract rather than treating newly supplied client templates as generic placeholder bags.
 - Add recruiter override support for factual employment/project corrections and persist those overrides as first-class structured data.
 - Add a dedicated `Hiring Manager Briefing` review tab in the primary workbench.
 - Defer physical Word document creation until the consultant explicitly exports or sends the briefing, using the configured Word template to govern final fields, formatting, and layout.
@@ -272,8 +275,10 @@ Mark a release complete only when the work is:
   - privacy-safe diagnostics now include per-operation run IDs and error categories for summary generation, translation, export, and email handoff support traces
   - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
   - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed on tab switch or summary blur
+  - weak image-based PDFs now use a bounded local OCR fallback during import when `pdftoppm` and `tesseract` are available, so CV review and downstream extraction do not stop at the poor embedded text layer alone
   - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
   - role-workspace auto-restore now only revives previously generated draft snapshots, so source-only selector changes do not incorrectly overwrite or rehydrate blank workspace state
+  - overlapping role-workspace CV/JD imports are now guarded per slot so quick selector corrections cannot let an older async import overwrite the most recent chosen candidate or JD
   - preload now exposes a frozen production API surface and keeps E2E test-mode signaling on a separate test-only bridge instead of the main renderer API
 - Move LLM API key storage out of `llm-settings.json` and into OS credential storage only; do not allow plaintext fallback in files. Current slices remove plaintext fallback, scrub old plaintext records, and add a session-only memory fallback with explicit support-code messaging, but a fuller credential-store-only design remains open.
 - Remove raw CV, JD, generated summary, briefing, and employment-history content from persistent debug logs; keep metadata-only structured logs with explicit PII exclusion rules.
@@ -356,8 +361,23 @@ Mark a release complete only when the work is:
 - Keep factual report sections source-preserving after canonical-schema approval; allow deterministic reformatting but not silent shortening, summarization, or selective omission.
 - Define translated-display versus authoritative-original rules for factual sections, including optional original-text appendix behavior.
 - Define an explicit Word template contract covering required placeholders, optional placeholders, repeatable sections, report-view-model compatibility, and export-blocking behavior for unmapped required fields.
+- Keep Word templates layout-only; do not let templates compose optional field joins, suppress separators, or reconstruct report display lines from raw factual atoms.
+- Add a dedicated template-adapter payload test layer for each supported hiring-manager template version before `.docx` rendering smoke tests.
 - Add post-render `.docx` validation for unexpanded placeholders, repeated-section rendering, anonymous-mode application, and required heading/section presence.
 - Expand Word-report regression coverage beyond summary smoke tests to include canonical-schema correctness, report-view-model projection, `.docx` structural assertions, negative export-path tests, and template-version compatibility checks.
+- Current slice has reached the limit of a generic raw-field Word template contract. The next redesign step should move to explicit versioned template adapters with code-owned display-safe lines, while keeping placeholder presence checks, missing-value sanitization, and post-render validation for `.docx` correctness.
+- `Review Checks` now evaluates the same deterministic factual report briefing as Word export, so report-quality blockers no longer come from older or LLM-inflated factual sections that export would later replace.
+- Summary generation and language translation now append structured per-run timing records to `debug/performance-stats.jsonl`, and the workbench surfaces the current run duration so slow provider waits can be reviewed later without parsing raw debug traces.
+- Current slice also expands the report view model and template alias support for richer revised report templates, including repeatable education, requirement-match, employment-experience, and project-experience sections, while hardening employment extraction for inline `company | role | date` CV layouts and OCR-recovered image-heavy PDFs such as `CV4-3.pdf`.
+- Current slice now also makes Word export prefer fresh deterministic CV/JD-derived factual sections such as education, employment history, and project experience over stale previously generated structured-briefing fact rows, while still keeping recruiter-reviewed narrative assessment content.
+- Current slice now also blocks Word export when the report view model fails first-pass factual quality checks, including generic candidate identity, malformed education rows, company-as-role employment rows, and clearly over-expanded or fragmentary project extraction.
+- Current slice now also surfaces those report-quality blockers in `Review Checks` before export, and keeps Word export plus email handoff disabled until the recruiter resolves or avoids the blocked factual state.
+- Current slice now also recovers compact Chinese education rows and project sections better by parsing `使用技术` inline project headings and stopping project capture before later skills sections such as `技能/优势及其他`.
+- Current slice now also reconstructs delayed pre-heading `education`, `work experience`, and `projects` blocks from leading CV content, so layouts like `CV4-2.pdf` no longer collapse into malformed education rows, `company — role` misclassification, or fragmentary project titles before the later explicit section labels appear.
+- Current slice now also treats large project sections as acceptable when the extracted project titles remain clean and plausible; the report-quality gate now only escalates high project counts when they coincide with suspicious fragment-style names or section spillover.
+- Current slice now also adds direct report-view-model fixture contracts for tricky Role4 CVs, asserting clean `education_entries`, `employment_experience_entries`, and `project_experience_entries` payloads before `.docx` generation instead of relying only on export smoke tests.
+- Next Word-quality work should tighten the semantic gate from heuristic blockers toward canonical-schema-backed completeness checks, recruiter override persistence, appendix/original-text validation for factual sections, and explicit template-adapter compatibility instead of generic template heuristics.
+  - Current slice strips standalone opaque PDF extraction artifact lines from imported CV text so raw `Candidate CV` previews and downstream parsing do not surface garbage tokens from files such as `CV4-1.pdf`.
 - Keep raw source documents unchanged; apply anonymization and presentation rules to derived review and export outputs instead of modifying source files.
 - Never persist raw CV/JD text or generated candidate content to logs by default; use hashes, metadata, and explicit opt-in retention instead.
 - Treat the LLM API call as the primary PII egress point and keep minimum-necessary source retrieval plus explicit output-scoped anonymization as baseline controls.

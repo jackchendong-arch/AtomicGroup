@@ -1,7 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildTemplateData, extractDocumentDerivedProfile } = require('../../services/hiring-manager-template-service');
+const {
+  WORD_TEMPLATE_CONTRACT,
+  buildTemplateData,
+  extractDocumentDerivedProfile,
+  validateWordTemplateContract
+} = require('../../services/hiring-manager-template-service');
 
 function buildEmploymentHistory(cvText) {
   const templateData = buildTemplateData({
@@ -70,6 +75,87 @@ test('employment history ignores location-only lines and PDF page artifacts', ()
       }
     ]
   });
+});
+
+test('validateWordTemplateContract accepts a template inspection that satisfies the required logical tags', () => {
+  const contract = validateWordTemplateContract({
+    supportedDetectedTags: [
+      'Candidate_Name',
+      'role_title',
+      '#employment_history',
+      'Candidate_Summary',
+      '#responsibilities',
+      'responsibility'
+    ]
+  });
+
+  assert.equal(contract.isValid, true);
+  assert.deepEqual(contract.missingRequiredLogicalTagGroups, []);
+  assert.deepEqual(contract.requiredLogicalTagGroups, WORD_TEMPLATE_CONTRACT.requiredLogicalTagGroups);
+  assert.ok(contract.resolvedLogicalTags.includes('candidate_name'));
+  assert.ok(contract.resolvedLogicalTags.includes('employment_history'));
+});
+
+test('validateWordTemplateContract reports missing required logical tags explicitly', () => {
+  const contract = validateWordTemplateContract({
+    supportedDetectedTags: [
+      'candidate_name',
+      '#employment_history'
+    ]
+  });
+
+  assert.equal(contract.isValid, false);
+  assert.deepEqual(contract.missingRequiredLogicalTagGroups, [
+    ['role_title'],
+    ['candidate_summary', 'fit_summary']
+  ]);
+});
+
+test('validateWordTemplateContract rejects templates that hard-code separators around optional fields', () => {
+  const contract = validateWordTemplateContract({
+    supportedDetectedTags: [
+      'candidate_name',
+      'role_title',
+      'candidate_summary',
+      '#employment_experience_entries',
+      '#project_experience_entries',
+      '#education_entries',
+      'field_of_study',
+      'institution_name',
+      'education_end_year',
+      'education_location',
+      'linked_job_title',
+      'linked_company_name'
+    ],
+    rawTemplateText: [
+      '{{field_of_study}} | {{institution_name}}',
+      '{{education_end_year}} | {{education_location}}',
+      '{{linked_job_title}} | {{linked_company_name}}'
+    ].join('\n')
+  });
+
+  assert.equal(contract.isValid, false);
+  assert.equal(contract.missingRequiredLogicalTagGroups.length, 0);
+  assert.deepEqual(contract.optionalSeparatorIssues, [
+    {
+      label: 'education field and institution',
+      separator: '|',
+      leftTag: 'field_of_study',
+      rightTag: 'institution_name'
+    },
+    {
+      label: 'education years and location',
+      separator: '|',
+      leftTag: 'education_end_year',
+      rightTag: 'education_location'
+    },
+    {
+      label: 'project linked role and company',
+      separator: '|',
+      leftTag: 'linked_job_title',
+      rightTag: 'linked_company_name'
+    }
+  ]);
 });
 
 test('employment history does not treat inline location suffixes as company names', () => {
@@ -293,6 +379,103 @@ test('employment history parses date-first company groups with multiple dated ro
   });
 });
 
+test('employment history parses company-role-date inline entries and separate key projects sections', () => {
+  const templateData = buildTemplateData({
+    summary: [
+      'Candidate: Eugene Liu',
+      'Target Role: Blockchain Developer',
+      '',
+      '## Fit Summary',
+      'Strong fit for the role.'
+    ].join('\n'),
+    cvDocument: {
+      text: [
+        'Eugene Liu',
+        '',
+        'Professional Experience',
+        'Delulu | Backend Engineer | Jan 2024 - Present',
+        'Tech Stack: Golang, Solidity, PostgreSQL, GraphQL, gRPC.',
+        'Developed RFQ smart contracts supporting internal and external market makers.',
+        'Implemented advanced trading systems including copy trading and limit orders.',
+        'Galxe | Golang Engineer | Apr 2022 - Jan 2024',
+        'Tech Stack: Golang, Solidity, PostgreSQL, GraphQL, gRPC.',
+        '.',
+        'Built contract service abstraction layer for secure contract interaction.',
+        'Contributed to Solana smart contract development and migration.',
+        'NFTGO | Golang Engineer | May 2021 - Apr 2022',
+        'Built whale transaction monitoring system for real-time event ingestion.',
+        '',
+        'Key Projects',
+        'High Performance Blockchain Relayer and Indexer',
+        '.',
+        'Designed configurable event indexing framework supporting custom ABI decoding.',
+        '.',
+        'Implemented secure private key management using Secret Manager.',
+        'Low-Latency Solana Transaction Engine',
+        '.',
+        'Reduced transaction latency from seconds to milliseconds using optimized relayer routing.'
+      ].join('\n'),
+      file: {
+        name: 'cv4-3.pdf'
+      }
+    },
+    jdDocument: {
+      text: 'Job Title: Blockchain Developer\nCompany: Atomic Group',
+      file: {
+        name: 'jd4.docx'
+      }
+    }
+  });
+
+  assert.equal(templateData.employment_history.length, 3);
+  assert.deepEqual(templateData.employment_history[0], {
+    job_title: 'Backend Engineer',
+    company_name: 'Delulu',
+    start_date: '2024',
+    end_date: 'Present',
+    responsibilities: [
+      {
+        responsibility: 'Developed RFQ smart contracts supporting internal and external market makers. Implemented advanced trading systems including copy trading and limit orders.'
+      }
+    ]
+  });
+  assert.equal(templateData.employment_experience_entries[0].employment_start_date, '2024');
+  assert.match(
+    templateData.employment_experience_entries[0].responsibility_bullets[0].responsibility_text,
+    /Developed RFQ smart contracts supporting internal and external market makers\./
+  );
+  assert.equal(templateData.project_experience_entries.length, 2);
+  assert.equal(
+    templateData.project_experience_entries[0].project_name,
+    'High Performance Blockchain Relayer and Indexer'
+  );
+  assert.match(
+    templateData.project_experience_entries[0].project_bullets[0].project_bullet_text,
+    /Designed configurable event indexing framework supporting custom ABI decoding\./
+  );
+});
+
+test('validateWordTemplateContract accepts revised report-template loop tags', () => {
+  const contract = validateWordTemplateContract({
+    supportedDetectedTags: [
+      'candidate_name',
+      'role_title',
+      'candidate_summary',
+      '#employment_experience_entries',
+      '#responsibility_bullets',
+      'responsibility_text',
+      '#education_entries',
+      'degree_name'
+    ]
+  });
+
+  assert.equal(contract.isValid, true);
+  assert.deepEqual(contract.missingRequiredLogicalTagGroups, []);
+  assert.deepEqual(contract.optionalSeparatorIssues, []);
+  assert.ok(contract.resolvedLogicalTags.includes('employment_experience_entries'));
+  assert.ok(contract.repeatableLogicalTags.includes('project_experience_entries'));
+});
+
 test('Chinese date-leading work history does not leak education lines into location and keeps responsibilities inside the work section', () => {
   const cvText = [
     'Noah Zhang',
@@ -439,4 +622,184 @@ test('buildTemplateData consolidates multiple languages and education entries fo
   assert.equal(templateData.education_entries.length, 2);
   assert.match(templateData.education_summary, /BEng Computer Science/);
   assert.match(templateData.education_summary, /MBA/);
+});
+
+test('extractDocumentDerivedProfile keeps compact Chinese education rows and project sections separate from skills content', () => {
+  const profile = extractDocumentDerivedProfile({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        '教育背景',
+        '2022.09-2024.06 Johns Hopkins University Electrical and Computer Engineering（GPA:3.7/4）| 硕士',
+        '2017.09–2022.06 中国科学院大学 电子信息工程（GPA:3.7/4）| 本科',
+        '工作经历',
+        '2024.07-2025.05 Sparksoft（ 技 术 研 发 部 ） 软件工程师',
+        'l 使用 Go 语言参与构建公司核心订单处理服务。',
+        '项目经历',
+        '基 于 Solana 生 态 的 DEX 聚 合 器 使用技术：Go, MySQL, Redis, Kafka, Solana, Solidity, Geth, Foundry',
+        'l 交易解析: 使用 go-zero 框架，构建 consumer 服务解析 Solana 链上交易。',
+        'l 交易构造: 实现 trade 服务以提供交易订单创建。',
+        '基 于 Anchor 的 PumpFun 合 约 使用技术：Rust, TypeScript, Anchor, Solana',
+        'l Anchor + Rust 构建的 AMM 配置账户体系。',
+        'l Bonding Curve 池子创建。',
+        '技能/优势及其他',
+        'l 语言：Go, Rust, Solidity, Python',
+        'l 英语：托福 113，GRE 325，可以熟练使用英语作为工作语言。'
+      ].join('\n'),
+      file: {
+        name: 'CV4-1.pdf'
+      }
+    },
+    jdDocument: {
+      text: '职位: 区块链开发工程师',
+      file: {
+        name: 'JD4.docx'
+      }
+    }
+  });
+
+  assert.deepEqual(profile.educationEntries, [
+    {
+      degreeName: '硕士',
+      university: 'Johns Hopkins University Electrical and Computer Engineering（GPA:3.7/4）',
+      startYear: '2022',
+      endYear: '2024'
+    },
+    {
+      degreeName: '本科',
+      university: '中国科学院大学 电子信息工程（GPA:3.7/4）',
+      startYear: '2017',
+      endYear: '2022'
+    }
+  ]);
+  assert.equal(profile.projectExperiences.length, 2);
+  assert.equal(profile.projectExperiences[0].project_name, '基 于 Solana 生 态 的 DEX 聚 合 器');
+  assert.equal(profile.projectExperiences[1].project_name, '基 于 Anchor 的 PumpFun 合 约');
+  assert.equal(
+    profile.projectExperiences.some((entry) => /技能\/优势及其他|英语：/u.test(entry.project_name)),
+    false
+  );
+});
+
+test('extractDocumentDerivedProfile infers delayed English section headings without promoting wrapped bullets into projects', () => {
+  const profile = extractDocumentDerivedProfile({
+    cvDocument: {
+      text: [
+        'MSc in Computing',
+        'Cardiff University, UK | 2019 – 2020',
+        'Bachelor of Business Administration (BBA)',
+        'Jincheng College, Nanjing University of Aeronautics and Astronautics | 2012 – 2016',
+        'Shanghai Xiaohan Technology Co., Ltd. — Blockchain Engineer',
+        'Sep 2021 – Sep 2025',
+        'Wanxiang Blockchain Inc., Shanghai — Blockchain Engineer',
+        'Feb 2021 – Sep 2021',
+        'Shanghai Tancheng Data Technology Co., Ltd. — Full-Stack Engineer',
+        'Sep 2020 – Feb 2021',
+        'Shanghai Baoxiang Financial Information Service Co., Ltd. — Full-Stack Engineer',
+        'Jun 2016 – Jun 2019',
+        'Shanghai Chahe Interactive Network Technology Co., Ltd. — Android Engineer',
+        'Jun 2015 – Jun 2016',
+        'C h e n h a o L i',
+        'Full-Stack Web3 Engineer',
+        'Shanghai, China 1993.09.23',
+        'Rust Copy-Trading Arbitrage Bot & Jupiter-style Aggregator (2025.04 – 2025.08)',
+        '* Built a Jupiter-style token swap aggregator on Solana',
+        '* Integrated Raydium, Pump.fun AMM, PumpSwap, Meteora, Raydium CPMM, and Meteora DLMM',
+        '* Developed a high-performance Rust copy-trading and arbitrage bot tracking KOL wallets, smart',
+        'money, and sniper traders',
+        '* Connected to Yellowstone Geyser nodes for real-time on-chain data streaming',
+        'Work Experience',
+        'Education',
+        'Projects',
+        'Pongolo Tequila RWA Project (2025.01 – 2025.03)',
+        '* Developed the Pongolo brand website and admin management system',
+        '* Tokenized Pongolo tequila barrels as real-world assets (RWA) on-chain',
+        'Pumpfun Meme Character Livestream & AI Agent (2024.08 – 2024.12)',
+        '* Built a Unity-based cartoon meme character livestreaming on YouTube, Twitch, and Kick',
+        '* Implemented real-time voice interaction using Azure TTS with animated actions such as singing and',
+        'dancing',
+        'Lottery Drawer App (Personal Project)',
+        '* Developed a lottery drawing utility app with multiple selection modes, configurable draws, data',
+        'upload, save and update features, user registration/login, and message board'
+      ].join('\n'),
+      file: {
+        name: 'CV4-2.pdf'
+      }
+    },
+    jdDocument: {
+      text: '职位: 区块链开发工程师',
+      file: {
+        name: 'JD4.docx'
+      }
+    }
+  });
+
+  assert.deepEqual(profile.educationEntries, [
+    {
+      degreeName: 'MSc in Computing',
+      university: 'Cardiff University, UK',
+      startYear: '2019',
+      endYear: '2020'
+    },
+    {
+      degreeName: 'Bachelor of Business Administration (BBA)',
+      university: 'Jincheng College, Nanjing University of Aeronautics and Astronautics',
+      startYear: '2012',
+      endYear: '2016'
+    }
+  ]);
+  assert.deepEqual(
+    profile.employmentHistory.map((entry) => ({
+      companyName: entry.companyName,
+      jobTitle: entry.jobTitle,
+      startDate: entry.startDate,
+      endDate: entry.endDate
+    })),
+    [
+      {
+        companyName: 'Shanghai Xiaohan Technology Co., Ltd.',
+        jobTitle: 'Blockchain Engineer',
+        startDate: '2021',
+        endDate: '2025'
+      },
+      {
+        companyName: 'Wanxiang Blockchain Inc., Shanghai',
+        jobTitle: 'Blockchain Engineer',
+        startDate: '2021',
+        endDate: '2021'
+      },
+      {
+        companyName: 'Shanghai Tancheng Data Technology Co., Ltd.',
+        jobTitle: 'Full-Stack Engineer',
+        startDate: '2020',
+        endDate: '2021'
+      },
+      {
+        companyName: 'Shanghai Baoxiang Financial Information Service Co., Ltd.',
+        jobTitle: 'Full-Stack Engineer',
+        startDate: '2016',
+        endDate: '2019'
+      },
+      {
+        companyName: 'Shanghai Chahe Interactive Network Technology Co., Ltd.',
+        jobTitle: 'Android Engineer',
+        startDate: '2015',
+        endDate: '2016'
+      }
+    ]
+  );
+  assert(profile.projectExperiences.some((entry) => entry.project_name === 'Rust Copy-Trading Arbitrage Bot & Jupiter-style Aggregator'));
+  assert(profile.projectExperiences.some((entry) => entry.project_name === 'Pongolo Tequila RWA Project'));
+  assert(profile.projectExperiences.some((entry) => entry.project_name === 'Pumpfun Meme Character Livestream & AI Agent'));
+  assert(profile.projectExperiences.some((entry) => entry.project_name === 'Lottery Drawer App (Personal Project)'));
+  assert.equal(
+    profile.projectExperiences.some((entry) => /^(dancing|of \$5M|money, and sniper traders|downloads\*\*|features|smart contracts)$/i.test(entry.project_name)),
+    false
+  );
+  assert.equal(
+    profile.projectExperiences.some((entry) =>
+      (entry.project_bullets || []).some((bullet) => /Work Experience|Education|Projects/.test(bullet))
+    ),
+    false
+  );
 });

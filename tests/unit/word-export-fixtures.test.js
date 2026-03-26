@@ -128,7 +128,7 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
       assert.match(renderedSummary, /## Fit Summary/);
 
       const outputPath = path.join(DEBUG_OUTPUT_DIR, fixtureCase.outputFileName);
-      await renderHiringManagerWordDocument({
+      const renderResult = await renderHiringManagerWordDocument({
         templatePath: TEMPLATE_PATH,
         outputPath,
         templateData
@@ -154,6 +154,13 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
       assert.match(appPropertiesXml, /<Template>Normal\.dotm<\/Template>/);
       assert.equal(Boolean(zip.file('docProps/custom.xml')), false);
       assert.deepEqual(getMissingIgnorablePrefixes(documentXml), []);
+      assert.equal(renderResult.templateContract.isValid, true);
+      assert.deepEqual(renderResult.templateContract.missingRequiredLogicalTagGroups, []);
+      assert.deepEqual(renderResult.postRenderValidation.unexpandedTags, []);
+      assert.deepEqual(renderResult.postRenderValidation.missingRenderedTextGroups, []);
+      assert.doesNotMatch(documentXml, /\{\{/);
+      assert.doesNotMatch(documentXml, /\bundefined\b/i);
+      assert.doesNotMatch(renderedText, /\bundefined\b/i);
 
       assert.ok(
         renderedText.length > 100,

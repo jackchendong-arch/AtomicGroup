@@ -59,6 +59,7 @@ const state = {
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
+  lastPerformance: null,
   debugTrace: [],
   isLoadingWorkspace: false,
   isGenerating: false,
@@ -76,6 +77,10 @@ const state = {
 };
 
 let currentContextProfileRequestId = 0;
+const documentImportRequestIds = {
+  cv: 0,
+  jd: 0
+};
 const e2eFailureInjection = {
   loadConfiguration: '',
   saveSettings: '',
@@ -84,9 +89,14 @@ const e2eFailureInjection = {
   chooseBriefingOutputFolder: '',
   refreshBriefingReview: ''
 };
+const REPORT_QUALITY_WARNING_PREFIX = 'Word report review required:';
 
 function isE2ETestModeEnabled() {
   return Boolean(window.__atomicgroupTestMode?.enabled);
+}
+
+function hasBlockingReportQualityWarnings(warnings = state.approvalWarnings) {
+  return Array.isArray(warnings) && warnings.some((warning) => String(warning || '').startsWith(REPORT_QUALITY_WARNING_PREFIX));
 }
 
 const elements = {
@@ -223,6 +233,7 @@ function createEmptyDocumentSlot(slot) {
     file: null,
     text: '',
     previewText: '',
+    performance: null,
     warnings: [],
     error: null
   };
@@ -250,6 +261,104 @@ function formatFileSize(sizeBytes) {
   }
 
   return `${(numeric / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
+}
+
+function normalizePerformancePayload(performance) {
+  if (!performance || typeof performance !== 'object') {
+    return null;
+  }
+
+  const totalMs = Number(performance.totalMs);
+  const phases = performance.phases && typeof performance.phases === 'object'
+    ? performance.phases
+    : {};
+
+  if (!Number.isFinite(totalMs) || totalMs < 0) {
+    return null;
+  }
+
+  return {
+    totalMs,
+    phases
+  };
+}
+
+function formatDurationShort(durationMs) {
+  const numeric = Number(durationMs);
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return '';
+  }
+
+  if (numeric < 1000) {
+    return `${Math.round(numeric)} ms`;
+  }
+
+  const seconds = numeric / 1000;
+
+  if (seconds < 10) {
+    return `${seconds.toFixed(1)} s`;
+  }
+
+  return `${seconds.toFixed(0)} s`;
+}
+
+function buildPerformanceStatusSuffix(performance, primaryPhaseKeys = []) {
+  const normalized = normalizePerformancePayload(performance);
+
+  if (!normalized) {
+    return '';
+  }
+
+  const phaseLabel = primaryPhaseKeys
+    .map((key) => {
+      const value = Number(normalized.phases?.[key]);
+
+      if (!Number.isFinite(value) || value <= 0) {
+        return '';
+      }
+
+      const label = key === 'combinedProviderWaitMs'
+        ? 'provider wait'
+        : (key === 'coreBriefingTranslationMs' ? 'briefing translation' : '');
+
+      return label ? `${label} ${formatDurationShort(value)}` : '';
+    })
+    .filter(Boolean)
+    .join(', ');
+
+  return phaseLabel
+    ? `Completed in ${formatDurationShort(normalized.totalMs)} (${phaseLabel}).`
+    : `Completed in ${formatDurationShort(normalized.totalMs)}.`;
+}
+
+function setLastPerformance(operation, performance) {
+  const normalized = normalizePerformancePayload(performance);
+
+  state.lastPerformance = normalized
+    ? {
+      operation: String(operation || '').trim() || 'operation',
+      performance: normalized
+    }
+    : null;
+}
+
+function getLastPerformanceMetaText() {
+  if (!state.lastPerformance) {
+    return '';
+  }
+
+  const label = state.lastPerformance.operation === 'translation'
+    ? 'Last translation'
+    : 'Last generation';
+  const details = buildPerformanceStatusSuffix(
+    state.lastPerformance.performance,
+    state.lastPerformance.operation === 'translation'
+      ? ['coreBriefingTranslationMs']
+      : ['combinedProviderWaitMs']
+  );
+
+  return details ? `${label}: ${details}` : '';
 }
 
 function getPathExtension(filePath) {
@@ -430,6 +539,7 @@ function applyCachedDraftVariant(mode, language, snapshot, message) {
   state.outputLanguage = normalizeDraftVariantLanguage(language);
   state.pendingOutputLanguage = '';
   state.approvalWarnings = [...(snapshot.approvalWarnings || [])];
+  state.lastPerformance = null;
   state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
   state.lastExportPath = '';
   state.summaryStatus = 'Ready';
@@ -462,6 +572,7 @@ const CV_EXPERIENCE_SECTION_TITLES = new Set([
 
 const CV_DATE_RANGE_PATTERN =
   /\b(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*[–-]\s*(?:present|current|now|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:19|20)\d{2}(?:[./-]\d{1,2})?)\b/i;
+const PDF_PAGE_MARKER_PATTERN = /^[-–—]*\s*\d+\s+of\s+\d+\s*[-–—]*$/i;
 
 function normalizeHeadingKey(value) {
   return String(value || '')
@@ -481,6 +592,10 @@ function isCvDateLine(line) {
 
 function isCvBulletLine(line) {
   return /^[-*•]\s+/.test(line.trim());
+}
+
+function isPdfPageMarkerLine(line) {
+  return PDF_PAGE_MARKER_PATTERN.test(String(line || '').trim());
 }
 
 function looksLikeCvName(line) {
@@ -609,6 +724,12 @@ function renderCvDocument(text) {
     const nextNextLine = lines[index + 2]?.trim() || '';
 
     if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (isPdfPageMarkerLine(line)) {
       flushParagraph();
       flushList();
       continue;
@@ -804,6 +925,12 @@ function renderRichDocument(text, options = {}) {
     const line = rawLine.trim();
 
     if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (isPdfPageMarkerLine(line)) {
       flushParagraph();
       flushList();
       continue;
@@ -1670,21 +1797,36 @@ function renderSummary() {
   elements.templateLabel.textContent = state.templateLabel;
   renderApprovalWarnings();
   renderRetrievalEvidence();
+  const lastPerformanceMeta = getLastPerformanceMetaText();
   if (state.lastExportPath) {
     elements.draftMeta.textContent = `Latest saved Word draft: ${state.lastExportPath}`;
     return;
   }
 
   if (state.draftLifecycle === 'approved') {
-    elements.draftMeta.textContent = hasConfiguredWordTemplate()
-      ? 'Approved draft is ready for Word export or email handoff.'
-      : 'Approved draft is ready. Add a Word template in Settings when you need to export or share it.';
+    if (hasBlockingReportQualityWarnings()) {
+      elements.draftMeta.textContent = [
+        'Approved draft is ready for internal review, but Word export and email sharing are paused until the report-quality issues in Review Checks are resolved.',
+        lastPerformanceMeta
+      ].filter(Boolean).join(' ');
+      return;
+    }
+
+    elements.draftMeta.textContent = [
+      hasConfiguredWordTemplate()
+        ? 'Approved draft is ready for Word export or email handoff.'
+        : 'Approved draft is ready. Add a Word template in Settings when you need to export or share it.',
+      lastPerformanceMeta
+    ].filter(Boolean).join(' ');
     return;
   }
 
-  elements.draftMeta.textContent = hasConfiguredWordTemplate()
-    ? 'Review the draft and approve it before copying or exporting the hiring-manager version.'
-    : 'Review and approve the draft first. Add a Word template in Settings when you need to export it.';
+  elements.draftMeta.textContent = [
+    hasConfiguredWordTemplate()
+      ? 'Review the draft and approve it before copying or exporting the hiring-manager version.'
+      : 'Review and approve the draft first. Add a Word template in Settings when you need to export it.',
+    lastPerformanceMeta
+  ].filter(Boolean).join(' ');
 }
 
 function renderBriefing() {
@@ -1840,6 +1982,7 @@ function invalidateSummary(message) {
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
+  state.lastPerformance = null;
   state.debugTrace = [];
   state.isSwitchingMode = false;
   state.isTranslating = false;
@@ -2101,9 +2244,11 @@ async function setOutputMode(mode) {
     state.approvalWarnings = result.approvalWarnings || [];
     state.draftLifecycle = 'generated';
     state.summaryStatus = 'Ready';
-    state.summaryMessage = normalizedMode === 'anonymous'
-      ? 'Anonymous hiring-manager output is ready without rerunning candidate assessment. The consultant summary stays named.'
-      : 'Named hiring-manager output restored without rerunning candidate assessment.';
+    state.summaryMessage = hasBlockingReportQualityWarnings(state.approvalWarnings)
+      ? 'Hiring-manager output refreshed, but report review is still required before Word export or email sharing.'
+      : (normalizedMode === 'anonymous'
+        ? 'Anonymous hiring-manager output is ready without rerunning candidate assessment. The consultant summary stays named.'
+        : 'Named hiring-manager output restored without rerunning candidate assessment.');
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
@@ -2168,6 +2313,7 @@ async function translateCurrentDraft(targetLanguage) {
 
   state.summary = readSummaryEditorText();
   state.lastExportPath = '';
+  state.lastPerformance = null;
   state.isTranslating = true;
   state.pendingOutputLanguage = targetLanguage;
   clearOperationFailure();
@@ -2203,11 +2349,15 @@ async function translateCurrentDraft(targetLanguage) {
     state.outputLanguage = result.outputLanguage || targetLanguage;
     state.pendingOutputLanguage = '';
     state.approvalWarnings = result.approvalWarnings || [];
+    setLastPerformance('translation', result.performance);
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     state.summaryStatus = 'Ready';
-    state.summaryMessage = targetLanguage === 'zh'
-      ? '当前草稿已翻译为中文。请复核译文后再复制、导出或发送。'
-      : 'The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.';
+    const translationPerformanceNote = buildPerformanceStatusSuffix(result.performance, ['coreBriefingTranslationMs']);
+    state.summaryMessage = hasBlockingReportQualityWarnings(state.approvalWarnings)
+      ? ['Language update is complete, but report review is still required before Word export or email sharing.', translationPerformanceNote].filter(Boolean).join(' ')
+      : (targetLanguage === 'zh'
+        ? ['当前草稿已翻译为中文。请复核译文后再复制、导出或发送。', translationPerformanceNote].filter(Boolean).join(' ')
+        : ['The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.', translationPerformanceNote].filter(Boolean).join(' '));
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.outputLanguage = previousLanguage;
@@ -2646,6 +2796,7 @@ async function openRecentWorkspace(workspaceId) {
     };
     state.briefingReview = snapshot.briefingReview || '';
     state.summary = snapshot.summary || '';
+    state.lastPerformance = null;
     state.outputMode = snapshot.outputMode === 'anonymous' ? 'anonymous' : 'named';
     state.outputLanguage = snapshot.outputLanguage === 'zh' ? 'zh' : 'en';
     state.pendingOutputLanguage = '';
@@ -2659,6 +2810,23 @@ async function openRecentWorkspace(workspaceId) {
       cacheDraftVariant(state.outputMode, state.outputLanguage);
     }
 
+    const canRefreshSavedReview = Boolean(
+      state.summary.trim() &&
+      state.briefing &&
+      state.documents.cv.file &&
+      !state.documents.cv.error &&
+      state.documents.jd.file &&
+      !state.documents.jd.error
+    );
+
+    if (canRefreshSavedReview) {
+      try {
+        await syncBriefingReviewFromCurrentSummary();
+      } catch (_error) {
+        // Keep the saved snapshot available even if review refresh fails locally.
+      }
+    }
+
     state.summaryStatus = state.summary.trim() ? 'Ready' : 'No Draft';
     state.summaryMessage = slotErrors.length > 0
       ? `Saved workspace reopened with source-file issues: ${slotErrors.join(' | ')}`
@@ -2666,6 +2834,7 @@ async function openRecentWorkspace(workspaceId) {
         ? 'Saved role workspace reopened.'
         : 'Saved role workspace reopened. Load or generate as needed.');
     await refreshCurrentContextProfile();
+    await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     setOperationFailure({
       status: 'Workspace Issue',
@@ -2726,6 +2895,7 @@ async function restoreMatchingWorkspaceSelectionSnapshot() {
 }
 
 async function importDocumentIntoSlot(filePath, slot, { persistSnapshot = true } = {}) {
+  const requestId = ++documentImportRequestIds[slot];
   beginSensitiveSourceReload(
     slot,
     slot === 'cv'
@@ -2737,14 +2907,27 @@ async function importDocumentIntoSlot(filePath, slot, { persistSnapshot = true }
   const extension = getPathExtension(filePath);
 
   if (extension && !SUPPORTED_SOURCE_EXTENSIONS.has(extension)) {
+    if (requestId !== documentImportRequestIds[slot]) {
+      return;
+    }
+
     await applyImportedDocument(buildUnsupportedImportResult(filePath), slot, { persistSnapshot });
     return;
   }
 
   try {
     const result = await window.recruitmentApi.importDocument({ filePath });
+
+    if (requestId !== documentImportRequestIds[slot]) {
+      return;
+    }
+
     await applyImportedDocument(result, slot, { persistSnapshot });
   } catch (error) {
+    if (requestId !== documentImportRequestIds[slot]) {
+      return;
+    }
+
     setOperationFailure({
       status: 'Import Issue',
       title: slot === 'cv' ? 'Candidate CV import failed' : 'Role JD import failed',
@@ -2768,6 +2951,7 @@ function setDocumentSlotFromImportResult(result, slot, { invalidate = true } = {
     file: result.file,
     text: result.text,
     previewText: result.previewText,
+    performance: normalizePerformancePayload(result.performance),
     warnings: result.warnings,
     error: result.error
   };
@@ -3092,7 +3276,8 @@ function canGenerateSummary() {
 function canExportWordDraft() {
   return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0 &&
-    state.draftLifecycle === 'approved';
+    state.draftLifecycle === 'approved' &&
+    !hasBlockingReportQualityWarnings();
 }
 
 function canCopySummary() {
@@ -3103,7 +3288,8 @@ function canCopySummary() {
 function canShareByEmail() {
   return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0 &&
-    state.draftLifecycle === 'approved';
+    state.draftLifecycle === 'approved' &&
+    !hasBlockingReportQualityWarnings();
 }
 
 function canApproveDraft() {
@@ -3202,6 +3388,7 @@ async function generateSummary() {
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
+  state.lastPerformance = null;
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.debugTrace = [];
   clearOperationFailure();
@@ -3228,17 +3415,21 @@ async function generateSummary() {
     state.outputMode = result.outputMode || state.outputMode;
     state.outputLanguage = result.outputLanguage || state.outputLanguage;
     state.approvalWarnings = result.approvalWarnings || [];
+    setLastPerformance('generation', result.performance);
     clearCachedDraftVariants();
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     state.draftLifecycle = 'generated';
     state.templateLabel = result.templateLabel;
     state.workbenchTab = nextWorkbenchTab;
     state.summaryStatus = 'Ready';
-    state.summaryMessage = state.approvalWarnings.length > 0
-      ? 'Candidate summary and hiring-manager briefing are ready. Review the highlighted checks before approval or sharing.'
-      : (state.outputMode === 'anonymous'
-        ? 'Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.'
-        : 'Candidate summary and hiring-manager briefing are ready for review and approval.');
+    const generationPerformanceNote = buildPerformanceStatusSuffix(result.performance, ['combinedProviderWaitMs']);
+    state.summaryMessage = hasBlockingReportQualityWarnings(state.approvalWarnings)
+      ? ['Candidate summary and hiring-manager briefing are ready, but report review is required before Word export or email sharing.', generationPerformanceNote].filter(Boolean).join(' ')
+      : (state.approvalWarnings.length > 0
+        ? ['Candidate summary and hiring-manager briefing are ready. Review the highlighted checks before approval or sharing.', generationPerformanceNote].filter(Boolean).join(' ')
+        : (state.outputMode === 'anonymous'
+          ? ['Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.', generationPerformanceNote].filter(Boolean).join(' ')
+          : ['Candidate summary and hiring-manager briefing are ready for review and approval.', generationPerformanceNote].filter(Boolean).join(' ')));
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
     state.workbenchTab = nextWorkbenchTab;
@@ -3276,9 +3467,11 @@ async function copySummary() {
 async function shareByEmail() {
   if (!canShareByEmail()) {
     state.summaryStatus = 'Not Ready';
-    state.generationError = hasConfiguredWordTemplate()
-      ? 'Approve the current draft before opening an email draft.'
-      : 'Configure the hiring-manager Word template and approve the current draft before sharing by email.';
+    state.generationError = hasBlockingReportQualityWarnings()
+      ? 'Report review is required before email sharing. Resolve the report-quality issues listed in Review Checks first.'
+      : (hasConfiguredWordTemplate()
+        ? 'Approve the current draft before opening an email draft.'
+        : 'Configure the hiring-manager Word template and approve the current draft before sharing by email.');
     renderSummary();
     return;
   }
@@ -3354,9 +3547,11 @@ async function exportWordDraft() {
   if (!canExportWordDraft()) {
     state.debugTrace = ['Export request blocked before the save dialog opened.'];
     state.summaryStatus = 'Not Ready';
-    state.generationError = state.settings?.outputTemplatePath
-      ? 'A saved recruiter summary is required before exporting the hiring-manager Word draft.'
-      : 'Configure a Word .docx or .dotx template before exporting the hiring-manager draft.';
+    state.generationError = hasBlockingReportQualityWarnings()
+      ? 'Report review is required before Word export. Resolve the report-quality issues listed in Review Checks first.'
+      : (state.settings?.outputTemplatePath
+        ? 'A saved recruiter summary is required before exporting the hiring-manager Word draft.'
+        : 'Configure a Word .docx or .dotx template before exporting the hiring-manager draft.');
     state.workbenchTab = 'briefing';
     render();
     return;

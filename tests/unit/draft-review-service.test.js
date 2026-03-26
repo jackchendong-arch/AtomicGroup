@@ -127,3 +127,28 @@ test('buildDraftReviewWarnings preserves existing privacy warnings and suppresse
     false
   );
 });
+
+test('buildDraftReviewWarnings appends Word-report review blockers for recruiter visibility', () => {
+  const warnings = buildDraftReviewWarnings({
+    recruiterSummary: [
+      '## Fit Summary',
+      'Strong alignment with the role.',
+      '## Relevant Experience',
+      '- Led engineering delivery',
+      '## Match Against Key Requirements',
+      '- Leadership -> Led platform teams',
+      '## Recommended Next Step',
+      'Proceed to hiring-manager review.'
+    ].join('\n'),
+    briefing: createBriefing(),
+    reportQualityBlockers: [
+      'Education entry 1 contains merged separator text instead of clean degree and institution fields.',
+      'Project experience extraction looks over-expanded: 12 project rows were produced.'
+    ],
+    summaryRetrievalManifest: [{ blockId: 'cv-1' }],
+    briefingRetrievalManifest: [{ blockId: 'jd-1' }]
+  });
+
+  assert(warnings.includes('Word report review required: Education entry 1 contains merged separator text instead of clean degree and institution fields.'));
+  assert(warnings.includes('Word report review required: Project experience extraction looks over-expanded: 12 project rows were produced.'));
+});

@@ -36,64 +36,167 @@ const SUMMARY_FIELD_KEY_BY_LABEL = {
 const SUPPORTED_WORD_TEMPLATE_TAGS = [
   'candidate_name',
   'hiring_manager',
+  'hiring_manager_name',
   'role_title',
   'employment_history',
+  'employment_experience_entries',
   'fit_summary',
   'employment_experience',
   'relevant_experience',
   'match_requirements',
+  'match_requirement_entries',
+  'match_requirement_text',
   'potential_concerns',
   'recommended_next_step',
   'candidate_summary',
+  'key_summary',
+  'candidate_english_name',
+  'candidate_original_name',
   'candidate_gender',
+  'candidate_date_of_birth',
   'candidate_nationality',
   'candidate_location',
+  'candidate_current_location',
   'candidate_preferred_location',
   'candidate_languages',
+  'candidate_skills',
+  'candidate_certifications',
   'candidate_language_1',
   'candidate_language_2',
   'notice_period',
   'education_entries',
   'education_summary',
   'degree_name',
+  'field_of_study',
   'university',
+  'institution_name',
   'start_year',
   'end_year',
+  'education_start_year',
+  'education_end_year',
+  'education_location',
   'job_title',
   'company_name',
   'start_date',
   'end_date',
+  'employment_start_date',
+  'employment_end_date',
   'responsibilities',
+  'responsibility_bullets',
   'responsibility',
+  'responsibility_text',
+  'responsibility_original_text',
   'job_responsibility_1',
   'job_responsibility_2',
+  'project_experience_entries',
+  'project_name',
+  'linked_job_title',
+  'linked_company_name',
+  'project_start_date',
+  'project_end_date',
+  'project_timeline_basis',
+  'project_bullets',
+  'project_bullet_text',
+  'project_bullet_original_text',
+  'original_authoritative_appendix',
   'generation_date',
   'generation_timestamp'
 ];
+
+const WORD_TEMPLATE_CONTRACT = Object.freeze({
+  requiredLogicalTagGroups: [
+    ['candidate_name'],
+    ['role_title'],
+    ['candidate_summary', 'fit_summary'],
+    ['employment_history', 'employment_experience', 'employment_experience_entries', 'relevant_experience']
+  ],
+  repeatableLogicalTags: [
+    'employment_history',
+    'employment_experience_entries',
+    'match_requirement_entries',
+    'project_experience_entries',
+    'responsibilities',
+    'responsibility_bullets',
+    'responsibility',
+    'project_bullets',
+    'education_entries',
+    'original_authoritative_appendix'
+  ]
+});
+
+const OPTIONAL_SEPARATOR_TAG_PAIRS = Object.freeze([
+  {
+    tags: Object.freeze(['field_of_study', 'institution_name']),
+    separator: '|',
+    label: 'education field and institution'
+  },
+  {
+    tags: Object.freeze(['education_end_year', 'education_location']),
+    separator: '|',
+    label: 'education years and location'
+  },
+  {
+    tags: Object.freeze(['linked_job_title', 'linked_company_name']),
+    separator: '|',
+    label: 'project linked role and company'
+  }
+]);
 
 const TEMPLATE_TAG_ALIASES = {
   candidate_name: 'candidate_name',
   Candidate_Name: 'candidate_name',
   role_title: 'role_title',
   'Hiring Manager': 'hiring_manager',
+  hiring_manager_name: 'hiring_manager_name',
   Candidate_Summary: 'candidate_summary',
+  candidate_english_name: 'candidate_english_name',
+  candidate_original_name: 'candidate_original_name',
   Canddidate_Gender: 'candidate_gender',
+  candidate_date_of_birth: 'candidate_date_of_birth',
   Candidate_nationality: 'candidate_nationality',
   Candidate_Location: 'candidate_location',
+  candidate_current_location: 'candidate_current_location',
   Candidate_Preferred_Location: 'candidate_preferred_location',
   Candidate_Languages: 'candidate_languages',
+  candidate_skills: 'candidate_skills',
+  candidate_certifications: 'candidate_certifications',
   'Candidate_Language 1': 'candidate_language_1',
   'Candidate_Language 2': 'candidate_language_2',
   Notice_Period: 'notice_period',
   Education_Summary: 'education_summary',
   Degree_Name: 'degree_name',
+  field_of_study: 'field_of_study',
   University: 'university',
+  institution_name: 'institution_name',
   'Start Year': 'start_year',
   End_Year: 'end_year',
+  education_start_year: 'education_start_year',
+  education_end_year: 'education_end_year',
+  education_location: 'education_location',
   'Job Title': 'job_title',
   'Company Name': 'company_name',
   Start_date: 'start_date',
   End_Date: 'end_date',
+  employment_start_date: 'employment_start_date',
+  employment_end_date: 'employment_end_date',
+  responsibility_bullets: 'responsibility_bullets',
+  responsibility_text: 'responsibility_text',
+  responsibility_original_text: 'responsibility_original_text',
+  match_requirement_entries: 'match_requirement_entries',
+  match_requirement_text: 'match_requirement_text',
+  employment_experience_entries: 'employment_experience_entries',
+  project_experience_entries: 'project_experience_entries',
+  project_name: 'project_name',
+  linked_job_title: 'linked_job_title',
+  linked_company_name: 'linked_company_name',
+  project_start_date: 'project_start_date',
+  project_end_date: 'project_end_date',
+  project_timeline_basis: 'project_timeline_basis',
+  project_bullets: 'project_bullets',
+  project_bullet_text: 'project_bullet_text',
+  project_bullet_original_text: 'project_bullet_original_text',
+  original_authoritative_appendix: 'original_authoritative_appendix',
+  key_summary: 'key_summary',
   Job_responsibility_1: 'job_responsibility_1',
   Job_responsibility_2: 'job_responsibility_2'
 };
@@ -103,10 +206,10 @@ const DOCX_MAIN_CONTENT_TYPE =
 const DOTX_MAIN_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml';
 const DEGREE_LINE_PATTERN =
-  /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|ba|ma|degree|diploma)\b/i;
+  /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|ba|ma|degree|diploma)\b|(?:本科|硕士|博士|学士|研究生)/i;
 const YEAR_RANGE_PATTERN =
   /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–-]\s*(Present|Current|Now|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?)/i;
-const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b/i;
+const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b|(?:大学|学院|学校|研究院|研究所)/i;
 const COMPANY_HINT_PATTERN =
   /\b(group|company|corp|corporation|inc|inc\.|ltd|limited|llc|plc|pte|partners|solutions|technologies|technology|systems|bank|capital|consulting|advisors|advisory|recruitment|staffing|search|university|college|school)\b/i;
 const ROLE_TITLE_PATTERN =
@@ -166,7 +269,10 @@ const SECTION_NAME_TO_KEY = {
   experience: 'experience',
   'employment experience': 'experience',
   'professional experience': 'experience',
+  'work experience': 'experience',
   'project experience': 'projects',
+  'key projects': 'projects',
+  projects: 'projects',
   工作经历: 'experience',
   工作经验: 'experience',
   职业经历: 'experience',
@@ -175,6 +281,12 @@ const SECTION_NAME_TO_KEY = {
   教育背景: 'education',
   教育经历: 'education',
   skills: 'skills',
+  技能: 'skills',
+  '技能/优势及其他': 'skills',
+  certifications: 'certifications',
+  certificates: 'certifications',
+  证书: 'certifications',
+  认证: 'certifications',
   language: 'languages',
   languages: 'languages',
   语言: 'languages',
@@ -213,7 +325,7 @@ function escapeRegExp(value) {
 }
 
 function cleanBulletPrefix(value) {
-  return normalizeTextBlock(value).replace(/^(?:[-*•–—]|l)\s*/i, '');
+  return normalizeTextBlock(value).replace(/^(?:[-*•–—]|l(?=\s))\s*/i, '');
 }
 
 function isPdfArtifactLine(value) {
@@ -274,7 +386,7 @@ function stripTrailingLocationSuffix(value) {
 }
 
 function isResponsibilityBulletLine(value) {
-  return /^(?:[-*•–—]|l)\s*/i.test(normalizeTextBlock(value));
+  return /^(?:[-*•–—]|l(?=\s))\s*/i.test(normalizeTextBlock(value));
 }
 
 function isLikelySectionSubheading(value) {
@@ -337,6 +449,100 @@ function parseCvSections(cvText) {
   };
 }
 
+function normalizeLooseComparisonKey(value) {
+  return normalizeTextBlock(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+}
+
+function findCandidateNameLineIndex(lines, candidateName) {
+  const targetKey = normalizeLooseComparisonKey(candidateName);
+
+  if (!targetKey) {
+    return -1;
+  }
+
+  return lines.findIndex((line) => normalizeLooseComparisonKey(line) === targetKey);
+}
+
+function looksLikeImplicitExperienceStart(lines, index) {
+  const line = lines[index];
+  const nextLine = lines[index + 1] || '';
+
+  if (!line) {
+    return false;
+  }
+
+  if (detectTrailingInlineExperienceEntry(line) || detectDatedInlineExperienceEntry(line)) {
+    return true;
+  }
+
+  if (!looksLikeExperienceEntryLine(line) || !YEAR_RANGE_PATTERN.test(nextLine)) {
+    return false;
+  }
+
+  if (!/[—–-]/.test(line) && !looksLikeCompanyLine(line)) {
+    return false;
+  }
+
+  const resolvedHeading = resolveExperienceHeading(line);
+  return Boolean(resolvedHeading.jobTitle || resolvedHeading.companyName);
+}
+
+function looksLikeImplicitProjectStart(lines, index) {
+  const line = lines[index];
+  const nextLine = lines[index + 1] || '';
+
+  if (!line || !looksLikeProjectHeading(line)) {
+    return false;
+  }
+
+  return isResponsibilityBulletLine(nextLine) || YEAR_RANGE_PATTERN.test(line);
+}
+
+function inferImplicitCvSections(lines, candidateName) {
+  const firstExplicitHeadingIndex = lines.findIndex((line) => isKnownCvSectionHeading(line));
+
+  if (firstExplicitHeadingIndex <= 0) {
+    return {
+      education: [],
+      experience: [],
+      projects: []
+    };
+  }
+
+  const leadingLines = lines.slice(0, firstExplicitHeadingIndex);
+  const candidateNameLineIndex = findCandidateNameLineIndex(leadingLines, candidateName);
+  const experienceStartIndex = leadingLines.findIndex((line, index) => looksLikeImplicitExperienceStart(leadingLines, index));
+  const projectStartIndex = leadingLines.findIndex((line, index) => {
+    if (candidateNameLineIndex >= 0 && index <= candidateNameLineIndex) {
+      return false;
+    }
+
+    return looksLikeImplicitProjectStart(leadingLines, index);
+  });
+  const educationEndIndex =
+    experienceStartIndex >= 0
+      ? experienceStartIndex
+      : (candidateNameLineIndex >= 0 ? candidateNameLineIndex : (projectStartIndex >= 0 ? projectStartIndex : leadingLines.length));
+  const experienceEndIndex =
+    candidateNameLineIndex >= 0
+      ? candidateNameLineIndex
+      : (projectStartIndex >= 0 ? projectStartIndex : leadingLines.length);
+
+  return {
+    education: leadingLines.slice(0, Math.max(educationEndIndex, 0)),
+    experience:
+      experienceStartIndex >= 0
+        ? leadingLines.slice(experienceStartIndex, Math.max(experienceEndIndex, experienceStartIndex))
+        : [],
+    projects:
+      projectStartIndex >= 0
+        ? leadingLines.slice(projectStartIndex)
+        : []
+  };
+}
+
 function extractLabeledValue(lines, labels) {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -392,6 +598,263 @@ function extractLanguageList(lines, sectionLines = []) {
     .filter(Boolean))];
 }
 
+function extractSimpleSectionLines(sectionLines = []) {
+  return (Array.isArray(sectionLines) ? sectionLines : [])
+    .map(normalizeTextBlock)
+    .filter((line) => {
+      return line &&
+        !isPdfArtifactLine(line) &&
+        line !== '.';
+    });
+}
+
+function extractSkillList(sectionLines = []) {
+  return extractSimpleSectionLines(sectionLines)
+    .flatMap((line) => {
+      if (/^tech stack\s*:/i.test(line)) {
+        return line.replace(/^tech stack\s*:/i, '').split(/[,/;|]+/);
+      }
+
+      if (/:/.test(line) && line.length <= 80) {
+        return line
+          .split(':')
+          .slice(1)
+          .join(':')
+          .split(/[,/;|]+/);
+      }
+
+      return [line];
+    })
+    .map((value) => cleanBulletPrefix(value))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function extractCertificationList(lines, sectionLines = []) {
+  const inlineValue = extractLabeledValue(lines, ['Certifications', 'Certificates', 'Certification', '证书', '认证']);
+  const rawValues = [
+    inlineValue,
+    ...extractSimpleSectionLines(sectionLines)
+  ].filter(Boolean);
+
+  return [...new Set(rawValues
+    .flatMap((value) => String(value).split(/[,/;|]+/))
+    .map((value) => value.trim())
+    .filter(Boolean))];
+}
+
+function looksLikeProjectHeading(value) {
+  const normalized = normalizeTextBlock(value);
+  const parsedHeading = parseProjectHeadingLine(normalized);
+  const headingValue = parsedHeading.projectName || normalized;
+
+  if (!headingValue) {
+    return false;
+  }
+
+  if (
+    isPdfArtifactLine(headingValue) ||
+    isKnownCvSectionHeading(headingValue) ||
+    isResponsibilityBulletLine(headingValue) ||
+    /^tech stack\s*:/i.test(headingValue) ||
+    headingValue === '.'
+  ) {
+    return false;
+  }
+
+  if (/^(achieved|developed|implemented|built|designed|optimized|contributed|reduced|handled|integrated|migrated|architected)\b/i.test(headingValue)) {
+    return false;
+  }
+
+  if (/^[a-z]/.test(headingValue)) {
+    return false;
+  }
+
+  if (looksLikeRoleTitleLine(headingValue) || looksLikeCompanyLine(headingValue)) {
+    return false;
+  }
+
+  return headingValue.length <= 100 &&
+    (headingValue.split(/\s+/).length <= 8 || /(?:使用技术|tech stack)\s*[:：]/i.test(normalized)) &&
+    !/[.?!:]$/.test(headingValue);
+}
+
+function parseProjectHeadingLine(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return {
+      projectName: '',
+      technologyLine: '',
+      startDate: '',
+      endDate: ''
+    };
+  }
+
+  let headingLine = normalized;
+  let startDate = '';
+  let endDate = '';
+  const trailingDateMatch = headingLine.match(/^(.*?)\s*[（(]\s*([^()（）]+?)\s*[)）]\s*$/);
+
+  if (trailingDateMatch && YEAR_RANGE_PATTERN.test(trailingDateMatch[2])) {
+    headingLine = trailingDateMatch[1].trim();
+    const extractedDates = extractDateRange(trailingDateMatch[2]);
+    startDate = extractedDates.startDate;
+    endDate = extractedDates.endDate;
+  }
+
+  const techStackMatch = headingLine.match(/^(.*?)(?:\s+)?(?:使用技术|tech stack)\s*[:：]\s*(.+)$/i);
+
+  if (!techStackMatch) {
+    return {
+      projectName: headingLine,
+      technologyLine: '',
+      startDate,
+      endDate
+    };
+  }
+
+  return {
+    projectName: techStackMatch[1].trim(),
+    technologyLine: techStackMatch[2].trim(),
+    startDate,
+    endDate
+  };
+}
+
+function hasStrongProjectHeadingSignal(value, parsedHeading = parseProjectHeadingLine(value)) {
+  const normalized = normalizeTextBlock(value);
+  const headingValue = parsedHeading.projectName || normalized;
+
+  if (!headingValue) {
+    return false;
+  }
+
+  if (parsedHeading.technologyLine || parsedHeading.startDate || parsedHeading.endDate) {
+    return true;
+  }
+
+  if (/\((?:Personal Project)\)/i.test(normalized)) {
+    return true;
+  }
+
+  if (/^[A-Z0-9]/.test(headingValue) && !/[。.!?]$/.test(headingValue)) {
+    return true;
+  }
+
+  return Boolean(
+    !/[，,;；。.!?]/.test(headingValue) &&
+    /^[\u4e00-\u9fffA-Za-z0-9][\u4e00-\u9fffA-Za-z0-9\s&+()\-–—]+$/.test(headingValue)
+  );
+}
+
+function shouldAppendToCurrentProjectBullet(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized || isResponsibilityBulletLine(normalized) || isKnownCvSectionHeading(normalized)) {
+    return false;
+  }
+
+  if (/^[a-z]/.test(normalized)) {
+    return true;
+  }
+
+  if (/[。；;，,]$/.test(normalized)) {
+    return true;
+  }
+
+  return normalized.length > 60 && !/(?:使用技术|tech stack)\s*[:：]/i.test(normalized);
+}
+
+function extractProjectExperiences(sectionLines = []) {
+  const lines = extractSimpleSectionLines(sectionLines);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const projects = [];
+  let currentProject = null;
+  let currentBulletIndex = -1;
+
+  function flushProject() {
+    if (!currentProject) {
+      return;
+    }
+
+    if (currentProject.project_name || currentProject.project_bullets.length > 0) {
+      projects.push(currentProject);
+    }
+
+    currentProject = null;
+    currentBulletIndex = -1;
+  }
+
+  for (const line of lines) {
+    const parsedHeading = parseProjectHeadingLine(line);
+    const isStrongHeading = hasStrongProjectHeadingSignal(line, parsedHeading);
+
+    if (looksLikeProjectHeading(line) && (!currentProject || isStrongHeading)) {
+      flushProject();
+      currentProject = {
+        project_name: parsedHeading.projectName,
+        project_summary: '',
+        project_start_date: parsedHeading.startDate || '',
+        project_end_date: parsedHeading.endDate || '',
+        project_timeline_basis: parsedHeading.startDate || parsedHeading.endDate ? 'explicit' : '',
+        linked_job_title: '',
+        linked_company_name: '',
+        project_bullets: [],
+        project_bullet_originals: []
+      };
+
+      if (parsedHeading.technologyLine) {
+        const technologyBullet = `使用技术: ${parsedHeading.technologyLine}`;
+        currentProject.project_bullets.push(technologyBullet);
+        currentProject.project_bullet_originals.push(technologyBullet);
+        currentBulletIndex = currentProject.project_bullets.length - 1;
+      }
+
+      continue;
+    }
+
+    if (currentProject && currentBulletIndex >= 0 && shouldAppendToCurrentProjectBullet(line)) {
+      currentProject.project_bullets[currentBulletIndex] = `${currentProject.project_bullets[currentBulletIndex]} ${line}`.trim();
+      currentProject.project_bullet_originals[currentBulletIndex] = `${currentProject.project_bullet_originals[currentBulletIndex]} ${line}`.trim();
+      continue;
+    }
+
+    if (!currentProject) {
+      continue;
+    }
+
+    if (isResponsibilityBulletLine(line)) {
+      const bullet = cleanBulletPrefix(line);
+
+      if (bullet) {
+        currentProject.project_bullets.push(bullet);
+        currentProject.project_bullet_originals.push(bullet);
+        currentBulletIndex = currentProject.project_bullets.length - 1;
+      }
+
+      continue;
+    }
+
+    if (currentBulletIndex >= 0) {
+      currentProject.project_bullets[currentBulletIndex] = `${currentProject.project_bullets[currentBulletIndex]} ${line}`.trim();
+      currentProject.project_bullet_originals[currentBulletIndex] = `${currentProject.project_bullet_originals[currentBulletIndex]} ${line}`.trim();
+      continue;
+    }
+
+    currentProject.project_bullets.push(line);
+    currentProject.project_bullet_originals.push(line);
+    currentBulletIndex = currentProject.project_bullets.length - 1;
+  }
+
+  flushProject();
+  return projects;
+}
+
 function extractEducationDetails(sectionLines = []) {
   const educationEntries = extractEducationEntries(sectionLines);
 
@@ -430,6 +893,14 @@ function parseEducationEntry(sectionLines = []) {
     return null;
   }
 
+  const inlineEducationEntry = normalizedLines
+    .map(parseCompactEducationLine)
+    .find((entry) => entry);
+
+  if (inlineEducationEntry) {
+    return inlineEducationEntry;
+  }
+
   const yearLine = normalizedLines.find((line) => YEAR_RANGE_PATTERN.test(line)) || '';
   const yearMatch = yearLine.match(YEAR_RANGE_PATTERN);
   const startYear = yearMatch?.[1] || '';
@@ -437,7 +908,9 @@ function parseEducationEntry(sectionLines = []) {
   const degreeName = normalizedLines.find((line) => DEGREE_LINE_PATTERN.test(line)) ||
     normalizedLines.find((line) => !YEAR_RANGE_PATTERN.test(line) && !EDUCATION_ORG_PATTERN.test(line)) ||
     '';
-  const university = normalizedLines.find((line) => EDUCATION_ORG_PATTERN.test(line)) || '';
+  const university = stripTrailingDateRangeText(
+    normalizedLines.find((line) => EDUCATION_ORG_PATTERN.test(line)) || ''
+  );
 
   if (!degreeName && !university && !startYear && !endYear) {
     return null;
@@ -449,6 +922,53 @@ function parseEducationEntry(sectionLines = []) {
     startYear,
     endYear
   };
+}
+
+function parseCompactEducationLine(value) {
+  const normalized = normalizeTextBlock(value);
+  const match = normalized.match(YEAR_RANGE_PATTERN);
+
+  if (!normalized || !match || typeof match.index !== 'number' || match.index !== 0) {
+    return null;
+  }
+
+  const startYear = match[1] || '';
+  const endYear = match[3] || (match[2] && !/present|current|now/i.test(match[2]) ? match[2] : '');
+  const remainder = normalized
+    .slice(match[0].length)
+    .replace(/^[|,/-]\s*/, '')
+    .trim();
+
+  if (!remainder) {
+    return null;
+  }
+
+  const parts = remainder
+    .split(/\s*[|｜]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const degreeName = parts.find((part) => DEGREE_LINE_PATTERN.test(part)) || '';
+  const university = degreeName
+    ? parts.filter((part) => part !== degreeName).join(' | ')
+    : (parts[0] || '');
+
+  return {
+    degreeName,
+    university,
+    startYear,
+    endYear
+  };
+}
+
+function stripTrailingDateRangeText(value) {
+  const normalized = normalizeTextBlock(value);
+  const trailingDateLine = splitTrailingDateLine(normalized);
+
+  if (!trailingDateLine) {
+    return normalized;
+  }
+
+  return trailingDateLine.remainder || normalized;
 }
 
 function extractEducationEntries(sectionLines = []) {
@@ -516,16 +1036,33 @@ function splitRoleCompanyLine(value) {
     };
   }
 
-  const separators = [/\s+\|\s+/i, /\s+at\s+/i, /\s+@\s+/i];
+  const separators = [/\s+\|\s+/i, /\s+at\s+/i, /\s+@\s+/i, /\s+[—–-]\s+/];
 
   for (const separator of separators) {
     const parts = normalized.split(separator).map((part) => part.trim()).filter(Boolean);
 
     if (parts.length >= 2) {
-      const candidateCompanyName = parts[1];
+      const left = parts[0];
+      const right = parts[1];
+
+      if (looksLikeOrganizationText(left) && looksLikeRoleTitleLine(right)) {
+        return {
+          jobTitle: right,
+          companyName: left
+        };
+      }
+
+      if (looksLikeRoleTitleLine(left) && looksLikeOrganizationText(right)) {
+        return {
+          jobTitle: left,
+          companyName: looksLikeLocationLine(right) ? '' : right
+        };
+      }
+
+      const candidateCompanyName = right;
 
       return {
-        jobTitle: parts[0],
+        jobTitle: left,
         companyName: looksLikeLocationLine(candidateCompanyName) ? '' : candidateCompanyName
       };
     }
@@ -674,6 +1211,93 @@ function splitLeadingDateLine(value) {
   };
 }
 
+function splitTrailingDateLine(value) {
+  const normalized = normalizeTextBlock(value);
+  const match = normalized.match(YEAR_RANGE_PATTERN);
+
+  if (!match || typeof match.index !== 'number' || match.index <= 0) {
+    return null;
+  }
+
+  const suffix = normalized.slice(match.index).trim();
+  const remainder = normalized
+    .slice(0, match.index)
+    .replace(/[|,/-]\s*$/, '')
+    .trim();
+  const { startDate, endDate } = extractDateRange(suffix);
+
+  if (!remainder || !startDate) {
+    return null;
+  }
+
+  return {
+    startDate,
+    endDate,
+    remainder
+  };
+}
+
+function splitInlineExperienceHeading(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return {
+      companyName: '',
+      jobTitle: ''
+    };
+  }
+
+  const parts = normalized
+    .split(/\s+\|\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    const left = parts[0];
+    const right = parts.slice(1).join(' | ');
+
+    if (looksLikeOrganizationText(left) && looksLikeRoleTitleLine(right)) {
+      return {
+        companyName: left,
+        jobTitle: right
+      };
+    }
+
+    if (looksLikeRoleTitleLine(left) && looksLikeOrganizationText(right)) {
+      return {
+        companyName: right,
+        jobTitle: left
+      };
+    }
+  }
+
+  const dashParts = normalized
+    .split(/\s+[—–-]\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (dashParts.length === 2) {
+    const left = dashParts[0];
+    const right = dashParts[1];
+
+    if (looksLikeOrganizationText(left) && looksLikeRoleTitleLine(right)) {
+      return {
+        companyName: left,
+        jobTitle: right
+      };
+    }
+
+    if (looksLikeRoleTitleLine(left) && looksLikeOrganizationText(right)) {
+      return {
+        companyName: right,
+        jobTitle: left
+      };
+    }
+  }
+
+  return splitInlineCompanyRoleRemainder(normalized);
+}
+
 function resolveExperienceHeading(primaryLine, secondaryLine = '') {
   let { jobTitle, companyName } = splitRoleCompanyLine(primaryLine);
   const normalizedSecondaryLine = normalizeTextBlock(secondaryLine);
@@ -716,7 +1340,15 @@ function detectExperienceEntry(lines, index) {
   const line = lines[index];
   const nextLine = lines[index + 1] || '';
   const nextNextLine = lines[index + 2] || '';
+  const trailingDatedInlineEntry = detectTrailingInlineExperienceEntry(line);
   const datedInlineEntry = detectDatedInlineExperienceEntry(line);
+
+  if (trailingDatedInlineEntry) {
+    return {
+      ...trailingDatedInlineEntry,
+      cursor: index + 1
+    };
+  }
 
   if (datedInlineEntry) {
     return {
@@ -737,7 +1369,7 @@ function detectExperienceEntry(lines, index) {
 
       return {
         jobTitle: resolvedHeading.jobTitle,
-        companyName: companyDateLine.companyName,
+        companyName: companyDateLine.companyName || resolvedHeading.companyName,
         startDate: companyDateLine.startDate,
         endDate: companyDateLine.endDate,
         cursor: index + 3
@@ -752,7 +1384,7 @@ function detectExperienceEntry(lines, index) {
 
     return {
       jobTitle: resolvedHeading.jobTitle,
-      companyName: companyDateLine.companyName,
+      companyName: companyDateLine.companyName || resolvedHeading.companyName,
       startDate: companyDateLine.startDate,
       endDate: companyDateLine.endDate,
       cursor: index + 2
@@ -819,6 +1451,27 @@ function detectDatedInlineExperienceEntry(value) {
   };
 }
 
+function detectTrailingInlineExperienceEntry(value) {
+  const trailingLine = splitTrailingDateLine(value);
+
+  if (!trailingLine || !trailingLine.remainder) {
+    return null;
+  }
+
+  const splitHeading = splitInlineExperienceHeading(trailingLine.remainder);
+
+  if (!splitHeading.jobTitle || !looksLikeRoleTitleLine(splitHeading.jobTitle)) {
+    return null;
+  }
+
+  return {
+    jobTitle: splitHeading.jobTitle,
+    companyName: splitHeading.companyName,
+    startDate: trailingLine.startDate,
+    endDate: trailingLine.endDate
+  };
+}
+
 function detectDatedCompanyRoleGroupStart(lines, index) {
   const companyLine = splitLeadingDateLine(lines[index]);
   const nextRoleLine = detectDatedRoleLine(lines[index + 1] || '');
@@ -860,6 +1513,14 @@ function collectExperienceResponsibilities(lines, startIndex) {
     }
 
     if (isLikelySectionSubheading(currentLine)) {
+      cursor += 1;
+      continue;
+    }
+
+    if (
+      currentLine === '.' ||
+      /^tech stack\s*:/i.test(currentLine)
+    ) {
       cursor += 1;
       continue;
     }
@@ -1153,32 +1814,50 @@ function extractDocumentDerivedProfile({ cvDocument, jdDocument }) {
   const { lines, sections } = parseCvSections(cvText);
   const candidateName = extractCandidateName(cvText, cvDocument?.file?.name || 'candidate');
   const roleTitle = extractRoleTitleFromJd(jdText, jdDocument?.file?.name || 'role');
+  const inferredSections = inferImplicitCvSections(lines, candidateName);
+  const educationSectionLines =
+    sections.education && sections.education.length > 0
+      ? sections.education
+      : inferredSections.education;
+  const experienceSectionLines =
+    sections.experience && sections.experience.length > 0
+      ? sections.experience
+      : inferredSections.experience;
+  const projectSectionLines = [
+    ...(inferredSections.projects || []),
+    ...(sections.projects || [])
+  ];
   const candidateLanguages = extractLanguageList(lines, sections.languages || []);
   const [candidateLanguage1, candidateLanguage2] = candidateLanguages;
-  const educationEntries = extractEducationEntries((sections.education && sections.education.length > 0) ? sections.education : lines);
-  const education = educationEntries[0] || extractEducationDetails((sections.education && sections.education.length > 0) ? sections.education : lines);
-  const sectionExperienceHistory =
-    sections.experience && sections.experience.length > 0
-      ? extractExperienceHistory(sections.experience)
-      : [];
-  const fullCvExperienceHistory = extractExperienceHistory(lines);
+  const educationEntries = extractEducationEntries(educationSectionLines.length > 0 ? educationSectionLines : lines);
+  const education = educationEntries[0] || extractEducationDetails(educationSectionLines.length > 0 ? educationSectionLines : lines);
+  const candidateSkills = extractSkillList(sections.skills || []);
+  const candidateCertifications = extractCertificationList(lines, sections.certifications || []);
+  const projectExperiences = extractProjectExperiences(projectSectionLines);
+  const sectionExperienceHistory = extractExperienceHistory(experienceSectionLines);
+  const fullCvExperienceHistory = sectionExperienceHistory.length === 0
+    ? extractExperienceHistory(lines)
+    : [];
   const experienceHistory = selectPreferredExperienceHistory([
     sectionExperienceHistory,
     fullCvExperienceHistory
   ]);
-  const experience = experienceHistory[0] || extractExperienceDetails((sections.experience && sections.experience.length > 0) ? sections.experience : lines);
+  const experience = experienceHistory[0] || extractExperienceDetails(experienceSectionLines.length > 0 ? experienceSectionLines : lines);
 
   return {
     candidateName,
     roleTitle,
     hiringManager: extractHiringManagerTarget(jdText),
     candidateGender: extractLabeledValue(lines, ['Gender', '性别']),
+    candidateDateOfBirth: extractLabeledValue(lines, ['Date of birth', 'DOB', 'Birth date', '出生日期']),
     candidateNationality: extractLabeledValue(lines, ['Nationality', 'Citizenship', '国籍']),
     candidateLocation:
       extractLabeledValue(lines, ['Current location', 'Location', 'Based in', '当前地点', '所在地', '地点']) ||
       extractEarlyLocation(lines, candidateName),
     candidatePreferredLocation: extractLabeledValue(lines, ['Preferred location', 'Preferred Location', 'Preferred locations', 'Preferred working location', '意向地点', '期望地点']),
     candidateLanguages,
+    candidateSkills,
+    candidateCertifications,
     candidateLanguage1,
     candidateLanguage2,
     noticePeriod: extractLabeledValue(lines, ['Notice period', 'Availability', '到岗时间', '可到岗时间']) || (sections.availability || [])[0] || '',
@@ -1193,7 +1872,36 @@ function extractDocumentDerivedProfile({ cvDocument, jdDocument }) {
     endDate: experience.endDate,
     jobResponsibility1: experience.responsibilities?.[0] || experience.responsibility1 || '',
     jobResponsibility2: experience.responsibilities?.[1] || experience.responsibility2 || '',
-    employmentHistory: experienceHistory
+    employmentHistory: experienceHistory,
+    projectExperiences
+  };
+}
+
+function deriveEducationDisplayParts(entry = {}) {
+  const degreeName = String(entry.degree_name || entry.degreeName || '')
+    .replace(/\s*[（(]\s*(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*[–-]\s*(?:Present|Current|Now|(?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[)）]\s*$/i, '')
+    .trim();
+  const explicitField = String(entry.field_of_study || entry.fieldOfStudy || '').trim();
+
+  if (explicitField) {
+    return {
+      degreeName,
+      fieldOfStudy: explicitField
+    };
+  }
+
+  const inPatternMatch = degreeName.match(/^((?:MSc|BSc|MBA|PhD|BA|MA|Bachelor|Master|Doctor)[A-Za-z .()'-]*)\s+in\s+(.+)$/i);
+
+  if (inPatternMatch) {
+    return {
+      degreeName: inPatternMatch[1].trim(),
+      fieldOfStudy: inPatternMatch[2].trim()
+    };
+  }
+
+  return {
+    degreeName,
+    fieldOfStudy: ''
   };
 }
 
@@ -1252,38 +1960,90 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
   const profile = extractDocumentDerivedProfile({ cvDocument, jdDocument });
   const generationDate = new Date();
   const fitSummary = sections.fit_summary || normalizeTextBlock(summary);
-  const educationEntries = (profile.educationEntries || []).map((entry) => ({
-    degree_name: entry.degreeName,
-    university: entry.university,
-    start_year: entry.startYear,
-    end_year: entry.endYear
+  const educationEntries = (profile.educationEntries || []).map((entry) => {
+    const displayParts = deriveEducationDisplayParts({
+      degreeName: entry.degreeName
+    });
+
+    return {
+      degree_name: displayParts.degreeName,
+      field_of_study: displayParts.fieldOfStudy,
+      university: entry.university,
+      institution_name: entry.university,
+      start_year: entry.startYear,
+      end_year: entry.endYear,
+      education_start_year: entry.startYear,
+      education_end_year: entry.endYear,
+      education_location: ''
+    };
+  });
+  const employmentExperienceEntries = profile.employmentHistory.map((entry) => ({
+    job_title: entry.jobTitle,
+    company_name: entry.companyName,
+    start_date: entry.startDate,
+    end_date: entry.endDate,
+    employment_start_date: entry.startDate,
+    employment_end_date: entry.endDate,
+    responsibilities: (entry.responsibilities || []).map((responsibility) => ({
+      responsibility
+    })),
+    responsibility_bullets: (entry.responsibilities || []).map((responsibility) => ({
+      responsibility_text: responsibility,
+      responsibility_original_text: responsibility
+    }))
   }));
+  const employmentHistory = employmentExperienceEntries.map((entry) => ({
+    job_title: entry.job_title,
+    company_name: entry.company_name,
+    start_date: entry.start_date,
+    end_date: entry.end_date,
+    responsibilities: entry.responsibilities
+  }));
+  const projectExperienceEntries = (profile.projectExperiences || []).map((entry) => ({
+    project_name: entry.project_name,
+    linked_job_title: entry.linked_job_title,
+    linked_company_name: entry.linked_company_name,
+    project_start_date: entry.project_start_date,
+    project_end_date: entry.project_end_date,
+    project_timeline_basis: entry.project_timeline_basis,
+    project_bullets: (entry.project_bullets || []).map((bullet, index) => ({
+      project_bullet_text: bullet,
+      project_bullet_original_text: entry.project_bullet_originals?.[index] || bullet
+    }))
+  }));
+  const matchRequirementEntries = splitNonEmptyLines(sections.match_requirements || '')
+    .map((line) => cleanBulletPrefix(line))
+    .filter(Boolean)
+    .map((line) => ({ match_requirement_text: line }));
 
   const baseData = {
     candidate_name: sections.candidate_name || profile.candidateName,
     hiring_manager: profile.hiringManager,
+    hiring_manager_name: profile.hiringManager,
     role_title: sections.role_title || profile.roleTitle,
-    employment_history: profile.employmentHistory.map((entry) => ({
-      job_title: entry.jobTitle,
-      company_name: entry.companyName,
-      start_date: entry.startDate,
-      end_date: entry.endDate,
-      responsibilities: (entry.responsibilities || []).map((responsibility) => ({
-        responsibility
-      }))
-    })),
+    employment_history: employmentHistory,
+    employment_experience_entries: employmentExperienceEntries,
     fit_summary: fitSummary,
     employment_experience: formatEmploymentExperience(profile.employmentHistory),
     relevant_experience: sections.relevant_experience || '',
     match_requirements: sections.match_requirements || '',
+    match_requirement_entries: matchRequirementEntries,
+    match_requirement_text: matchRequirementEntries[0]?.match_requirement_text || '',
     potential_concerns: sections.potential_concerns || '',
     recommended_next_step: sections.recommended_next_step || '',
     candidate_summary: sections.candidate_summary || fitSummary,
+    key_summary: sections.candidate_summary || fitSummary,
+    candidate_english_name: sections.candidate_name || profile.candidateName,
+    candidate_original_name: sections.candidate_name || profile.candidateName,
     candidate_gender: profile.candidateGender,
+    candidate_date_of_birth: profile.candidateDateOfBirth,
     candidate_nationality: profile.candidateNationality,
     candidate_location: profile.candidateLocation,
+    candidate_current_location: profile.candidateLocation,
     candidate_preferred_location: profile.candidatePreferredLocation,
     candidate_languages: (profile.candidateLanguages || []).join(', '),
+    candidate_skills: (profile.candidateSkills || []).join(', '),
+    candidate_certifications: (profile.candidateCertifications || []).join(', '),
     candidate_language_1: profile.candidateLanguage1,
     candidate_language_2: profile.candidateLanguage2,
     notice_period: profile.noticePeriod,
@@ -1302,16 +2062,52 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
       })
       .filter(Boolean)
       .join('\n\n'),
-    degree_name: profile.degreeName,
+    degree_name: deriveEducationDisplayParts({ degreeName: profile.degreeName }).degreeName,
+    field_of_study: deriveEducationDisplayParts({ degreeName: profile.degreeName }).fieldOfStudy,
     university: profile.university,
+    institution_name: profile.university,
     start_year: profile.startYear,
     end_year: profile.endYear,
+    education_start_year: profile.startYear,
+    education_end_year: profile.endYear,
+    education_location: '',
     job_title: profile.jobTitle,
     company_name: profile.companyName,
     start_date: profile.startDate,
     end_date: profile.endDate,
+    employment_start_date: profile.startDate,
+    employment_end_date: profile.endDate,
+    responsibility_bullets: employmentExperienceEntries[0]?.responsibility_bullets || [],
+    responsibility_text: employmentExperienceEntries[0]?.responsibility_bullets?.[0]?.responsibility_text || '',
+    responsibility_original_text: employmentExperienceEntries[0]?.responsibility_bullets?.[0]?.responsibility_original_text || '',
     job_responsibility_1: profile.employmentHistory[0]?.responsibilities?.[0] || profile.jobResponsibility1,
     job_responsibility_2: profile.employmentHistory[0]?.responsibilities?.[1] || profile.jobResponsibility2,
+    project_experience_entries: projectExperienceEntries,
+    project_name: projectExperienceEntries[0]?.project_name || '',
+    linked_job_title: projectExperienceEntries[0]?.linked_job_title || '',
+    linked_company_name: projectExperienceEntries[0]?.linked_company_name || '',
+    project_start_date: projectExperienceEntries[0]?.project_start_date || '',
+    project_end_date: projectExperienceEntries[0]?.project_end_date || '',
+    project_timeline_basis: projectExperienceEntries[0]?.project_timeline_basis || '',
+    project_bullets: projectExperienceEntries[0]?.project_bullets || [],
+    project_bullet_text: projectExperienceEntries[0]?.project_bullets?.[0]?.project_bullet_text || '',
+    project_bullet_original_text: projectExperienceEntries[0]?.project_bullets?.[0]?.project_bullet_original_text || '',
+    original_authoritative_appendix: [
+      {
+        employment_experience_entries: employmentExperienceEntries.map((entry) => ({
+          ...entry,
+          responsibility_bullets: entry.responsibility_bullets.map((item) => ({
+            responsibility_original_text: item.responsibility_original_text
+          }))
+        })),
+        project_experience_entries: projectExperienceEntries.map((entry) => ({
+          ...entry,
+          project_bullets: entry.project_bullets.map((item) => ({
+            project_bullet_original_text: item.project_bullet_original_text
+          }))
+        }))
+      }
+    ],
     generation_date: generationDate.toISOString().slice(0, 10),
     generation_timestamp: generationDate.toISOString()
   };
@@ -1383,6 +2179,24 @@ function buildSuggestedOutputFilename(templateData) {
   return `${candidatePart}-${rolePart}-hiring-manager-summary.docx`;
 }
 
+function sanitizeTemplateValue(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeTemplateValue(entry));
+  }
+
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [key, sanitizeTemplateValue(entryValue)])
+    );
+  }
+
+  return value;
+}
+
 function extractTextRunsFromXml(xml) {
   return [...xml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
     .map((match) => match[1]
@@ -1410,9 +2224,12 @@ function getRelevantXmlFiles(zip) {
 function inspectWordTemplate(zip) {
   const relevantFiles = getRelevantXmlFiles(zip);
   const detectedTags = [];
+  const rawTemplateText = [];
 
   for (const file of relevantFiles) {
+    const fileText = extractTextRunsFromXml(file.asText()).join('');
     detectedTags.push(...extractTemplateTagsFromXml(file.asText()));
+    rawTemplateText.push(fileText);
   }
 
   const uniqueDetectedTags = [...new Set(detectedTags)];
@@ -1425,7 +2242,73 @@ function inspectWordTemplate(zip) {
 
   return {
     detectedTags: uniqueDetectedTags,
-    supportedDetectedTags
+    supportedDetectedTags,
+    rawTemplateText: rawTemplateText.join('\n')
+  };
+}
+
+function normalizeTemplateTag(tag) {
+  const normalizedTag = String(tag || '').replace(/^[/#]/, '').trim();
+  return TEMPLATE_TAG_ALIASES[normalizedTag] || normalizedTag;
+}
+
+function resolveTemplateInspection(templateInspection = {}) {
+  const resolvedLogicalTags = [...new Set(
+    (Array.isArray(templateInspection.supportedDetectedTags) ? templateInspection.supportedDetectedTags : [])
+      .map((tag) => normalizeTemplateTag(tag))
+      .filter(Boolean)
+  )];
+
+  return {
+    ...templateInspection,
+    resolvedLogicalTags
+  };
+}
+
+function detectOptionalSeparatorIssues(rawTemplateText = '') {
+  const source = String(rawTemplateText || '');
+  const issues = [];
+  const pairRegex = /\{\{\s*([^}]+?)\s*\}\}\s*([|/])\s*\{\{\s*([^}]+?)\s*\}\}/g;
+
+  for (const match of source.matchAll(pairRegex)) {
+    const leftTag = normalizeTemplateTag(match[1]);
+    const separator = match[2];
+    const rightTag = normalizeTemplateTag(match[3]);
+    const matchedPair = OPTIONAL_SEPARATOR_TAG_PAIRS.find((entry) =>
+      entry.separator === separator &&
+      entry.tags[0] === leftTag &&
+      entry.tags[1] === rightTag
+    );
+
+    if (!matchedPair) {
+      continue;
+    }
+
+    issues.push({
+      label: matchedPair.label,
+      separator,
+      leftTag,
+      rightTag
+    });
+  }
+
+  return issues;
+}
+
+function validateWordTemplateContract(templateInspection = {}) {
+  const resolvedInspection = resolveTemplateInspection(templateInspection);
+  const resolvedLogicalTagSet = new Set(resolvedInspection.resolvedLogicalTags || []);
+  const missingRequiredLogicalTagGroups = WORD_TEMPLATE_CONTRACT.requiredLogicalTagGroups
+    .filter((group) => !group.some((tag) => resolvedLogicalTagSet.has(tag)));
+  const optionalSeparatorIssues = detectOptionalSeparatorIssues(resolvedInspection.rawTemplateText);
+
+  return {
+    ...resolvedInspection,
+    requiredLogicalTagGroups: WORD_TEMPLATE_CONTRACT.requiredLogicalTagGroups.map((group) => [...group]),
+    repeatableLogicalTags: [...WORD_TEMPLATE_CONTRACT.repeatableLogicalTags],
+    missingRequiredLogicalTagGroups,
+    optionalSeparatorIssues,
+    isValid: missingRequiredLogicalTagGroups.length === 0 && optionalSeparatorIssues.length === 0
   };
 }
 
@@ -1433,6 +2316,14 @@ function describeTemplatePopulation(templateInspection, templateData) {
   const supportedTemplateTags = [...new Set(templateInspection.supportedDetectedTags)];
   const blankTemplateTags = [];
   const populatedTemplateTags = [];
+
+  function markArrayTag(tag, value) {
+    if (Array.isArray(value) && value.length > 0) {
+      populatedTemplateTags.push(tag);
+    } else {
+      blankTemplateTags.push(tag);
+    }
+  }
 
   for (const tag of supportedTemplateTags) {
     const normalizedTag = tag.replace(/^[/#]/, '').trim();
@@ -1444,6 +2335,31 @@ function describeTemplatePopulation(templateInspection, templateData) {
       } else {
         blankTemplateTags.push(tag);
       }
+      continue;
+    }
+
+    if (normalizedTag === 'employment_experience_entries') {
+      markArrayTag(tag, templateData.employment_experience_entries || templateData.employment_history);
+      continue;
+    }
+
+    if (normalizedTag === 'education_entries') {
+      markArrayTag(tag, templateData.education_entries);
+      continue;
+    }
+
+    if (normalizedTag === 'match_requirement_entries') {
+      markArrayTag(tag, templateData.match_requirement_entries);
+      continue;
+    }
+
+    if (normalizedTag === 'project_experience_entries') {
+      markArrayTag(tag, templateData.project_experience_entries);
+      continue;
+    }
+
+    if (normalizedTag === 'original_authoritative_appendix') {
+      markArrayTag(tag, templateData.original_authoritative_appendix);
       continue;
     }
 
@@ -1459,6 +2375,20 @@ function describeTemplatePopulation(templateInspection, templateData) {
       continue;
     }
 
+    if (normalizedTag === 'responsibility_bullets') {
+      const hasResponsibilityBullets = Array.isArray(templateData.employment_experience_entries || templateData.employment_history) &&
+        (templateData.employment_experience_entries || templateData.employment_history).some((entry) =>
+          Array.isArray(entry.responsibility_bullets) && entry.responsibility_bullets.length > 0
+        );
+
+      if (hasResponsibilityBullets) {
+        populatedTemplateTags.push(tag);
+      } else {
+        blankTemplateTags.push(tag);
+      }
+      continue;
+    }
+
     if (normalizedTag === 'responsibility') {
       const hasResponsibilityValue = Array.isArray(templateData.employment_history) &&
         templateData.employment_history.some((entry) =>
@@ -1467,6 +2397,20 @@ function describeTemplatePopulation(templateInspection, templateData) {
         );
 
       if (hasResponsibilityValue) {
+        populatedTemplateTags.push(tag);
+      } else {
+        blankTemplateTags.push(tag);
+      }
+      continue;
+    }
+
+    if (normalizedTag === 'project_bullets') {
+      const hasProjectBullets = Array.isArray(templateData.project_experience_entries) &&
+        templateData.project_experience_entries.some((entry) =>
+          Array.isArray(entry.project_bullets) && entry.project_bullets.length > 0
+        );
+
+      if (hasProjectBullets) {
         populatedTemplateTags.push(tag);
       } else {
         blankTemplateTags.push(tag);
@@ -1502,6 +2446,30 @@ function assertTemplateSupportsOutput(templateInspection) {
 
   throw new Error(
     `The configured Word template contains placeholders, but none are supported by this app. Supported placeholders are ${SUPPORTED_WORD_TEMPLATE_TAGS.map((tag) => `{{${tag}}}`).join(', ')}. Detected placeholders: ${templateInspection.detectedTags.map((tag) => `{{${tag}}}`).join(', ')}.`
+  );
+}
+
+function assertTemplateContract(templateContract) {
+  if (templateContract.isValid) {
+    return;
+  }
+
+  const problems = [];
+
+  if (templateContract.missingRequiredLogicalTagGroups.length > 0) {
+    problems.push(
+      `missing required placeholder groups: ${templateContract.missingRequiredLogicalTagGroups.map((group) => group.map((tag) => `{{${tag}}}`).join(' or ')).join(', ')}`
+    );
+  }
+
+  if (Array.isArray(templateContract.optionalSeparatorIssues) && templateContract.optionalSeparatorIssues.length > 0) {
+    problems.push(
+      `hard-coded separators around optional fields: ${templateContract.optionalSeparatorIssues.map((issue) => `{{${issue.leftTag}}} ${issue.separator} {{${issue.rightTag}}} (${issue.label})`).join(', ')}`
+    );
+  }
+
+  throw new Error(
+    `The configured Word template does not satisfy this report contract: ${problems.join('; ')}.`
   );
 }
 
@@ -1594,7 +2562,104 @@ function normalizeWordXmlForOutput(xml) {
     });
 }
 
-function validateGeneratedWordDocument(buffer) {
+function decodeWordXmlText(value) {
+  return String(value || '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&#10;/g, ' ')
+    .replace(/&#xA;/gi, ' ');
+}
+
+function extractPlainTextFromWordXml(xml) {
+  return [...String(xml || '').matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
+    .map((match) => decodeWordXmlText(match[1]))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildRenderedTextValidationSnippet(value, maxLength = 80) {
+  const normalized = normalizeTextBlock(value).replace(/\s+/g, ' ').trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.length <= maxLength
+    ? normalized
+    : normalized.slice(0, maxLength).trim();
+}
+
+function buildRequiredRenderedTextGroups(templateData = {}) {
+  const requiredGroups = [];
+  const candidateName = buildRenderedTextValidationSnippet(templateData.candidate_name, 120);
+  const roleTitle = buildRenderedTextValidationSnippet(templateData.role_title, 120);
+  const summaryAlternatives = [
+    buildRenderedTextValidationSnippet(templateData.candidate_summary),
+    buildRenderedTextValidationSnippet(templateData.fit_summary)
+  ].filter(Boolean);
+  const experienceAlternatives = [];
+
+  if (candidateName) {
+    requiredGroups.push([candidateName]);
+  }
+
+  if (roleTitle) {
+    requiredGroups.push([roleTitle]);
+  }
+
+  if (summaryAlternatives.length > 0) {
+    requiredGroups.push([...new Set(summaryAlternatives)]);
+  }
+
+  const relevantExperience = buildRenderedTextValidationSnippet(templateData.relevant_experience);
+
+  if (relevantExperience) {
+    experienceAlternatives.push(relevantExperience);
+  }
+
+  const employmentHistory = Array.isArray(templateData.employment_history)
+    ? templateData.employment_history
+    : [];
+
+  for (const entry of employmentHistory.slice(0, 2)) {
+    const roleTitleSnippet = buildRenderedTextValidationSnippet(
+      entry.job_title || entry.employment_title || entry.title,
+      120
+    );
+    const companyNameSnippet = buildRenderedTextValidationSnippet(entry.company_name, 120);
+    const firstResponsibility = Array.isArray(entry.responsibilities)
+      ? entry.responsibilities.find((item) => normalizeTextBlock(item?.responsibility || item))
+      : null;
+    const responsibilitySnippet = buildRenderedTextValidationSnippet(
+      firstResponsibility?.responsibility || firstResponsibility
+    );
+
+    if (roleTitleSnippet) {
+      experienceAlternatives.push(roleTitleSnippet);
+    }
+
+    if (companyNameSnippet) {
+      experienceAlternatives.push(companyNameSnippet);
+    }
+
+    if (responsibilitySnippet) {
+      experienceAlternatives.push(responsibilitySnippet);
+    }
+  }
+
+  if (experienceAlternatives.length > 0) {
+    requiredGroups.push([...new Set(experienceAlternatives)]);
+  }
+
+  return requiredGroups;
+}
+
+function validateGeneratedWordDocument(buffer, { requiredRenderedTextGroups = [] } = {}) {
   const zip = new PizZip(buffer);
   const contentTypesFile = zip.file('[Content_Types].xml');
 
@@ -1611,6 +2676,48 @@ function validateGeneratedWordDocument(buffer) {
   if (!zip.file('word/document.xml')) {
     throw new Error('Generated Word package is missing word/document.xml.');
   }
+
+  const relevantFiles = getRelevantXmlFiles(zip);
+  const unexpandedTags = [];
+
+  for (const file of relevantFiles) {
+    const fileTags = extractTemplateTagsFromXml(file.asText());
+    if (fileTags.length > 0) {
+      unexpandedTags.push(...fileTags.map((tag) => `${file.name}:${tag}`));
+    }
+  }
+
+  if (unexpandedTags.length > 0) {
+    throw new Error(
+      `Generated Word document still contains unexpanded placeholders: ${unexpandedTags.map((tag) => `{{${tag}}}`).join(', ')}.`
+    );
+  }
+
+  const normalizedRenderedText = relevantFiles
+    .map((file) => extractPlainTextFromWordXml(file.asText()))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  const missingRenderedTextGroups = (Array.isArray(requiredRenderedTextGroups)
+    ? requiredRenderedTextGroups
+    : [])
+    .map((group) => group
+      .map((snippet) => buildRenderedTextValidationSnippet(snippet, 120))
+      .filter(Boolean))
+    .filter((group) => group.length > 0)
+    .filter((group) => !group.some((snippet) => normalizedRenderedText.includes(snippet.toLowerCase())));
+
+  if (missingRenderedTextGroups.length > 0) {
+    throw new Error(
+      `Generated Word document is missing required rendered content groups: ${missingRenderedTextGroups.map((group) => group.join(' or ')).join(', ')}.`
+    );
+  }
+
+  return {
+    unexpandedTags: [],
+    missingRenderedTextGroups: []
+  };
 }
 
 async function renderHiringManagerWordDocument({ templatePath, outputPath, templateData }) {
@@ -1635,7 +2742,10 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
 
   const templateInspection = inspectWordTemplate(zip);
   assertTemplateSupportsOutput(templateInspection);
-  const templatePopulation = describeTemplatePopulation(templateInspection, templateData);
+  const templateContract = validateWordTemplateContract(templateInspection);
+  assertTemplateContract(templateContract);
+  const sanitizedTemplateData = sanitizeTemplateValue(templateData);
+  const templatePopulation = describeTemplatePopulation(templateInspection, sanitizedTemplateData);
 
   try {
     document = new Docxtemplater(zip, {
@@ -1644,7 +2754,10 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
         end: '}}'
       },
       paragraphLoop: true,
-      linebreaks: true
+      linebreaks: true,
+      nullGetter() {
+        return '';
+      }
     });
   } catch (error) {
     throw new Error(
@@ -1653,7 +2766,7 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
   }
 
   try {
-    document.render(templateData);
+    document.render(sanitizedTemplateData);
   } catch (error) {
     const nestedErrors = error?.properties?.errors || [];
     const nestedMessages = nestedErrors
@@ -1676,26 +2789,33 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
     compression: 'DEFLATE'
   });
 
-  validateGeneratedWordDocument(renderedBuffer);
+  const postRenderValidation = validateGeneratedWordDocument(renderedBuffer, {
+    requiredRenderedTextGroups: buildRequiredRenderedTextGroups(sanitizedTemplateData)
+  });
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, renderedBuffer);
 
   return {
     outputPath,
-    templateData,
+    templateData: sanitizedTemplateData,
     templateInspection,
+    templateContract,
+    postRenderValidation,
     populatedTemplateTags: templatePopulation.populatedTemplateTags,
     blankTemplateTags: templatePopulation.blankTemplateTags
   };
 }
 
 module.exports = {
+  WORD_TEMPLATE_CONTRACT,
   SUPPORTED_WORD_TEMPLATE_TAGS,
   buildSuggestedOutputFilename,
   buildTemplateData,
   describeEmploymentExtraction,
   extractDocumentDerivedProfile,
+  inspectWordTemplate,
   parseStructuredSummary,
-  renderHiringManagerWordDocument
+  renderHiringManagerWordDocument,
+  validateWordTemplateContract
 };

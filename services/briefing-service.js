@@ -171,13 +171,16 @@ function createEmptyBriefing() {
     schema_version: BRIEFING_SCHEMA_VERSION,
     candidate: {
       name: '',
+      date_of_birth: '',
       gender: '',
       nationality: '',
       location: '',
       preferred_location: '',
       languages: [],
       notice_period: '',
-      education: []
+      education: [],
+      skills: [],
+      certifications: []
     },
     role: {
       title: '',
@@ -190,6 +193,7 @@ function createEmptyBriefing() {
     potential_concerns: [],
     recommended_next_step: '',
     employment_history: [],
+    project_experiences: [],
     evidence_refs: []
   };
 }
@@ -245,6 +249,34 @@ function normalizeEducationArray(values) {
       end_year: cleanLine(entry?.end_year || entry?.endYear || parseLooseDateRange(entry?.dates).endDate)
     }))
     .filter((entry) => entry.degree_name || entry.university || entry.start_year || entry.end_year);
+}
+
+function deriveEducationDisplayParts(entry = {}) {
+  const degreeName = cleanLine(entry.degree_name || entry.degreeName || entry.degree)
+    .replace(/\s*[（(]\s*(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*[–-]\s*(?:Present|Current|Now|(?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[)）]\s*$/i, '')
+    .trim();
+  const explicitField = cleanLine(entry.field_of_study || entry.fieldOfStudy);
+
+  if (explicitField) {
+    return {
+      degreeName,
+      fieldOfStudy: explicitField
+    };
+  }
+
+  const inPatternMatch = degreeName.match(/^((?:MSc|BSc|MBA|PhD|BA|MA|Bachelor|Master|Doctor)[A-Za-z .()'-]*)\s+in\s+(.+)$/i);
+
+  if (inPatternMatch) {
+    return {
+      degreeName: cleanLine(inPatternMatch[1]),
+      fieldOfStudy: cleanLine(inPatternMatch[2])
+    };
+  }
+
+  return {
+    degreeName,
+    fieldOfStudy: ''
+  };
 }
 
 function normalizeEvidenceRefs(values) {
@@ -332,6 +364,45 @@ function normalizeEmploymentHistory(values) {
     });
 }
 
+function normalizeProjectExperiences(values) {
+  if (values && !Array.isArray(values)) {
+    values = [values];
+  }
+
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map((entry) => {
+      const parsedDates = parseLooseDateRange(entry?.dates);
+
+      return {
+        project_name: cleanLine(entry?.project_name || entry?.projectName || entry?.name),
+        project_summary: cleanLine(entry?.project_summary || entry?.projectSummary || entry?.summary),
+        project_start_date: cleanLine(entry?.project_start_date || entry?.projectStartDate || parsedDates.startDate),
+        project_end_date: cleanLine(entry?.project_end_date || entry?.projectEndDate || parsedDates.endDate),
+        project_timeline_basis: cleanLine(entry?.project_timeline_basis || entry?.projectTimelineBasis || entry?.timeline_basis),
+        linked_job_title: cleanLine(entry?.linked_job_title || entry?.linkedJobTitle),
+        linked_company_name: cleanLine(entry?.linked_company_name || entry?.linkedCompanyName),
+        project_bullets: normalizeStringArray(entry?.project_bullets || entry?.projectBullets || entry?.bullets),
+        project_bullet_originals: normalizeStringArray(
+          entry?.project_bullet_originals || entry?.projectBulletOriginals || entry?.original_bullets || entry?.project_bullet_original_text
+        ),
+        evidence_refs: normalizeEvidenceRefs(entry?.evidence_refs || entry?.evidenceRefs)
+      };
+    })
+    .filter((entry) => {
+      return entry.project_name ||
+        entry.project_summary ||
+        entry.project_start_date ||
+        entry.project_end_date ||
+        entry.linked_job_title ||
+        entry.linked_company_name ||
+        entry.project_bullets.length > 0;
+    });
+}
+
 function normalizeBriefing(input = {}) {
   const base = createEmptyBriefing();
   const candidate = input.candidate || {};
@@ -341,13 +412,16 @@ function normalizeBriefing(input = {}) {
     schema_version: BRIEFING_SCHEMA_VERSION,
     candidate: {
       name: cleanLine(candidate.name || input.candidate_name),
+      date_of_birth: cleanLine(candidate.date_of_birth || candidate.dateOfBirth || input.candidate_date_of_birth),
       gender: cleanLine(candidate.gender || input.candidate_gender),
       nationality: cleanLine(candidate.nationality || input.candidate_nationality),
       location: cleanLine(candidate.location || input.candidate_location),
       preferred_location: cleanLine(candidate.preferred_location || candidate.preferredLocation || input.candidate_preferred_location),
       languages: normalizeLanguageArray(candidate.languages || input.candidate_languages || []),
       notice_period: cleanLine(candidate.notice_period || candidate.noticePeriod || input.notice_period),
-      education: normalizeEducationArray(candidate.education || input.education || [])
+      education: normalizeEducationArray(candidate.education || input.education || []),
+      skills: normalizeStringArray(candidate.skills || input.candidate_skills || []),
+      certifications: normalizeStringArray(candidate.certifications || input.candidate_certifications || [])
     },
     role: {
       title: cleanLine(role.title || input.role_title),
@@ -360,6 +434,7 @@ function normalizeBriefing(input = {}) {
     potential_concerns: normalizeStringArray(input.potential_concerns),
     recommended_next_step: cleanLine(input.recommended_next_step),
     employment_history: normalizeEmploymentHistory(input.employment_history),
+    project_experiences: normalizeProjectExperiences(input.project_experiences),
     evidence_refs: normalizeEvidenceRefs(input.evidence_refs)
   };
 }
@@ -604,13 +679,16 @@ function mergeBriefingWithFallback(briefing, fallbackBriefing) {
     schema_version: BRIEFING_SCHEMA_VERSION,
     candidate: {
       name: mergeTextValue(normalizedBriefing.candidate.name, normalizedFallback.candidate.name),
+      date_of_birth: mergeTextValue(normalizedBriefing.candidate.date_of_birth, normalizedFallback.candidate.date_of_birth),
       gender: mergeTextValue(normalizedBriefing.candidate.gender, normalizedFallback.candidate.gender),
       nationality: mergeTextValue(normalizedBriefing.candidate.nationality, normalizedFallback.candidate.nationality),
       location: mergeTextValue(normalizedBriefing.candidate.location, normalizedFallback.candidate.location),
       preferred_location: mergeTextValue(normalizedBriefing.candidate.preferred_location, normalizedFallback.candidate.preferred_location),
       languages: mergeStringArrayValue(normalizedBriefing.candidate.languages, normalizedFallback.candidate.languages),
       notice_period: mergeTextValue(normalizedBriefing.candidate.notice_period, normalizedFallback.candidate.notice_period),
-      education: mergeEducationValue(normalizedBriefing.candidate.education, normalizedFallback.candidate.education)
+      education: mergeEducationValue(normalizedBriefing.candidate.education, normalizedFallback.candidate.education),
+      skills: mergeStringArrayValue(normalizedBriefing.candidate.skills, normalizedFallback.candidate.skills),
+      certifications: mergeStringArrayValue(normalizedBriefing.candidate.certifications, normalizedFallback.candidate.certifications)
     },
     role: {
       title: mergeTextValue(normalizedBriefing.role.title, normalizedFallback.role.title),
@@ -623,8 +701,69 @@ function mergeBriefingWithFallback(briefing, fallbackBriefing) {
     potential_concerns: mergeStringArrayValue(normalizedBriefing.potential_concerns, normalizedFallback.potential_concerns),
     recommended_next_step: mergeTextValue(normalizedBriefing.recommended_next_step, normalizedFallback.recommended_next_step),
     employment_history: mergeEmploymentHistoryValue(normalizedBriefing.employment_history, normalizedFallback.employment_history),
+    project_experiences: normalizeProjectExperiences(
+      normalizedBriefing.project_experiences.length > 0
+        ? normalizedBriefing.project_experiences
+        : normalizedFallback.project_experiences
+    ),
     evidence_refs: mergeEvidenceRefsValue(normalizedBriefing.evidence_refs, normalizedFallback.evidence_refs)
   };
+}
+
+function composeDeterministicReportBriefing(briefing, fallbackBriefing) {
+  const normalizedBriefing = normalizeBriefing(briefing);
+  const normalizedFallback = normalizeBriefing(fallbackBriefing);
+
+  return normalizeBriefing({
+    schema_version: BRIEFING_SCHEMA_VERSION,
+    candidate: {
+      name: mergeTextValue(normalizedBriefing.candidate.name, normalizedFallback.candidate.name),
+      date_of_birth: mergeTextValue(normalizedBriefing.candidate.date_of_birth, normalizedFallback.candidate.date_of_birth),
+      gender: mergeTextValue(normalizedBriefing.candidate.gender, normalizedFallback.candidate.gender),
+      nationality: mergeTextValue(normalizedBriefing.candidate.nationality, normalizedFallback.candidate.nationality),
+      location: mergeTextValue(normalizedBriefing.candidate.location, normalizedFallback.candidate.location),
+      preferred_location: mergeTextValue(normalizedBriefing.candidate.preferred_location, normalizedFallback.candidate.preferred_location),
+      languages:
+        normalizedBriefing.candidate.languages.length > 0
+          ? normalizedBriefing.candidate.languages
+          : normalizedFallback.candidate.languages,
+      notice_period: mergeTextValue(normalizedBriefing.candidate.notice_period, normalizedFallback.candidate.notice_period),
+      education: normalizedFallback.candidate.education,
+      skills:
+        normalizedFallback.candidate.skills.length > 0
+          ? normalizedFallback.candidate.skills
+          : normalizedBriefing.candidate.skills,
+      certifications:
+        normalizedFallback.candidate.certifications.length > 0
+          ? normalizedFallback.candidate.certifications
+          : normalizedBriefing.candidate.certifications
+    },
+    role: {
+      title: mergeTextValue(normalizedBriefing.role.title, normalizedFallback.role.title),
+      company: mergeTextValue(normalizedBriefing.role.company, normalizedFallback.role.company),
+      hiring_manager: mergeTextValue(normalizedBriefing.role.hiring_manager, normalizedFallback.role.hiring_manager)
+    },
+    fit_summary: mergeTextValue(normalizedBriefing.fit_summary, normalizedFallback.fit_summary),
+    relevant_experience:
+      normalizedBriefing.relevant_experience.length > 0
+        ? normalizedBriefing.relevant_experience
+        : normalizedFallback.relevant_experience,
+    match_requirements:
+      normalizedBriefing.match_requirements.length > 0
+        ? normalizedBriefing.match_requirements
+        : normalizedFallback.match_requirements,
+    potential_concerns:
+      normalizedBriefing.potential_concerns.length > 0
+        ? normalizedBriefing.potential_concerns
+        : normalizedFallback.potential_concerns,
+    recommended_next_step: mergeTextValue(
+      normalizedBriefing.recommended_next_step,
+      normalizedFallback.recommended_next_step
+    ),
+    employment_history: normalizedFallback.employment_history,
+    project_experiences: normalizedFallback.project_experiences,
+    evidence_refs: mergeEvidenceRefsValue(normalizedBriefing.evidence_refs, normalizedFallback.evidence_refs)
+  });
 }
 
 function validateBriefing(briefing) {
@@ -689,12 +828,15 @@ function buildFallbackBriefing({ cvDocument, jdDocument, outputLanguage = 'en' }
   return normalizeBriefing({
     candidate: {
       name: profile.candidateName,
+      date_of_birth: profile.candidateDateOfBirth,
       gender: profile.candidateGender,
       nationality: profile.candidateNationality,
       location: profile.candidateLocation,
       preferred_location: profile.candidatePreferredLocation,
       languages: profile.candidateLanguages || [profile.candidateLanguage1, profile.candidateLanguage2].filter(Boolean),
       notice_period: profile.noticePeriod,
+      skills: profile.candidateSkills || [],
+      certifications: profile.candidateCertifications || [],
       education: (profile.educationEntries || []).length > 0
         ? profile.educationEntries.map((entry) => ({
           degree_name: entry.degreeName,
@@ -727,6 +869,18 @@ function buildFallbackBriefing({ cvDocument, jdDocument, outputLanguage = 'en' }
       start_date: entry.startDate,
       end_date: entry.endDate,
       responsibilities: entry.responsibilities || [],
+      evidence_refs: []
+    })),
+    project_experiences: (profile.projectExperiences || []).map((entry) => ({
+      project_name: entry.project_name,
+      project_summary: entry.project_summary,
+      project_start_date: entry.project_start_date,
+      project_end_date: entry.project_end_date,
+      project_timeline_basis: entry.project_timeline_basis,
+      linked_job_title: entry.linked_job_title,
+      linked_company_name: entry.linked_company_name,
+      project_bullets: entry.project_bullets || [],
+      project_bullet_originals: entry.project_bullet_originals || [],
       evidence_refs: []
     })),
     evidence_refs: []
@@ -924,21 +1078,73 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
   const firstEducation = normalized.candidate.education[0] || {};
   const firstEmployment = normalized.employment_history[0] || {};
   const generationDate = new Date();
-  const educationEntries = normalized.candidate.education.map((entry) => ({
-    degree_name: entry.degree_name,
-    university: entry.university,
-    start_year: entry.start_year,
-    end_year: entry.end_year
-  }));
-  const candidateLanguages = normalized.candidate.languages.filter(Boolean);
+  const educationEntries = normalized.candidate.education.map((entry) => {
+    const displayParts = deriveEducationDisplayParts(entry);
 
-  const employmentHistory = normalized.employment_history.map((entry) => ({
+    return {
+      degree_name: displayParts.degreeName,
+      field_of_study: displayParts.fieldOfStudy,
+      university: entry.university,
+      institution_name: entry.university,
+      start_year: entry.start_year,
+      end_year: entry.end_year,
+      education_start_year: entry.start_year,
+      education_end_year: entry.end_year,
+      education_location: ''
+    };
+  });
+  const candidateLanguages = normalized.candidate.languages.filter(Boolean);
+  const candidateSkills = normalizeStringArray(normalized.candidate.skills);
+  const candidateCertifications = normalizeStringArray(normalized.candidate.certifications);
+  const matchRequirementEntries = normalized.match_requirements.map((entry) => {
+    const requirement = cleanLine(entry.requirement);
+    const evidence = cleanLine(entry.evidence);
+
+    return {
+      match_requirement_text: evidence
+        ? `${requirement}: ${evidence}`
+        : requirement
+    };
+  });
+
+  const employmentHistory = normalized.employment_history.map((entry) => {
+    const responsibilityBullets = entry.responsibilities.map((responsibility) => ({
+      responsibility,
+      responsibility_text: responsibility,
+      responsibility_original_text: responsibility
+    }));
+
+    return {
+      job_title: entry.job_title,
+      company_name: entry.company_name,
+      start_date: entry.start_date,
+      end_date: entry.end_date,
+      employment_start_date: entry.start_date,
+      employment_end_date: entry.end_date,
+      responsibilities: responsibilityBullets.map((item) => ({
+        responsibility: item.responsibility
+      })),
+      responsibility_bullets: responsibilityBullets
+    };
+  });
+  const legacyEmploymentHistory = employmentHistory.map((entry) => ({
     job_title: entry.job_title,
     company_name: entry.company_name,
     start_date: entry.start_date,
     end_date: entry.end_date,
-    responsibilities: entry.responsibilities.map((responsibility) => ({
-      responsibility
+    responsibilities: entry.responsibilities
+  }));
+  const projectExperiences = normalized.project_experiences.map((entry) => ({
+    project_name: entry.project_name,
+    project_summary: entry.project_summary,
+    project_start_date: entry.project_start_date,
+    project_end_date: entry.project_end_date,
+    project_timeline_basis: entry.project_timeline_basis,
+    linked_job_title: entry.linked_job_title,
+    linked_company_name: entry.linked_company_name,
+    project_bullets: normalizeStringArray(entry.project_bullets).map((bullet, index) => ({
+      project_bullet_text: bullet,
+      project_bullet_original_text: entry.project_bullet_originals?.[index] || bullet
     }))
   }));
 
@@ -947,8 +1153,10 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
   const baseData = {
     candidate_name: normalized.candidate.name,
     hiring_manager: normalized.role.hiring_manager || normalized.role.company,
+    hiring_manager_name: normalized.role.hiring_manager || normalized.role.company,
     role_title: normalized.role.title,
-    employment_history: employmentHistory,
+    employment_history: legacyEmploymentHistory,
+    employment_experience_entries: employmentHistory,
     fit_summary: fitSummary,
     employment_experience: employmentHistory
       .map((entry) => {
@@ -979,11 +1187,18 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
     potential_concerns: formatBulletLines(normalized.potential_concerns, outputLanguage),
     recommended_next_step: normalized.recommended_next_step,
     candidate_summary: fitSummary,
+    key_summary: fitSummary,
+    candidate_english_name: normalized.candidate.name,
+    candidate_original_name: normalized.candidate.name,
     candidate_gender: normalized.candidate.gender,
+    candidate_date_of_birth: normalized.candidate.date_of_birth,
     candidate_nationality: normalized.candidate.nationality,
     candidate_location: normalized.candidate.location,
+    candidate_current_location: normalized.candidate.location,
     candidate_preferred_location: normalized.candidate.preferred_location,
     candidate_languages: candidateLanguages.join(copy.listJoiner),
+    candidate_skills: candidateSkills.join(copy.listJoiner),
+    candidate_certifications: candidateCertifications.join(copy.listJoiner),
     candidate_language_1: normalized.candidate.languages[0] || '',
     candidate_language_2: normalized.candidate.languages[1] || '',
     notice_period: normalized.candidate.notice_period,
@@ -1002,16 +1217,54 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
       })
       .filter(Boolean)
       .join('\n\n'),
-    degree_name: firstEducation.degree_name || '',
+    degree_name: deriveEducationDisplayParts(firstEducation).degreeName || '',
+    field_of_study: deriveEducationDisplayParts(firstEducation).fieldOfStudy || '',
     university: firstEducation.university || '',
+    institution_name: firstEducation.university || '',
     start_year: firstEducation.start_year || '',
     end_year: firstEducation.end_year || '',
+    education_start_year: firstEducation.start_year || '',
+    education_end_year: firstEducation.end_year || '',
+    education_location: '',
     job_title: firstEmployment.job_title || '',
     company_name: firstEmployment.company_name || '',
     start_date: firstEmployment.start_date || '',
     end_date: firstEmployment.end_date || '',
+    employment_start_date: firstEmployment.start_date || '',
+    employment_end_date: firstEmployment.end_date || '',
+    responsibility_bullets: firstEmployment.responsibility_bullets || [],
+    responsibility_text: firstEmployment.responsibility_bullets?.[0]?.responsibility_text || '',
+    responsibility_original_text: firstEmployment.responsibility_bullets?.[0]?.responsibility_original_text || '',
     job_responsibility_1: firstEmployment.responsibilities?.[0] || '',
     job_responsibility_2: firstEmployment.responsibilities?.[1] || '',
+    match_requirement_entries: matchRequirementEntries,
+    match_requirement_text: matchRequirementEntries[0]?.match_requirement_text || '',
+    project_experience_entries: projectExperiences,
+    project_name: projectExperiences[0]?.project_name || '',
+    linked_job_title: projectExperiences[0]?.linked_job_title || '',
+    linked_company_name: projectExperiences[0]?.linked_company_name || '',
+    project_start_date: projectExperiences[0]?.project_start_date || '',
+    project_end_date: projectExperiences[0]?.project_end_date || '',
+    project_timeline_basis: projectExperiences[0]?.project_timeline_basis || '',
+    project_bullets: projectExperiences[0]?.project_bullets || [],
+    project_bullet_text: projectExperiences[0]?.project_bullets?.[0]?.project_bullet_text || '',
+    project_bullet_original_text: projectExperiences[0]?.project_bullets?.[0]?.project_bullet_original_text || '',
+    original_authoritative_appendix: [
+      {
+        employment_experience_entries: employmentHistory.map((entry) => ({
+          ...entry,
+          responsibility_bullets: entry.responsibility_bullets.map((item) => ({
+            responsibility_original_text: item.responsibility_original_text || item.responsibility_text || ''
+          }))
+        })),
+        project_experience_entries: projectExperiences.map((entry) => ({
+          ...entry,
+          project_bullets: entry.project_bullets.map((item) => ({
+            project_bullet_original_text: item.project_bullet_original_text || item.project_bullet_text || ''
+          }))
+        }))
+      }
+    ],
     generation_date: generationDate.toISOString().slice(0, 10),
     generation_timestamp: generationDate.toISOString()
   };
@@ -1021,6 +1274,7 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
     Candidate_Name: baseData.candidate_name,
     'Hiring Manager': baseData.hiring_manager,
     Candidate_Summary: baseData.fit_summary,
+    hiring_manager_name: baseData.hiring_manager_name,
     Canddidate_Gender: baseData.candidate_gender,
     Candidate_nationality: baseData.candidate_nationality,
     Candidate_Location: baseData.candidate_location,
@@ -1196,9 +1450,11 @@ function buildBriefingRequest({
     'Important field rules:',
     '- `candidate.languages` should be an array of strings.',
     '- `candidate.education` should be an array of objects.',
+    '- `candidate.skills` and `candidate.certifications` should be arrays of strings when supported by the CV.',
     '- `match_requirements` should be an array of objects with `requirement` and `evidence`.',
     '- `employment_history` should be reverse chronological, using CV-supported roles only.',
     '- `employment_history[].responsibilities` should be arrays of concise bullet-ready strings.',
+    '- `project_experiences` should contain standalone or source-supported project entries when they are present in the CV.',
     '- `evidence_refs` fields are optional, but include them when they help ground material facts.',
     '',
     resolvedTemplateGuidance.usesDefaultTemplate
@@ -1277,6 +1533,7 @@ module.exports = {
   buildBriefingRepairRequest,
   buildFallbackBriefing,
   buildTemplateDataFromBriefing,
+  composeDeterministicReportBriefing,
   composeHiringManagerBriefing,
   createEmptyBriefing,
   mergeBriefingWithFallback,

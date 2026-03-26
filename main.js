@@ -23,6 +23,7 @@ const {
   buildBriefingRequest,
   buildBriefingRepairRequest,
   buildFallbackBriefing,
+  composeDeterministicReportBriefing,
   mergeBriefingWithFallback,
   parseBriefingResponse,
   prepareHiringManagerBriefingOutput,
@@ -47,6 +48,10 @@ const {
   parseEmailDraftResponse
 } = require('./services/email-draft-service');
 const {
+  formatWordReportQualityError,
+  validateWordReportQuality
+} = require('./services/word-report-quality-service');
+const {
   buildDraftTranslationRepairRequest,
   buildDraftTranslationRequest,
   buildSummaryTranslationRequest,
@@ -56,10 +61,17 @@ const {
   parseTranslatedSummaryResponse
 } = require('./services/draft-translation-service');
 const {
+  categorizeOperationError,
   createDiagnosticRunId,
   pushDiagnosticContext,
   pushDiagnosticResult
 } = require('./services/diagnostic-log-service');
+const {
+  appendPerformanceRecord,
+  buildPerformancePayload,
+  buildPerformanceRecord,
+  roundDurationMs
+} = require('./services/performance-log-service');
 const { briefingNeedsLanguageNormalization } = require('./services/briefing-language-service');
 const {
   validateClipboardTextPayload,
@@ -110,6 +122,10 @@ function getExportDebugLogPath() {
 
 function getSummaryGenerationDebugLogPath() {
   return path.join(getUserDataPath(), 'debug', 'summary-generation.log');
+}
+
+function getPerformanceStatsLogPath() {
+  return path.join(getUserDataPath(), 'debug', 'performance-stats.jsonl');
 }
 
 function getManagedGeneratedBriefingsPath() {
@@ -191,6 +207,31 @@ async function appendSummaryGenerationDebugLog(lines) {
   await fs.appendFile(summaryGenerationDebugLogPath, `${content}\n`, 'utf8');
 }
 
+async function appendOperationPerformanceRecord({
+  operation,
+  runId,
+  startedAt,
+  status,
+  totalMs,
+  phases = {},
+  context = {},
+  error = null
+}) {
+  const record = buildPerformanceRecord({
+    operation,
+    runId,
+    status,
+    startedAt,
+    errorCategory: error ? categorizeOperationError(error) : 'none',
+    totalMs,
+    phases,
+    context
+  });
+
+  await appendPerformanceRecord(getPerformanceStatsLogPath(), record);
+  return record.performance;
+}
+
 function getDebugFileLabel(filePath) {
   const value = String(filePath || '').trim();
   return value ? path.basename(value) : '(none)';
@@ -217,6 +258,24 @@ function formatDuration(durationMs) {
 
 function pushTimingDebugTrace(debugTrace, label, durationMs) {
   debugTrace.push(`${label}: ${formatDuration(durationMs)}`);
+}
+
+function recordTimingPhase(debugTrace, phases, key, label, durationMs) {
+  const roundedDuration = roundDurationMs(durationMs);
+  phases[key] = roundedDuration;
+  pushTimingDebugTrace(debugTrace, label, roundedDuration);
+}
+
+function extractDocumentPerformanceContext(document, prefix) {
+  const fileLabel = getDebugFileLabel(document?.file?.path || document?.file?.name || '');
+  const performance = document?.performance || {};
+
+  return {
+    [`${prefix}File`]: fileLabel,
+    [`${prefix}ImportTotalMs`]: performance.totalMs,
+    [`${prefix}ImportExtractMs`]: performance.extractMs,
+    [`${prefix}ImportNormalizeMs`]: performance.normalizeMs
+  };
 }
 
 async function measureAsync(operation) {
@@ -268,6 +327,7 @@ async function translateDraftArtifacts({
   });
   const translationSettings = buildTranslationSettings(settings);
   const totalTimer = startTimer();
+  const performancePhases = {};
 
   debugTrace.push(`Translation model: ${translationSettings.model}`);
   debugTrace.push(`Translation max tokens: ${translationSettings.maxTokens}`);
@@ -307,10 +367,22 @@ async function translateDraftArtifacts({
   let translatedSummary = includeSummaryTranslation ? '' : normalizeGeneratedSummary(summary);
 
   if (summaryTranslationOperation) {
-    pushTimingDebugTrace(debugTrace, 'Summary translation call', summaryTranslationOperation.durationMs);
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'summaryTranslationMs',
+      'Summary translation call',
+      summaryTranslationOperation.durationMs
+    );
   }
 
-  pushTimingDebugTrace(debugTrace, 'Core briefing translation call', coreBriefingTranslationOperation.durationMs);
+  recordTimingPhase(
+    debugTrace,
+    performancePhases,
+    'coreBriefingTranslationMs',
+    'Core briefing translation call',
+    coreBriefingTranslationOperation.durationMs
+  );
 
   if (includeSummaryTranslation && summaryTranslationResult) {
     try {
@@ -335,7 +407,13 @@ async function translateDraftArtifacts({
       messages: repairRequest.messages,
       fetchImpl
     }));
-    pushTimingDebugTrace(debugTrace, 'Core briefing translation repair', repairedOperation.durationMs);
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'coreBriefingTranslationRepairMs',
+      'Core briefing translation repair',
+      repairedOperation.durationMs
+    );
     const repairedResult = repairedOperation.result;
     const translatedCore = parseTranslatedDraftResponse(repairedResult.text, coreBriefingForTranslation);
     translatedBriefing = mergeTranslatedBriefing(currentBriefing, translatedCore.briefing);
@@ -370,8 +448,10 @@ async function translateDraftArtifacts({
         messages: sliceRequest.messages,
         fetchImpl
       }));
-      pushTimingDebugTrace(
+      recordTimingPhase(
         debugTrace,
+        performancePhases,
+        `employmentBatch${Math.floor(startIndex / employmentBatchSize) + 1}Ms`,
         `Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1} call`,
         sliceOperation.durationMs
       );
@@ -391,8 +471,10 @@ async function translateDraftArtifacts({
           messages: repairRequest.messages,
           fetchImpl
         }));
-        pushTimingDebugTrace(
+        recordTimingPhase(
           debugTrace,
+          performancePhases,
+          `employmentBatch${Math.floor(startIndex / employmentBatchSize) + 1}RepairMs`,
           `Employment translation batch ${Math.floor(startIndex / employmentBatchSize) + 1} repair`,
           repairedOperation.durationMs
         );
@@ -415,11 +497,22 @@ async function translateDraftArtifacts({
     debugTrace.push('Summary translation fallback used: rendered recruiter summary from translated briefing.');
   }
 
-  pushTimingDebugTrace(debugTrace, 'Total draft translation', totalTimer());
+  const totalDurationMs = totalTimer();
+  recordTimingPhase(
+    debugTrace,
+    performancePhases,
+    'totalTranslationMs',
+    'Total draft translation',
+    totalDurationMs
+  );
 
   return {
     summary: translatedSummary,
-    briefing: translatedBriefing
+    briefing: translatedBriefing,
+    performance: buildPerformancePayload({
+      totalMs: totalDurationMs,
+      phases: performancePhases
+    })
   };
 }
 
@@ -539,7 +632,7 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
     outputLanguage
   });
   const requestedBriefing = payload.briefing
-    ? mergeBriefingWithFallback(payload.briefing, fallbackBriefing)
+    ? composeDeterministicReportBriefing(payload.briefing, fallbackBriefing)
     : fallbackBriefing;
   let composedOutput;
 
@@ -555,6 +648,13 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
   }
 
   const templateData = composedOutput.templateData;
+  const reportQualityValidation = validateWordReportQuality(templateData);
+
+  if (!reportQualityValidation.isValid) {
+    debugTrace.push(`Word report quality blockers: ${reportQualityValidation.blockers.join(' | ')}`);
+    throw new Error(formatWordReportQualityError(reportQualityValidation));
+  }
+
   const employmentDebug = describeEmploymentExtraction(payload.cvDocument);
   debugTrace.push(`Configured template file: ${getDebugFileLabel(settings.outputTemplatePath)}`);
   debugTrace.push(`Template extension: ${settings.outputTemplateExtension}`);
@@ -633,6 +733,50 @@ function applyDraftOutputMode({ outputMode, recruiterSummary, briefing, cvDocume
   };
 }
 
+function buildReviewPresentation({
+  briefing,
+  recruiterSummary,
+  outputLanguage,
+  outputMode,
+  cvDocument = null,
+  jdDocument = null,
+  existingWarnings = [],
+  summaryRetrievalManifest = [],
+  briefingRetrievalManifest = []
+}) {
+  const reviewBriefing = cvDocument && jdDocument
+    ? composeDeterministicReportBriefing(
+      briefing,
+      buildFallbackBriefing({
+        cvDocument,
+        jdDocument,
+        outputLanguage
+      })
+    )
+    : briefing;
+  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
+    briefing: reviewBriefing,
+    recruiterSummary,
+    outputLanguage
+  });
+  const reportQualityValidation = validateWordReportQuality(hiringManagerBriefing.templateData);
+  const reviewWarnings = buildDraftReviewWarnings({
+    recruiterSummary,
+    briefing: reviewBriefing,
+    outputMode,
+    existingWarnings,
+    reportQualityBlockers: reportQualityValidation.blockers,
+    summaryRetrievalManifest,
+    briefingRetrievalManifest
+  });
+
+  return {
+    hiringManagerBriefing,
+    reviewWarnings,
+    reportQualityBlockers: reportQualityValidation.blockers
+  };
+}
+
 function buildWorkspaceDerivedProfilePayload({ cvDocument, jdDocument }) {
   const profile = extractDocumentDerivedProfile({
     cvDocument: cvDocument || null,
@@ -691,6 +835,7 @@ async function waitForE2EImportDelay() {
 }
 
 async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, outputMode, outputLanguage, debugTrace }) {
+  const totalTimer = startTimer();
   const generationInputs = {
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument
@@ -745,19 +890,19 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument
   });
-  const reviewWarnings = buildDraftReviewWarnings({
-    recruiterSummary: preparedOutput.summary,
+  const reviewPresentation = buildReviewPresentation({
     briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage,
     outputMode,
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
     summaryRetrievalManifest,
     briefingRetrievalManifest
   });
-  const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
-    briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary,
-    outputLanguage
-  });
+  const reviewWarnings = reviewPresentation.reviewWarnings;
+  const hiringManagerBriefing = reviewPresentation.hiringManagerBriefing;
 
   debugTrace.push('E2E mock LLM mode enabled for deterministic summary generation.');
   debugTrace.push(`Summary template label: ${summaryRequest.templateLabel}`);
@@ -767,6 +912,8 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
   pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
 
   await waitForE2EMockDelay();
+
+  const totalDurationMs = totalTimer();
 
   return {
     templateLabel: summaryRequest.templateLabel,
@@ -781,11 +928,18 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     outputMode,
     outputLanguage,
     modeLabel: preparedOutput.modeLabel,
-    approvalWarnings: reviewWarnings
+    approvalWarnings: reviewWarnings,
+    performance: buildPerformancePayload({
+      totalMs: totalDurationMs,
+      phases: {
+        totalGenerationMs: totalDurationMs
+      }
+    })
   };
 }
 
 async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debugTrace }) {
+  const totalTimer = startTimer();
   const recruiterSummary = generateSummaryDraft({
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
@@ -803,31 +957,39 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument
   });
-  const reviewWarnings = buildDraftReviewWarnings({
-    recruiterSummary: preparedOutput.summary,
+  const reviewPresentation = buildReviewPresentation({
     briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage: targetLanguage,
     outputMode: payload.outputMode,
+    cvDocument: payload.cvDocument,
+    jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
     summaryRetrievalManifest: payload.summaryRetrievalManifest,
     briefingRetrievalManifest: payload.briefingRetrievalManifest
   });
-  const composed = prepareHiringManagerBriefingOutput({
-    briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary,
-    outputLanguage: targetLanguage
-  });
+  const reviewWarnings = reviewPresentation.reviewWarnings;
+  const composed = reviewPresentation.hiringManagerBriefing;
 
   debugTrace.push('E2E mock LLM mode enabled for deterministic draft translation.');
   pushBriefingDebugTrace(debugTrace, 'Translated mock briefing', preparedOutput.briefing);
 
   await waitForE2EMockDelay();
 
+  const totalDurationMs = totalTimer();
+
   return {
     summary: recruiterSummary,
     briefing: translatedBriefing,
     hiringManagerBriefingReview: composed.review,
     outputLanguage: targetLanguage,
-    approvalWarnings: reviewWarnings
+    approvalWarnings: reviewWarnings,
+    performance: buildPerformancePayload({
+      totalMs: totalDurationMs,
+      phases: {
+        totalTranslationMs: totalDurationMs
+      }
+    })
   };
 }
 
@@ -1355,10 +1517,13 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
   const normalizedPayload = validateSummaryGenerationPayload(payload);
   const totalTimer = startTimer();
   const runId = createDiagnosticRunId('summary');
+  const startedAt = new Date().toISOString();
   const debugTrace = [];
+  const performancePhases = {};
   pushDiagnosticContext(debugTrace, {
     operation: 'Summary generation',
-    runId
+    runId,
+    startedAt
   });
 
   try {
@@ -1400,7 +1565,13 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputMode: 'named',
       outputLanguage
     });
-    pushTimingDebugTrace(debugTrace, 'Prompt and retrieval preparation', requestBuildTimer());
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'promptPreparationMs',
+      'Prompt and retrieval preparation',
+      requestBuildTimer()
+    );
 
     if (isE2EMockLlmEnabled()) {
       const mockResult = await buildE2EMockSummaryResult({
@@ -1411,7 +1582,25 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
         outputLanguage,
         debugTrace
       });
+      await appendOperationPerformanceRecord({
+        operation: 'summary-generation',
+        runId,
+        startedAt,
+        status: 'success',
+        totalMs: mockResult.performance?.totalMs,
+        phases: mockResult.performance?.phases,
+        context: {
+          outputMode,
+          outputLanguage,
+          providerLabel: 'E2E Mock',
+          model: 'deterministic-local',
+          templateLabel: summaryRequest.templateLabel,
+          ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+          ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+        }
+      });
       debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+      debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
       await appendSummaryGenerationDebugLog(debugTrace);
       return mockResult;
     }
@@ -1437,9 +1626,27 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
         fetchImpl: (...args) => net.fetch(...args)
       }))
     ]);
-    pushTimingDebugTrace(debugTrace, 'Summary LLM call', summaryOperation.durationMs);
-    pushTimingDebugTrace(debugTrace, 'Structured briefing LLM call', structuredBriefingOperation.durationMs);
-    pushTimingDebugTrace(debugTrace, 'Combined provider wait', providerWaitTimer());
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'summaryLlmMs',
+      'Summary LLM call',
+      summaryOperation.durationMs
+    );
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'structuredBriefingLlmMs',
+      'Structured briefing LLM call',
+      structuredBriefingOperation.durationMs
+    );
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'combinedProviderWaitMs',
+      'Combined provider wait',
+      providerWaitTimer()
+    );
     const summaryResult = summaryOperation.result;
     const structuredBriefingResult = structuredBriefingOperation.result;
     const recruiterSummary = normalizeGeneratedSummary(summaryResult.text);
@@ -1452,7 +1659,13 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       jdDocument: generationInputs.jdDocument,
       outputLanguage
     });
-    pushTimingDebugTrace(debugTrace, 'Fallback briefing build', fallbackBriefingTimer());
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'fallbackBriefingBuildMs',
+      'Fallback briefing build',
+      fallbackBriefingTimer()
+    );
     pushBriefingDebugTrace(debugTrace, 'Fallback briefing', fallbackBriefing);
 
     let briefing;
@@ -1476,7 +1689,13 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
           messages: repairRequest.messages,
           fetchImpl: (...args) => net.fetch(...args)
         }));
-        pushTimingDebugTrace(debugTrace, 'Structured briefing repair call', repairedOperation.durationMs);
+        recordTimingPhase(
+          debugTrace,
+          performancePhases,
+          'structuredBriefingRepairMs',
+          'Structured briefing repair call',
+          repairedOperation.durationMs
+        );
         const repairedResult = repairedOperation.result;
         debugTrace.push(`Structured briefing repair response length: ${(repairedResult.text || '').trim().length}`);
         const repairedStructuredBriefing = parseBriefingResponse(repairedResult.text);
@@ -1503,6 +1722,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       debugTrace.push(`Structured briefing language normalization triggered for target language: ${outputLanguage}`);
 
       try {
+        const normalizationTimer = startTimer();
         const normalizedTranslation = await translateDraftArtifacts({
           settings,
           summary: '',
@@ -1513,6 +1733,13 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
           debugTrace,
           fetchImpl: (...args) => net.fetch(...args)
         });
+        recordTimingPhase(
+          debugTrace,
+          performancePhases,
+          'briefingLanguageNormalizationMs',
+          'Structured briefing language normalization',
+          normalizationTimer()
+        );
 
         validatedBriefing = normalizedTranslation.briefing;
         pushBriefingDebugTrace(debugTrace, 'Language-normalized briefing', validatedBriefing);
@@ -1528,27 +1755,65 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     });
-    const reviewWarnings = buildDraftReviewWarnings({
-      recruiterSummary: preparedOutput.summary,
+    const reviewAssemblyTimer = startTimer();
+    const reviewPresentation = buildReviewPresentation({
       briefing: preparedOutput.briefing,
+      recruiterSummary: preparedOutput.summary,
+      outputLanguage,
       outputMode,
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
       summaryRetrievalManifest: summaryRequest.retrievalManifest,
       briefingRetrievalManifest: briefingRequest.retrievalManifest
     });
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'reviewAssemblyMs',
+      'Review presentation assembly',
+      reviewAssemblyTimer()
+    );
+    const reviewWarnings = reviewPresentation.reviewWarnings;
     pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
-
-    const hiringManagerBriefing = prepareHiringManagerBriefingOutput({
-      briefing: preparedOutput.briefing,
-      recruiterSummary: preparedOutput.summary,
-      outputLanguage
-    });
+    const hiringManagerBriefing = reviewPresentation.hiringManagerBriefing;
+    if (reviewPresentation.reportQualityBlockers.length > 0) {
+      debugTrace.push(`Word report review required: ${reviewPresentation.reportQualityBlockers.join(' | ')}`);
+    }
     debugTrace.push('Prepared hiring-manager briefing review successfully.');
     pushDiagnosticResult(debugTrace, {
       status: 'success'
     });
-    pushTimingDebugTrace(debugTrace, 'Total summary generation', totalTimer());
+    const totalDurationMs = totalTimer();
+    const performance = await appendOperationPerformanceRecord({
+      operation: 'summary-generation',
+      runId,
+      startedAt,
+      status: 'success',
+      totalMs: totalDurationMs,
+      phases: {
+        ...performancePhases,
+        totalGenerationMs: totalDurationMs
+      },
+      context: {
+        outputMode,
+        outputLanguage,
+        providerLabel: settings.providerLabel,
+        model: settings.model,
+        templateLabel: summaryRequest.templateLabel,
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      }
+    });
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'totalGenerationMs',
+      'Total summary generation',
+      totalDurationMs
+    );
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
 
     return {
@@ -1564,7 +1829,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       outputMode,
       outputLanguage,
       modeLabel: preparedOutput.modeLabel,
-      approvalWarnings: reviewWarnings
+      approvalWarnings: reviewWarnings,
+      performance
     };
   } catch (error) {
     debugTrace.push(`Summary generation failed: ${error instanceof Error ? error.message : 'Unknown summary generation failure.'}`);
@@ -1572,8 +1838,34 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       status: 'failed',
       error
     });
-    pushTimingDebugTrace(debugTrace, 'Total summary generation', totalTimer());
+    const totalDurationMs = totalTimer();
+    await appendOperationPerformanceRecord({
+      operation: 'summary-generation',
+      runId,
+      startedAt,
+      status: 'failed',
+      totalMs: totalDurationMs,
+      phases: {
+        ...performancePhases,
+        totalGenerationMs: totalDurationMs
+      },
+      context: {
+        outputMode: normalizeOutputMode(normalizedPayload.outputMode),
+        outputLanguage: normalizeOutputLanguage(normalizedPayload.outputLanguage),
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      },
+      error
+    });
+    recordTimingPhase(
+      debugTrace,
+      performancePhases,
+      'totalGenerationMs',
+      'Total summary generation',
+      totalDurationMs
+    );
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
     throw error;
   }
@@ -1584,10 +1876,13 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const settings = await getSettingsStore().load();
   const validation = validateSettings(settings);
   const runId = createDiagnosticRunId('translation');
+  const startedAt = new Date().toISOString();
+  const totalTimer = startTimer();
   const debugTrace = [];
   pushDiagnosticContext(debugTrace, {
     operation: 'Draft translation',
-    runId
+    runId,
+    startedAt
   });
   debugTrace.push(`Source language: ${normalizeOutputLanguage(normalizedPayload.sourceLanguage)}`);
   debugTrace.push(`Target language: ${normalizeOutputLanguage(normalizedPayload.targetLanguage)}`);
@@ -1599,7 +1894,27 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
 
   if (!validation.isValid) {
     debugTrace.push(`Settings validation failed: ${validation.errors.join(' | ')}`);
+    const totalDurationMs = totalTimer();
+    await appendOperationPerformanceRecord({
+      operation: 'draft-translation',
+      runId,
+      startedAt,
+      status: 'failed',
+      totalMs: totalDurationMs,
+      phases: {
+        totalTranslationMs: totalDurationMs
+      },
+      context: {
+        outputMode: normalizedPayload.outputMode,
+        sourceLanguage: normalizeOutputLanguage(normalizedPayload.sourceLanguage),
+        targetLanguage: normalizeOutputLanguage(normalizedPayload.targetLanguage),
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      },
+      error: new Error(validation.errors.join(' '))
+    });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
     throw new Error(validation.errors.join(' '));
   }
@@ -1615,31 +1930,50 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     });
-    const reviewWarnings = buildDraftReviewWarnings({
-      recruiterSummary: preparedOutput.summary,
+    const reviewPresentation = buildReviewPresentation({
       briefing: preparedOutput.briefing,
+      recruiterSummary: preparedOutput.summary,
+      outputLanguage: targetLanguage,
       outputMode: normalizedPayload.outputMode,
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
       summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
       briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
     });
-    const composed = prepareHiringManagerBriefingOutput({
-      briefing: preparedOutput.briefing,
-      recruiterSummary: preparedOutput.summary,
-      outputLanguage: targetLanguage
-    });
+    const reviewWarnings = reviewPresentation.reviewWarnings;
+    const composed = reviewPresentation.hiringManagerBriefing;
 
     pushDiagnosticResult(debugTrace, {
       status: 'skipped'
     });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
+    const performance = await appendOperationPerformanceRecord({
+      operation: 'draft-translation',
+      runId,
+      startedAt,
+      status: 'skipped',
+      totalMs: 0,
+      phases: {
+        totalTranslationMs: 0
+      },
+      context: {
+        outputMode: normalizedPayload.outputMode,
+        sourceLanguage,
+        targetLanguage,
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      }
+    });
     await appendSummaryGenerationDebugLog(debugTrace);
     return {
       summary: normalizedPayload.summary,
       briefing: normalizedPayload.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
-      approvalWarnings: reviewWarnings
+      approvalWarnings: reviewWarnings,
+      performance
     };
   }
 
@@ -1661,6 +1995,24 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       status: 'success'
     });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
+    await appendOperationPerformanceRecord({
+      operation: 'draft-translation',
+      runId,
+      startedAt,
+      status: 'success',
+      totalMs: mockResult.performance?.totalMs,
+      phases: mockResult.performance?.phases,
+      context: {
+        outputMode: normalizedPayload.outputMode,
+        sourceLanguage,
+        targetLanguage,
+        providerLabel: 'E2E Mock',
+        model: 'deterministic-local',
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      }
+    });
     await appendSummaryGenerationDebugLog(debugTrace);
     return mockResult;
   }
@@ -1684,31 +2036,50 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
     });
-    const reviewWarnings = buildDraftReviewWarnings({
-      recruiterSummary: preparedOutput.summary,
+    const reviewPresentation = buildReviewPresentation({
       briefing: preparedOutput.briefing,
+      recruiterSummary: preparedOutput.summary,
+      outputLanguage: targetLanguage,
       outputMode: normalizedPayload.outputMode,
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
       summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
       briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
     });
-    const composed = prepareHiringManagerBriefingOutput({
-      briefing: preparedOutput.briefing,
-      recruiterSummary: preparedOutput.summary,
-      outputLanguage: targetLanguage
-    });
+    const reviewWarnings = reviewPresentation.reviewWarnings;
+    const composed = reviewPresentation.hiringManagerBriefing;
 
     pushDiagnosticResult(debugTrace, {
       status: 'success'
     });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
+    const performance = await appendOperationPerformanceRecord({
+      operation: 'draft-translation',
+      runId,
+      startedAt,
+      status: 'success',
+      totalMs: translated.performance?.totalMs,
+      phases: translated.performance?.phases,
+      context: {
+        outputMode: normalizedPayload.outputMode,
+        sourceLanguage,
+        targetLanguage,
+        providerLabel: settings.providerLabel,
+        model: settings.model,
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      }
+    });
     await appendSummaryGenerationDebugLog(debugTrace);
     return {
       summary: translated.summary,
       briefing: translated.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
-      approvalWarnings: reviewWarnings
+      approvalWarnings: reviewWarnings,
+      performance
     };
   } catch (error) {
     debugTrace.push(`Draft translation failed: ${error instanceof Error ? error.message : 'Unknown translation failure.'}`);
@@ -1716,7 +2087,27 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       status: 'failed',
       error
     });
+    const totalDurationMs = totalTimer();
+    await appendOperationPerformanceRecord({
+      operation: 'draft-translation',
+      runId,
+      startedAt,
+      status: 'failed',
+      totalMs: totalDurationMs,
+      phases: {
+        totalTranslationMs: totalDurationMs
+      },
+      context: {
+        outputMode: normalizedPayload.outputMode,
+        sourceLanguage,
+        targetLanguage,
+        ...extractDocumentPerformanceContext(normalizedPayload.cvDocument, 'cv'),
+        ...extractDocumentPerformanceContext(normalizedPayload.jdDocument, 'jd')
+      },
+      error
+    });
     debugTrace.push(`Summary generation debug log path: ${getSummaryGenerationDebugLogPath()}`);
+    debugTrace.push(`Performance stats log path: ${getPerformanceStatsLogPath()}`);
     await appendSummaryGenerationDebugLog(debugTrace);
     throw error;
   }
@@ -1740,19 +2131,19 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
     cvDocument: normalizedPayload.cvDocument,
     jdDocument: normalizedPayload.jdDocument
   });
-  const reviewWarnings = buildDraftReviewWarnings({
-    recruiterSummary: preparedOutput.summary,
+  const reviewPresentation = buildReviewPresentation({
     briefing: preparedOutput.briefing,
+    recruiterSummary: preparedOutput.summary,
+    outputLanguage,
     outputMode: normalizedPayload.outputMode,
+    cvDocument: normalizedPayload.cvDocument,
+    jdDocument: normalizedPayload.jdDocument,
     existingWarnings: preparedOutput.warnings,
     summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
     briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
   });
-  const composed = prepareHiringManagerBriefingOutput({
-    briefing: preparedOutput.briefing,
-    recruiterSummary: preparedOutput.summary,
-    outputLanguage
-  });
+  const reviewWarnings = reviewPresentation.reviewWarnings;
+  const composed = reviewPresentation.hiringManagerBriefing;
 
   return {
     briefing: requestedBriefing,

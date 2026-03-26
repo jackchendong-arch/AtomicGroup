@@ -36,6 +36,7 @@ const OVERCONFIDENT_PATTERNS = [
   /\b(?:fully meets all requirements|meets every requirement|no gaps?)\b/i,
   /(?:百分之百匹配|保证匹配|毫无疑问|完全匹配|没有任何差距)/
 ];
+const REPORT_QUALITY_WARNING_PREFIX = 'Word report review required: ';
 
 function cleanLine(value) {
   return String(value || '')
@@ -104,6 +105,7 @@ function buildDraftReviewWarnings({
   briefing = null,
   outputMode = 'named',
   existingWarnings = [],
+  reportQualityBlockers = [],
   summaryRetrievalManifest = [],
   briefingRetrievalManifest = []
 } = {}) {
@@ -166,6 +168,16 @@ function buildDraftReviewWarnings({
     warnings.push('Source evidence is incomplete for this draft. Verify key claims manually before approval.');
   }
 
+  if (Array.isArray(reportQualityBlockers) && reportQualityBlockers.length > 0) {
+    reportQualityBlockers.forEach((blocker) => {
+      const normalizedBlocker = cleanLine(blocker);
+
+      if (normalizedBlocker) {
+        warnings.push(`${REPORT_QUALITY_WARNING_PREFIX}${normalizedBlocker}`);
+      }
+    });
+  }
+
   return uniqueStrings([
     ...(Array.isArray(existingWarnings) ? existingWarnings.map((warning) => cleanLine(warning)) : []),
     ...warnings
@@ -173,5 +185,6 @@ function buildDraftReviewWarnings({
 }
 
 module.exports = {
+  REPORT_QUALITY_WARNING_PREFIX,
   buildDraftReviewWarnings
 };

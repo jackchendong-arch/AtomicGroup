@@ -700,6 +700,8 @@ Factual sections in the report should be source-preserving once the canonical sc
 
 #### Word Template Contract
 The Word template integration should define:
+- supported template ID and template version
+- the adapter version that knows how to populate that template
 - required placeholders
 - optional placeholders
 - repeatable section placeholders for employment and project sections
@@ -707,6 +709,71 @@ The Word template integration should define:
 - export-blocking behavior when required placeholders cannot be populated
 
 The template contract should be explicit so template validation is based on a known interface rather than best-effort placeholder discovery only.
+
+#### Template Adapter Layer
+The app should not pass low-level factual atoms directly into Word templates and expect the template to compose display-safe lines. Instead, each supported hiring-manager template should have a dedicated template adapter layer that:
+- accepts the validated canonical candidate schema plus approved narrative assessment
+- builds a deterministic report view model for export
+- projects that report view model into a template-specific payload
+- emits display-safe composed fields for optional or mixed-content lines
+
+Examples of adapter-owned display-safe fields include:
+- `education_degree_line`
+- `education_field_institution_line`
+- `education_years_location_line`
+- `employment_role_company_line`
+- `employment_dates_line`
+- `project_linked_role_company_line`
+- `project_dates_line`
+
+This keeps punctuation, separators, partial-field handling, and template-specific formatting in code rather than in Word placeholders.
+
+#### Layout-Only Template Principle
+Word templates should be layout-only presentation artifacts. They may control:
+- layout
+- styling
+- branding
+- section order
+- repeat loops
+
+Word templates should not be responsible for:
+- joining optional fields with punctuation such as `|`
+- deciding whether to suppress separators when one side is empty
+- reconstructing chronology or grouping logic
+- composing human-readable lines from raw factual atoms
+
+Those responsibilities belong in the template adapter layer.
+
+#### Template Versioning And Compatibility
+The product should support explicit template versions such as `candidate-report-v1`, `candidate-report-v2`, or future client-specific variants. Each supported version should have:
+- a known placeholder contract
+- a specific adapter implementation
+- regression coverage against representative fixtures
+- an explicit compatibility decision when templates evolve
+
+This is safer than treating every newly supplied template as a generic placeholder bag that the exporter should infer on the fly.
+
+#### Pre-Render Report Quality Validation
+Before `.docx` rendering, the app should validate that the report view model itself still makes factual sense. Severe failures should block export rather than generating a polished-looking but unreliable document.
+
+Export-blocking quality checks should cover at least:
+- candidate name and role title that look generic, file-derived, or section-derived
+- malformed education rows such as merged separator characters, empty degree/institution pairs, or education entries that actually contain employment/project text
+- employment rows that use skills headings or company names as role titles
+- project sections that are clearly over-expanded or contain sentence fragments, section spillover, or skills-language text instead of project titles
+
+This quality gate is distinct from template validation:
+- template validation checks whether the template can consume the report view model
+- report-quality validation checks whether the report view model itself is trustworthy enough to export
+
+#### Template Compatibility Validation
+Template compatibility validation should happen separately from report-quality validation. It should answer:
+- is this template version supported by a known adapter
+- does the configured template expose the placeholders required by that adapter
+- are repeat blocks present where the adapter expects them
+- does the template avoid unsupported placeholder composition patterns for that adapter version
+
+Compatibility failures should be explained as template-configuration issues, not as CV-quality issues.
 
 #### Post-Render Word Validation
 After `.docx` rendering, the app should validate that:
@@ -722,12 +789,29 @@ This validation is separate from pre-render schema validation and is intended to
 The release-quality regression strategy for Word reporting should include:
 - canonical-schema correctness tests for employment and project extraction
 - report-view-model projection tests
+- template-adapter payload tests for each supported template version
 - `.docx` structural assertions for placeholder expansion and repeated-section rendering
 - negative export-path tests for unmappable required fields or broken templates
 - template-version compatibility checks
 - curated visual review packs for key templates where structural assertions are not enough
 
 The release-hardening and future CI gates should treat Word-report correctness as its own quality domain, not only as a side effect of summary-generation tests.
+
+Current implemented slice:
+- the current implementation has reached the limit of a generic raw-field template contract, and the next hardening step should move to explicit versioned template adapters instead of relying on template-authored optional-field composition
+- recruiter-facing `Review Checks` now uses the same deterministic factual report composition as Word export, so quality blockers are assessed against the actual export model rather than a looser generation-time briefing
+- summary generation and draft translation now emit structured per-run timing records to a dedicated performance log so support review can compare provider wait, repair, review-assembly, and import timings across runs without exposing raw candidate content
+- missing template values are now sanitized so literal `undefined` does not leak into generated Word reports
+- post-render validation now checks that generated `.docx` output does not retain unexpanded placeholders and still contains core rendered report content such as candidate/role identity plus summary/experience text
+- the current report projection now also supports richer revised report templates with repeatable education, match-requirement, employment-experience, and project-experience loops, so the Word template can evolve toward the canonical candidate schema without falling back to raw CV formatting
+- employment-history extraction now recognizes inline `company | role | date` CV layouts and bounded OCR-recovered weak PDFs, which materially improves deterministic Word export coverage for image-heavy or stylized CVs such as the `CV4-3.pdf` fixture
+- Word export now prefers fresh deterministic CV/JD-derived factual sections such as education, employment history, and project experience over previously generated structured-briefing fact rows, while still preserving the recruiter-reviewed narrative assessment fields for export
+- Word export now also applies a first semantic quality gate before render, blocking reports whose factual sections look unreliable due to malformed education extraction, generic identity labels, misclassified employment rows, or clearly over-expanded project extraction
+- the same report-quality blockers are now surfaced in the recruiter-facing `Review Checks` panel immediately after generation/translation, and Word export plus email handoff stay disabled until those issues are cleared
+- deterministic CV parsing now also handles compact Chinese education rows like `date + university/field | degree`, recognizes project headings that embed `使用技术`, and stops project capture cleanly before later skills sections such as `技能/优势及其他`
+- deterministic CV parsing now also infers delayed pre-heading `education`, `work experience`, and `projects` blocks from leading CV content, so layouts like `CV4-2.pdf` still preserve clean education rows, `company — role` employment entries, and dated project headings before the explicit section labels appear later in the file
+- report-quality validation now treats large project sections as acceptable when the extracted project titles remain clean and plausible, and only escalates high project counts when they are paired with suspicious fragment-style names or section spillover
+- the next Word-export redesign step is to replace raw-field template composition with adapter-owned display-safe lines and explicit template-version compatibility, so client template evolution no longer randomly breaks previously working CVs
 
 ### Why the LLM Should Not Generate the Word Document Directly
 Direct LLM generation of the final Word document would weaken the parts of the system that need to stay deterministic.
@@ -1004,8 +1088,10 @@ Current implemented slices inside Release 6:
 - privacy-safe diagnostics now include operation run IDs and normalized error categories for summary generation, translation, export, and email support traces
 - settings load/save and template/output-folder picker failures now surface a dedicated settings issue panel with retry/dismiss actions instead of only passive status text
 - hiring-manager briefing review refresh failures now surface a retryable workbench issue instead of being silently swallowed during tab changes or summary edits
+- weak image-based PDFs now attempt a bounded local OCR fallback during import when `pdftoppm` and `tesseract` are available, so CV/JD review and downstream extraction can recover content that is missing from the embedded PDF text layer
 - switching back to a previously generated candidate inside the same role workspace now restores that saved draft automatically instead of forcing a blank state and manual reopen from `Recent Work`
 - role-workspace auto-restore now only revives snapshots that actually contain a saved draft, so source-only selector changes do not unexpectedly restore or overwrite blank workspace state
+- overlapping role-workspace CV and JD imports are now guarded per slot so a quick selector correction cannot let an older async import overwrite the latest chosen source file
 - preload now exposes a frozen production API surface and keeps E2E test-mode signaling on a separate test-only bridge instead of the main renderer API
 
 Acceptance criteria:

@@ -6,6 +6,8 @@ const {
   buildBriefingGenerationSettings,
   buildBriefingRequest,
   buildBriefingRepairRequest,
+  buildTemplateDataFromBriefing,
+  composeDeterministicReportBriefing,
   mergeBriefingWithFallback,
   normalizeBriefing,
   parseBriefingResponse,
@@ -227,6 +229,204 @@ test('mergeBriefingWithFallback keeps fuller grounded fallback arrays when the L
     merged.employment_history[0].responsibilities,
     ['Led transformation strategy', 'Managed a 60-person engineering organization']
   );
+});
+
+test('composeDeterministicReportBriefing keeps narrative from the briefing but replaces factual report sections with canonical source data', () => {
+  const composed = composeDeterministicReportBriefing(
+    normalizeBriefing({
+      candidate: {
+        name: 'Eugene Liu'
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Strong fit for the role.',
+      relevant_experience: ['Strong blockchain backend experience.'],
+      recommended_next_step: 'Proceed to client interview.',
+      employment_history: [
+        {
+          job_title: 'Tech Stack: Golang, Solidity, PostgreSQL, GraphQL, gRPC.',
+          company_name: '',
+          start_date: '2024',
+          end_date: 'Present',
+          responsibilities: ['ua scripting.']
+        }
+      ],
+      project_experiences: []
+    }),
+    normalizeBriefing({
+      candidate: {
+        name: 'Eugene Liu',
+        education: [
+          {
+            degree_name: 'Bachelor of Industrial Design',
+            university: 'South China University of Technology',
+            start_year: '2011',
+            end_year: '2015'
+          }
+        ],
+        skills: ['Golang', 'Solidity']
+      },
+      role: {
+        title: 'Blockchain Developer'
+      },
+      fit_summary: 'Fallback summary',
+      employment_history: [
+        {
+          job_title: 'Backend Engineer',
+          company_name: 'Delulu',
+          start_date: '2024',
+          end_date: 'Present',
+          responsibilities: [
+            'Developed RFQ smart contracts.',
+            'Built relayer infrastructure.'
+          ]
+        }
+      ],
+      project_experiences: [
+        {
+          project_name: 'High Performance Blockchain Relayer and Indexer',
+          project_bullets: ['Designed configurable event indexing framework.']
+        }
+      ]
+    })
+  );
+
+  assert.equal(composed.fit_summary, 'Strong fit for the role.');
+  assert.deepEqual(composed.relevant_experience, ['Strong blockchain backend experience.']);
+  assert.equal(composed.recommended_next_step, 'Proceed to client interview.');
+  assert.equal(composed.employment_history[0].job_title, 'Backend Engineer');
+  assert.equal(composed.employment_history[0].company_name, 'Delulu');
+  assert.deepEqual(composed.employment_history[0].responsibilities, [
+    'Developed RFQ smart contracts.',
+    'Built relayer infrastructure.'
+  ]);
+  assert.equal(composed.project_experiences[0].project_name, 'High Performance Blockchain Relayer and Indexer');
+  assert.equal(composed.candidate.education[0].degree_name, 'Bachelor of Industrial Design');
+  assert.deepEqual(composed.candidate.skills, ['Golang', 'Solidity']);
+});
+
+test('buildTemplateDataFromBriefing populates richer report-template loops and aliases', () => {
+  const briefing = normalizeBriefing({
+    candidate: {
+      name: 'Eugene Liu',
+      location: 'Shanghai',
+      skills: ['Golang', 'Solidity', 'PostgreSQL'],
+      certifications: ['AWS Solutions Architect'],
+      education: [
+        {
+          degree_name: 'Bachelor of Industrial Design',
+          university: 'South China University of Technology',
+          start_year: '2011',
+          end_year: '2015'
+        }
+      ]
+    },
+    role: {
+      title: '区块链开发工程师 (Blockchain Developer)',
+      hiring_manager: 'Atomic Group'
+    },
+    fit_summary: 'Strong fit for the role.',
+    match_requirements: [
+      {
+        requirement: 'Strong Golang background',
+        evidence: 'Built relayer infrastructure and trading services'
+      }
+    ],
+    recommended_next_step: 'Proceed to hiring-manager interview.',
+    employment_history: [
+      {
+        job_title: 'Backend Engineer',
+        company_name: 'Delulu',
+        start_date: '2024',
+        end_date: 'Present',
+        responsibilities: [
+          'Developed RFQ smart contracts.',
+          'Built relayer infrastructure.'
+        ]
+      }
+    ],
+    project_experiences: [
+      {
+        project_name: 'High Performance Blockchain Relayer and Indexer',
+        linked_job_title: 'Backend Engineer',
+        linked_company_name: 'Delulu',
+        project_bullets: [
+          'Designed configurable event indexing framework.',
+          'Implemented secure private key management.'
+        ],
+        project_bullet_originals: [
+          'Designed configurable event indexing framework.',
+          'Implemented secure private key management.'
+        ]
+      }
+    ]
+  });
+
+  const templateData = buildTemplateDataFromBriefing(briefing, 'en');
+
+  assert.equal(templateData.hiring_manager_name, 'Atomic Group');
+  assert.equal(templateData.education_entries[0].field_of_study, '');
+  assert.equal(templateData.education_entries[0].institution_name, 'South China University of Technology');
+  assert.equal(templateData.employment_experience_entries[0].employment_start_date, '2024');
+  assert.equal(
+    templateData.employment_experience_entries[0].responsibility_bullets[0].responsibility_text,
+    'Developed RFQ smart contracts.'
+  );
+  assert.equal(
+    templateData.match_requirement_entries[0].match_requirement_text,
+    'Strong Golang background: Built relayer infrastructure and trading services'
+  );
+  assert.equal(
+    templateData.project_experience_entries[0].project_name,
+    'High Performance Blockchain Relayer and Indexer'
+  );
+  assert.equal(
+    templateData.project_experience_entries[0].project_bullets[0].project_bullet_text,
+    'Designed configurable event indexing framework.'
+  );
+  assert.equal(templateData.candidate_skills, 'Golang, Solidity, PostgreSQL');
+  assert.equal(templateData.candidate_certifications, 'AWS Solutions Architect');
+  assert.equal(templateData.original_authoritative_appendix.length, 1);
+});
+
+test('buildTemplateDataFromBriefing splits simple English degree-in-field patterns for revised Word templates', () => {
+  const briefing = normalizeBriefing({
+    candidate: {
+      name: 'Chenhao Li',
+      education: [
+        {
+          degree_name: 'MSc in Computing',
+          university: 'Cardiff University, UK',
+          start_year: '2019',
+          end_year: '2020'
+        }
+      ]
+    },
+    role: {
+      title: 'Blockchain Developer'
+    },
+    fit_summary: 'Strong fit for the role.',
+    relevant_experience: 'Relevant experience.',
+    recommended_next_step: 'Proceed.',
+    employment_history: [
+      {
+        job_title: 'Blockchain Engineer',
+        company_name: 'Shanghai Xiaohan Technology Co., Ltd.',
+        start_date: '2021',
+        end_date: '2025',
+        responsibilities: ['Built backend services.']
+      }
+    ],
+    project_experiences: []
+  });
+
+  const templateData = buildTemplateDataFromBriefing(briefing, 'en');
+
+  assert.equal(templateData.education_entries[0].degree_name, 'MSc');
+  assert.equal(templateData.education_entries[0].field_of_study, 'Computing');
+  assert.equal(templateData.degree_name, 'MSc');
+  assert.equal(templateData.field_of_study, 'Computing');
 });
 
 test('mergeBriefingWithFallback prefers primary employment responsibilities when fallback text is in a different language', () => {

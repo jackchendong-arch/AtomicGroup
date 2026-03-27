@@ -146,6 +146,9 @@ test.describe('Candidate Match Workbench', () => {
     page = await electronApp.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await page.waitForFunction(() => Boolean(window.recruitmentApi));
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.setSecureStorageMode('available');
+    });
     await page.evaluate(async (systemPrompt) => {
       await window.recruitmentApi.saveLlmSettings({
         providerId: 'deepseek',
@@ -245,7 +248,7 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#settings-status-chip')).toHaveText('Session Only');
 
     await page.evaluate(async () => {
-      await window.__atomicgroupTest.setSecureStorageMode('normal');
+      await window.__atomicgroupTest.setSecureStorageMode('available');
     });
     await page.locator('#retry-settings-issue-button').click();
 
@@ -266,7 +269,7 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#retry-settings-issue-button')).toHaveText('Retry Load');
 
     await page.evaluate(async () => {
-      await window.__atomicgroupTest.setSecureStorageMode('normal');
+      await window.__atomicgroupTest.setSecureStorageMode('available');
     });
     await page.locator('#retry-settings-issue-button').click();
 

@@ -238,6 +238,24 @@ class LlmSettingsStore {
     this.testSecureStorageMode = normalizedMode || 'normal';
   }
 
+  shouldUseTestSecureStorage() {
+    return ['available', 'policy-blocked', 'write-failed', 'read-failed'].includes(this.testSecureStorageMode);
+  }
+
+  encryptWithTestSecureStorage(apiKey) {
+    return Buffer.from(`atomicgroup-test:${String(apiKey || '')}`, 'utf8').toString('base64');
+  }
+
+  decryptWithTestSecureStorage(encodedValue) {
+    const decodedValue = Buffer.from(String(encodedValue || ''), 'base64').toString('utf8');
+
+    if (!decodedValue.startsWith('atomicgroup-test:')) {
+      throw new Error('Secure credential storage read failed.');
+    }
+
+    return decodedValue.slice('atomicgroup-test:'.length);
+  }
+
   isManagedTemplatePath(filePath) {
     return isPathInside(this.templateDirectoryPath, filePath);
   }
@@ -292,6 +310,10 @@ class LlmSettingsStore {
       return false;
     }
 
+    if (this.shouldUseTestSecureStorage()) {
+      return true;
+    }
+
     return Boolean(
       this.safeStorage &&
       typeof this.safeStorage.isEncryptionAvailable === 'function' &&
@@ -316,6 +338,13 @@ class LlmSettingsStore {
 
       if (this.testSecureStorageMode === 'write-failed') {
         throw new Error('Secure credential storage write failed.');
+      }
+
+      if (this.shouldUseTestSecureStorage()) {
+        return {
+          apiKeyMode: 'encrypted',
+          apiKey: this.encryptWithTestSecureStorage(apiKey)
+        };
       }
 
       return {
@@ -346,6 +375,15 @@ class LlmSettingsStore {
 
         if (this.testSecureStorageMode === 'read-failed') {
           throw new Error('Secure credential storage read failed.');
+        }
+
+        if (this.shouldUseTestSecureStorage()) {
+          return {
+            apiKey: this.decryptWithTestSecureStorage(record.apiKey),
+            apiKeyStatus: createApiKeyStatus({
+              storageMode: 'persistent'
+            })
+          };
         }
 
         const decrypted = this.safeStorage.decryptString(Buffer.from(record.apiKey, 'base64'));

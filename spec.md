@@ -1292,7 +1292,27 @@ Acceptance criteria:
 - Existing workflows remain stable under failure conditions.
 - Recruiter review highlights clearly signal when a generated draft is structurally incomplete or may be overstating evidence.
 
-### Release 7: LLM Ops Artifact Registry and Promotion
+### Release 7: Deterministic Word Report Adapter and Fidelity
+Value:
+- The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract, quality gates, and regression strategy instead of being a brittle side effect of generic placeholder export.
+
+Scope:
+- Versioned template adapter for the active hiring-manager report template
+- Template-specific report payload projection from the validated canonical candidate schema plus approved narrative assessment
+- Code-owned display-safe composed lines for optional factual sections
+- Clear separation between template-compatibility validation and factual report-quality validation
+- Post-render `.docx` validation for placeholders, repeated sections, required headings, and anonymous-mode correctness
+- Regression coverage at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
+- Recruiter-facing review state that explains whether export is paused due to extraction quality, template compatibility, missing required data, or unresolved factual mapping
+
+Acceptance criteria:
+- The active hiring-manager report template is exported through an explicit versioned adapter rather than generic raw-field placeholder inference.
+- Word templates are layout-only and do not need to compose optional field joins or suppress separators.
+- Export failures can distinguish template incompatibility from factual extraction problems.
+- Representative CV/JD fixtures can be validated at the adapter payload level before `.docx` rendering smoke tests.
+- The release ships a stable MVP path for the active report template without requiring the broader LLM artifact-registry work to be finished first.
+
+### Release 8: LLM Ops Artifact Registry and Promotion
 Value:
 - Prompt, guidance, and template behavior becomes governable, versioned, and auditable without requiring full app redeploys for every artifact update.
 
@@ -1316,7 +1336,7 @@ Acceptance criteria:
   - trusted-domain validation
   - SHA-256 bundle verification before activation
 
-### Release 8: AI Observability and STP Analytics
+### Release 9: AI Observability and STP Analytics
 Value:
 - Product, support, and AI-ops teams can measure how the workflow is actually being used, where straight-through processing breaks down, how long AI steps take, and what token/cost footprint the workflow creates.
 
@@ -1453,7 +1473,8 @@ This separation reduces rework when the model provider, template system, or emai
 4. Release 4: Email Draft Handoff
 5. Release 5: Local Folder Intake and Job Workspace
 6. Release 6: Production Hardening
-7. Release 7: LLM Ops Artifact Registry and Promotion
-8. Release 8: AI Observability and STP Analytics
+7. Release 7: Deterministic Word Report Adapter and Fidelity
+8. Release 8: LLM Ops Artifact Registry and Promotion
+9. Release 9: AI Observability and STP Analytics
 
 This order keeps the first shipped version simple, usable, and recruiter-visible while deferring higher-risk platform work until the core drafting loop is already working.

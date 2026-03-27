@@ -313,8 +313,36 @@ Mark a release complete only when the work is:
 - Run regression testing across all previously shipped workflows.
   - Current release-gate command: `npm run test:release-hardening`
 
-## Release 7: LLM Ops Artifact Registry and Promotion
+## Release 7: Deterministic Word Report Adapter and Fidelity
 - [ ] Release 7 shipped, completed, and tested.
+- Implement a dedicated Word-report export path that treats the hiring-manager document as its own product slice rather than a side effect of the generic briefing/export pipeline.
+- Build an explicit versioned template adapter for the active hiring-manager report template so export is driven by a known code-owned contract instead of generic placeholder inference.
+- Move optional-field display composition such as education, role/company, date/location, and project role/company lines into the template adapter so Word templates stay layout-only.
+- Keep the canonical candidate schema plus approved narrative assessment as the content source of truth, but project a template-specific report payload before `.docx` rendering.
+- Separate template-compatibility validation from factual report-quality validation so template issues and extraction issues do not masquerade as each other.
+- Support one clear MVP adapter target first for the active revised hiring-manager report template before generalizing to additional template versions.
+- Add explicit template-version and adapter-version compatibility checks before export.
+- Add adapter-payload fixture tests for representative CV/JD cases before `.docx` smoke tests.
+- Expand post-render validation so generated `.docx` files are checked for:
+  - unexpanded placeholders
+  - missing required sections/headings
+  - repeated-section rendering problems
+  - anonymous-mode correctness
+  - obvious separator/empty-line artifacts
+- Add a focused recruiter-facing report-quality review path for factual sections that explains whether export is paused because of:
+  - extraction quality
+  - template compatibility
+  - missing required data
+  - unresolved factual mapping
+- Add regression packs for representative CV families so Word-report fidelity can be assessed at:
+  - canonical schema
+  - report view model
+  - template adapter payload
+  - final `.docx`
+- Keep Word-report release quality separate from LLM Ops and observability so the export MVP can be shipped and stabilized independently.
+
+## Release 8: LLM Ops Artifact Registry and Promotion
+- [ ] Release 8 shipped, completed, and tested.
 - Replace free-form consultant prompt editing with selection from approved imported prompt artifacts.
 - Introduce one app-managed artifact registry for:
   - prompt artifacts
@@ -335,8 +363,8 @@ Mark a release complete only when the work is:
   - SHA-256 verification on every downloaded bundle before activation
   - CI-restricted publishing and documented release integrity checks
 
-## Release 8: AI Observability and STP Analytics
-- [ ] Release 8 shipped, completed, and tested.
+## Release 9: AI Observability and STP Analytics
+- [ ] Release 9 shipped, completed, and tested.
 - Design a privacy-safe AI observability event contract that covers workflow usage, STP monitoring, intervention reasons, latency, token usage, and cost.
 - Define the external observability collection path so the desktop app emits privacy-safe event envelopes locally while aggregation, dashboards, and alerting live outside the app.
 - Track app-observable STP metrics for the Word-report flow, including export success without factual override, blocker, or retry.

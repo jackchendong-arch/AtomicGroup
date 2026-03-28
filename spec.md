@@ -141,6 +141,10 @@ Initial recommended file support:
 - The app surfaces extraction failures clearly.
 - The user can preview extracted text or a shortened preview before generation.
 - The app warns when a file appears empty, image-only, or low-quality.
+- Raw extracted source should be preserved as authoritative evidence and should not be overwritten by later cleaning or translation steps.
+- Early cleaning should remove only safe extraction artifacts such as standalone page markers, repeated headers/footers, OCR junk, and broken whitespace or wrapping patterns that are proven by fixtures.
+- Risky delimiters such as `|` should not be globally stripped; they should be interpreted contextually during normalization or projection.
+- Cleaning rules should be built iteratively from real fixture evidence and regression coverage, not assumed complete upfront.
 
 ### 2A. Workspace-Scoped Source Model and Retrieval
 - Each active CV and JD pair should be treated as a workspace-scoped source corpus.
@@ -157,6 +161,11 @@ Initial recommended file support:
 - The current implementation should prefer lightweight local block selection and lexical scoring before introducing embeddings or any vector-database dependency.
 - This is intentional because CVs and JDs in this product are short-lived, privacy-sensitive workspace inputs rather than long-lived shared knowledge assets.
 - Retrieval should support long-document focus, evidence tracing, and structured-briefing generation without turning the system into a cross-candidate knowledge base.
+- The normalized source model should support two parallel layers:
+  - original-language normalized source blocks
+  - an English working layer used for consistent downstream processing
+- The English working layer is a processing aid only; original-language blocks remain authoritative and traceable for evidence, review, and factual rendering.
+- Section-specific extraction should operate over bounded normalized blocks such as education, employment, projects, profile facts, and JD requirements rather than one whole-document CV-to-JSON call whenever practical.
 
 ### 3. Summary Generation
 - The app generates a structured candidate profile summary from the CV and JD.
@@ -634,40 +643,82 @@ There are two different template systems in the product and they should remain s
 - not the source of truth for candidate facts or narrative content
 
 ### Proposed End-to-End Flow
-1. Extract raw text and structural hints from CV and JD locally.
-2. Normalize the active CV and JD into stable source blocks with section metadata, language hints, source order, and document-position references.
-3. Build an ephemeral workspace-level retrieval set over the active CV, JD, and optional Markdown guidance template.
-4. Ask the LLM to complete the recruiter-facing `Candidate Summary Review` template using relevant workspace-scoped source material.
-5. Ask the LLM and/or extraction layer to produce a strict canonical candidate schema from the normalized CV and JD source blocks.
-6. Keep employment history and project experience as separate structures, with explicit role/project linkage metadata instead of flattening all experience into one list.
-7. Validate the canonical candidate schema before any report projection step.
-8. Ask the LLM to produce the fit assessment and hiring-manager recommendation narrative from the validated source-grounded candidate schema plus the JD.
-9. Show the recruiter:
+1. Upload the CV and JD into the active desktop workspace.
+2. Extract raw text and structural hints from CV and JD locally.
+3. Preserve the raw extracted source as authoritative evidence with file, order, and parser metadata.
+4. Normalize and clean the extracted source into stable blocks by removing safe artifacts such as standalone page markers, repeated headers/footers, OCR junk, broken wrapping, and whitespace noise.
+5. Build section-aware normalized source blocks in the original source language with source references, language hints, and document-position metadata.
+6. Build a normalized English working layer from those bounded source blocks for consistent downstream processing while keeping the original-language blocks authoritative.
+7. Build an ephemeral workspace-level retrieval set over the active CV, JD, and optional Markdown guidance template.
+8. Run section-specific extraction against bounded source blocks to produce:
+   - canonical candidate profile facts
+   - education
+   - employment history
+   - project experiences
+   - canonical JD requirements and responsibilities
+9. Reconcile and validate the canonical candidate and JD schemas deterministically:
+   - dedupe entries
+   - validate chronology
+   - validate malformed rows
+   - link projects to roles only when evidence supports it
+   - keep unresolved ambiguity visible
+10. Use the validated canonical model to drive downstream generation:
+   - fit assessment
    - `Candidate Summary Review`
-   - the in-app `Hiring Manager Briefing`
-   - the structured employment/project view when factual mapping is weak or ambiguous
-10. Build a deterministic report view model from:
-   - the validated canonical candidate schema
-   - the recruiter-reviewed fit/recommendation narrative
-11. Only when the consultant explicitly exports or sends the briefing:
-   - render the hiring-manager Word document from the report view model through the configured Word template
-12. Keep recruiter review and approval as a mandatory human step before sharing.
+   - `Hiring Manager Briefing`
+   - email draft
+   - Word-report projection
+11. Only when validation escalates beyond the green path, show the recruiter the specific structured rows and evidence that need confirmation or correction rather than asking for full manual CV validation.
+12. Build a deterministic report view model from:
+   - the validated canonical candidate and JD schemas
+   - the recruiter-reviewed narrative assessment
+13. Only when the consultant explicitly exports or sends the briefing:
+   - render the hiring-manager Word document from the report view model through the configured template adapter and layout-only Word template
+14. Keep consultant business approval before sharing, but do not require full factual CV validation unless the app has surfaced a targeted review-required or blocking state.
+
+### Source Normalization And Working-Language Layers
+The pipeline should distinguish four source-processing layers:
+
+1. `Raw Extracted Source`
+- exact extracted text and parser output
+- authoritative evidence
+
+2. `Normalized Source Blocks`
+- cleaned and section-aware
+- original-language content preserved
+- safe artifact stripping only
+
+3. `English Working Layer`
+- bounded translation/normalization for internal processing consistency
+- not a replacement for the original source
+
+4. `Canonical Validated Schema`
+- language-neutral factual model used by downstream outputs
+
+This separation ensures the app can:
+- clean noisy extraction artifacts early
+- keep original evidence intact
+- use one primary internal processing language
+- still support bilingual output later in the pipeline
 
 ### Canonical Data Layers
-The report pipeline should separate four layers explicitly:
+The report pipeline should separate five layers explicitly:
 
 1. `Canonical Candidate Schema`
 - deterministic source of truth for candidate facts derived from the CV/JD evidence
 - includes employment history, project experience, education, languages, certifications, and evidence references
 
-2. `Derived Assessment Model`
-- LLM-generated recruiter assessment and hiring-manager recommendation narrative
-- should be grounded in the canonical schema and JD requirements
+2. `Canonical JD Schema`
+- deterministic source of truth for role title, requirements, responsibilities, preferred qualifications, and available hiring metadata
 
-3. `Hiring Manager Briefing`
+3. `Derived Assessment Model`
+- LLM-generated recruiter assessment and hiring-manager recommendation narrative
+- should be grounded in the canonical candidate schema and canonical JD schema
+
+4. `Hiring Manager Briefing`
 - composed review surface combining recruiter-reviewed narrative with validated candidate facts
 
-4. `Report View Model`
+5. `Report View Model`
 - deterministic export projection tailored to the chosen Word template
 - the only structure consumed by Word rendering
 
@@ -749,6 +800,29 @@ Notes:
 - Exact candidate profile values such as name, nationality, education, notice period, employment history, and project relationships should come from grounded extraction and validation, not from unconstrained narrative generation.
 - The Word template controls how these values are laid out in the final document, but it is not the source of truth for the values themselves.
 - The same validated candidate schema plus approved narrative should drive both the in-app `Hiring Manager Briefing` review and the final Word export.
+
+### Recommended Canonical JD Schema
+The JD side should also become a structured deterministic artifact rather than staying as only raw prompt context. A representative structure is:
+
+```json
+{
+  "role": {
+    "title": "",
+    "company": "",
+    "hiring_manager": "",
+    "location": ""
+  },
+  "requirements": [],
+  "responsibilities": [],
+  "preferred_qualifications": [],
+  "evidence_refs": []
+}
+```
+
+Notes:
+- The JD schema should be extracted from bounded JD source blocks rather than from one unconstrained whole-document prompt.
+- The validated JD schema should be reused for fit assessment, recruiter summary, hiring-manager briefing, and Word report generation.
+- Keeping JD data canonical allows requirement matching and report generation to stay deterministic and traceable.
 
 ### Project Experience Handling Rules
 - A project should never be treated as an employment record just because it contains responsibilities or outcomes.
@@ -840,6 +914,47 @@ Validation should distinguish:
   - examples: optional fields missing, standalone projects with low business importance, minor evidence sparsity in secondary sections
 
 The blocking and override rules should be explicit so the app behaves consistently instead of treating all validation findings as equivalent warnings.
+
+### Consultant Review Triggers
+Consultant review should be exception-based, not a mandatory manual validation pass on every CV.
+
+The default operating model should be:
+- `Green`
+  - no factual consultant review required
+  - the app may continue through summary, briefing, and Word-report generation automatically
+  - only normal business approval is required before external sharing
+- `Amber`
+  - targeted consultant review is required for flagged factual issues before final export/share
+  - the app should show only the affected rows/sections, not ask the consultant to re-read the full CV
+- `Red`
+  - export/share is blocked until specific factual or template issues are corrected
+
+The app should require consultant step-in only when one or more of these conditions occur:
+- candidate identity is missing, generic, or conflicts with source evidence
+- role title is missing, generic, or conflicts with the JD
+- education rows are malformed, duplicated, or appear to contain employment/project content
+- employment history is empty, chronologically impossible, or contains obvious section leakage such as skills/project fragments as roles
+- project experiences are misclassified, fragmentary, or cannot be linked confidently where linkage is required by the report
+- required report fields cannot be mapped into the report view model or template adapter payload
+- translation/normalization has produced factual ambiguity that could materially change the report
+- parser/LLM confidence on key factual sections falls below the configured threshold
+- post-render validation detects placeholder leakage or obviously malformed report sections
+
+The app should not require consultant step-in for:
+- clean green-path cases where candidate identity, chronology, education, employment, and required report fields validate successfully
+- missing optional demographics or low-value secondary metadata
+- routine recruiter approval of narrative phrasing when factual sections are already validated
+
+When consultant step-in is required, the UI should present:
+- the reason code
+- the affected factual section and rows
+- the source evidence block(s)
+- the allowed action:
+  - confirm
+  - correct
+  - defer / block export
+
+This keeps STP as the default operating mode while making exception handling explicit and auditable.
 
 ### Evidence Reference Contract
 `evidence_refs` should not remain a loose placeholder. The contract should define:
@@ -1292,25 +1407,86 @@ Acceptance criteria:
 - Existing workflows remain stable under failure conditions.
 - Recruiter review highlights clearly signal when a generated draft is structurally incomplete or may be overstating evidence.
 
-### Release 7: Deterministic Word Report Adapter and Fidelity
+### Release 7A: Source Normalization Foundation
 Value:
-- The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract, quality gates, and regression strategy instead of being a brittle side effect of generic placeholder export.
+- CV and JD inputs become cleaner, more stable, and more explainable before any LLM extraction or report generation work occurs.
+
+Scope:
+- Raw extracted source preservation
+- Safe artifact stripping and normalization rules
+- Section-aware normalized source blocks
+- Original-language source lineage and parser metadata
+- English working layer for bounded downstream processing
+
+Acceptance criteria:
+- The app preserves raw extracted source separately from normalized content.
+- Known safe artifacts such as standalone page markers, repeated headers/footers, OCR junk, and broken wrapping can be removed or normalized without losing source traceability.
+- Normalized source blocks exist for CV and JD with section metadata and source references.
+- The English working layer is bounded and does not overwrite the original-language evidence.
+
+### Release 7B: Canonical Schema Extraction And Validation
+Value:
+- Summary, briefing, and export stop depending on ad hoc mixed parsing and move onto one deterministic factual foundation.
+
+Scope:
+- Canonical candidate schema
+- Canonical JD schema
+- Section-specific extraction for education, employment, projects, profile facts, and JD requirements
+- Deterministic reconciliation and validation rules
+
+Acceptance criteria:
+- Candidate and JD facts can be represented as explicit canonical JSON artifacts.
+- Section-specific extraction is preferred over one broad CV-to-JSON call for the core factual sections.
+- Validation can detect malformed education, chronology conflicts, section leakage, and unresolved project-role ambiguity before downstream generation.
+- The validated canonical model can be reused across summary, briefing, email, and Word-report flows.
+
+### Release 7C: Exception-Based Review And Quality Gates
+Value:
+- STP remains the default while consultant step-in becomes explicit, targeted, and auditable.
+
+Scope:
+- Green/amber/red operating states
+- Explicit consultant review trigger rules and reason codes
+- Targeted factual review/correction UI for flagged rows only
+- Export-blocking versus override-required policy
+
+Acceptance criteria:
+- Green-path cases can proceed without consultant factual validation.
+- Amber/red cases surface only the affected sections, evidence refs, and allowed actions.
+- The app can distinguish routine business approval from factual data-correction review.
+- Report-quality blockers, template-compatibility issues, and low-confidence extraction states are represented consistently.
+
+### Release 7D: Word Report Adapter MVP
+Value:
+- The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract instead of being a brittle side effect of generic placeholder export.
 
 Scope:
 - Versioned template adapter for the active hiring-manager report template
-- Template-specific report payload projection from the validated canonical candidate schema plus approved narrative assessment
+- Template-specific report payload projection from the validated canonical candidate and JD schemas plus approved narrative assessment
 - Code-owned display-safe composed lines for optional factual sections
 - Clear separation between template-compatibility validation and factual report-quality validation
 - Post-render `.docx` validation for placeholders, repeated sections, required headings, and anonymous-mode correctness
-- Regression coverage at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
-- Recruiter-facing review state that explains whether export is paused due to extraction quality, template compatibility, missing required data, or unresolved factual mapping
 
 Acceptance criteria:
 - The active hiring-manager report template is exported through an explicit versioned adapter rather than generic raw-field placeholder inference.
 - Word templates are layout-only and do not need to compose optional field joins or suppress separators.
 - Export failures can distinguish template incompatibility from factual extraction problems.
+- The release ships a stable MVP path for the active report template without requiring the broader artifact-registry work to be finished first.
+
+### Release 7E: Word Fidelity Expansion
+Value:
+- The first stable Word-report adapter grows into broader fixture coverage, stronger bilingual fidelity, and safer expansion to additional report variants.
+
+Scope:
+- Regression coverage at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
+- Larger fixture packs for representative CV/JD families
+- Bilingual rendering refinements and optional original-text appendix handling where required
+- Additional supported template versions only after the MVP adapter path is stable
+
+Acceptance criteria:
 - Representative CV/JD fixtures can be validated at the adapter payload level before `.docx` rendering smoke tests.
-- The release ships a stable MVP path for the active report template without requiring the broader LLM artifact-registry work to be finished first.
+- Green/amber/red report-quality behavior remains stable across the supported fixture families.
+- The app can expand Word fidelity without regressing the already-supported template path.
 
 ### Release 8: LLM Ops Artifact Registry and Promotion
 Value:
@@ -1473,8 +1649,12 @@ This separation reduces rework when the model provider, template system, or emai
 4. Release 4: Email Draft Handoff
 5. Release 5: Local Folder Intake and Job Workspace
 6. Release 6: Production Hardening
-7. Release 7: Deterministic Word Report Adapter and Fidelity
-8. Release 8: LLM Ops Artifact Registry and Promotion
-9. Release 9: AI Observability and STP Analytics
+7. Release 7A: Source Normalization Foundation
+8. Release 7B: Canonical Schema Extraction And Validation
+9. Release 7C: Exception-Based Review And Quality Gates
+10. Release 7D: Word Report Adapter MVP
+11. Release 7E: Word Fidelity Expansion
+12. Release 8: LLM Ops Artifact Registry and Promotion
+13. Release 9: AI Observability and STP Analytics
 
 This order keeps the first shipped version simple, usable, and recruiter-visible while deferring higher-risk platform work until the core drafting loop is already working.

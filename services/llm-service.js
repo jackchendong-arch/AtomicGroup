@@ -9,7 +9,19 @@ const PROVIDERS = {
     type: 'openai-compatible',
     defaultBaseUrl: 'https://api.deepseek.com',
     defaultModel: 'deepseek-chat',
-    helpText: 'DeepSeek uses an OpenAI-compatible chat completions API.'
+    defaultMaxTokens: 1200,
+    helpText: 'DeepSeek uses an OpenAI-compatible chat completions API.',
+    requiresApiKey: true
+  },
+  ollama_deepseek_r1: {
+    id: 'ollama_deepseek_r1',
+    label: 'DeepSeek R1 (Ollama Local)',
+    type: 'openai-compatible',
+    defaultBaseUrl: 'http://localhost:11434/v1',
+    defaultModel: 'deepseek-r1:latest',
+    defaultMaxTokens: 3200,
+    helpText: 'Use a local Ollama server running on http://localhost:11434. The API key is optional for local Ollama.',
+    requiresApiKey: false
   },
   openai_compatible: {
     id: 'openai_compatible',
@@ -17,7 +29,9 @@ const PROVIDERS = {
     type: 'openai-compatible',
     defaultBaseUrl: '',
     defaultModel: '',
-    helpText: 'Use this for any vendor exposing an OpenAI-compatible /chat/completions endpoint.'
+    defaultMaxTokens: 1200,
+    helpText: 'Use this for any vendor exposing an OpenAI-compatible /chat/completions endpoint.',
+    requiresApiKey: true
   }
 };
 
@@ -25,14 +39,40 @@ function getProviderOptions() {
   return Object.values(PROVIDERS);
 }
 
-function buildOpenAiCompatibleChatUrl(baseUrl) {
+function buildOpenAiCompatibleChatUrl(baseUrl, providerId = '') {
   const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
 
   if (normalizedBaseUrl.endsWith('/chat/completions')) {
     return normalizedBaseUrl;
   }
 
+  if (providerId === 'ollama_deepseek_r1') {
+    if (normalizedBaseUrl.endsWith('/v1')) {
+      return `${normalizedBaseUrl}/chat/completions`;
+    }
+
+    return `${normalizedBaseUrl}/v1/chat/completions`;
+  }
+
   return `${normalizedBaseUrl}/chat/completions`;
+}
+
+function buildOllamaTagsUrl(baseUrl) {
+  const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+
+  if (!normalizedBaseUrl) {
+    return 'http://localhost:11434/api/tags';
+  }
+
+  if (normalizedBaseUrl.endsWith('/v1')) {
+    return `${normalizedBaseUrl.slice(0, -3)}/api/tags`;
+  }
+
+  if (normalizedBaseUrl.endsWith('/v1/chat/completions')) {
+    return `${normalizedBaseUrl.slice(0, -'/v1/chat/completions'.length)}/api/tags`;
+  }
+
+  return `${normalizedBaseUrl}/api/tags`;
 }
 
 function formatFetchFailure(requestUrl, error) {
@@ -90,20 +130,24 @@ function extractMessageContent(content) {
 }
 
 async function requestOpenAiCompatibleChat({ settings, messages, fetchImpl = fetch }) {
-  const requestUrl = buildOpenAiCompatibleChatUrl(settings.baseUrl);
+  const requestUrl = buildOpenAiCompatibleChatUrl(settings.baseUrl, settings.providerId);
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => {
     abortController.abort();
   }, REQUEST_TIMEOUT_MS);
   let response;
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (settings.apiKey) {
+    headers.Authorization = `Bearer ${settings.apiKey}`;
+  }
 
   try {
     response = await fetchImpl(requestUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey}`
-      },
+      headers,
       body: JSON.stringify({
         model: settings.model,
         messages,
@@ -141,6 +185,33 @@ async function requestOpenAiCompatibleChat({ settings, messages, fetchImpl = fet
   };
 }
 
+async function listOllamaModels({ baseUrl, fetchImpl = fetch }) {
+  const requestUrl = buildOllamaTagsUrl(baseUrl);
+  const response = await fetchImpl(requestUrl, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Unable to query local Ollama models (${response.status}) at ${requestUrl}: ${errorText}`);
+  }
+
+  const payload = await response.json();
+  const models = Array.isArray(payload?.models)
+    ? payload.models
+      .map((entry) => String(entry?.name || '').trim())
+      .filter(Boolean)
+    : [];
+
+  return {
+    requestUrl,
+    models
+  };
+}
+
 async function generateWithConfiguredProvider({ settings: inputSettings, messages, fetchImpl = fetch }) {
   const validation = validateSettings(inputSettings);
 
@@ -160,5 +231,6 @@ async function generateWithConfiguredProvider({ settings: inputSettings, message
 module.exports = {
   PROVIDERS,
   getProviderOptions,
-  generateWithConfiguredProvider
+  generateWithConfiguredProvider,
+  listOllamaModels
 };

@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const {
   LlmSettingsStore,
+  LOCAL_OLLAMA_MIN_MAX_TOKENS,
   createDefaultSettings,
   validateSettings
 } = require('../../services/llm-settings-service');
@@ -21,6 +22,21 @@ test('LLM settings validation requires the user to provide an API key', () => {
 
   assert.equal(validation.isValid, false);
   assert.match(validation.errors.join(' '), /API key is required/i);
+});
+
+test('LLM settings validation allows local Ollama DeepSeek R1 without an API key', () => {
+  const validation = validateSettings({
+    ...createDefaultSettings(),
+    providerId: 'ollama_deepseek_r1',
+    providerLabel: 'DeepSeek R1 (Ollama Local)',
+    baseUrl: 'http://localhost:11434',
+    model: 'deepseek-r1:latest',
+    apiKey: ''
+  });
+
+  assert.equal(validation.isValid, true);
+  assert.equal(validation.settings.providerId, 'ollama_deepseek_r1');
+  assert.equal(validation.settings.maxTokens, LOCAL_OLLAMA_MIN_MAX_TOKENS);
 });
 
 test('LLM settings validation requires a selected file when local reference template mode is enabled', () => {

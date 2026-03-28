@@ -5,6 +5,7 @@ const {
   WORD_TEMPLATE_CONTRACT,
   buildTemplateData,
   extractDocumentDerivedProfile,
+  parseStructuredSummary,
   validateWordTemplateContract
 } = require('../../services/hiring-manager-template-service');
 
@@ -111,7 +112,7 @@ test('validateWordTemplateContract reports missing required logical tags explici
   ]);
 });
 
-test('validateWordTemplateContract rejects templates that hard-code separators around optional fields', () => {
+test('validateWordTemplateContract records optional separator issues without blocking legacy templates', () => {
   const contract = validateWordTemplateContract({
     supportedDetectedTags: [
       'candidate_name',
@@ -134,7 +135,7 @@ test('validateWordTemplateContract rejects templates that hard-code separators a
     ].join('\n')
   });
 
-  assert.equal(contract.isValid, false);
+  assert.equal(contract.isValid, true);
   assert.equal(contract.missingRequiredLogicalTagGroups.length, 0);
   assert.deepEqual(contract.optionalSeparatorIssues, [
     {
@@ -156,6 +157,41 @@ test('validateWordTemplateContract rejects templates that hard-code separators a
       rightTag: 'linked_company_name'
     }
   ]);
+});
+
+test('parseStructuredSummary keeps nested markdown headings inside recruiter-summary sections', () => {
+  const sections = parseStructuredSummary([
+    '### Candidate: Noah Zhang',
+    'Target Role: Blockchain Developer',
+    '',
+    '## Fit Summary',
+    'Strong blockchain delivery fit.',
+    '',
+    '---',
+    '',
+    '## Relevant Experience',
+    '### **2024.07 - 2025.05: Technical Research & Development (Tech Research)',
+    '- Role: Software Engineer at Sparksoft',
+    '- Built blockchain platform services.',
+    '',
+    '## Match Against Key Requirements',
+    '### Key Requirements for Blockchain Developer',
+    '1. Go and Rust delivery experience.',
+    '',
+    '## Potential Concerns/Gaps',
+    '1. Limited explicit DeFi production scale evidence.',
+    '',
+    '## Recommended Next Step',
+    'Proceed to hiring-manager interview.'
+  ].join('\n'));
+
+  assert.equal(sections.candidate_name, 'Noah Zhang');
+  assert.equal(sections.role_title, 'Blockchain Developer');
+  assert.equal(sections.fit_summary, 'Strong blockchain delivery fit.');
+  assert.match(sections.relevant_experience, /Sparksoft/);
+  assert.match(sections.match_requirements, /Go and Rust delivery experience/);
+  assert.match(sections.potential_concerns, /DeFi production scale evidence/);
+  assert.equal(sections.recommended_next_step, 'Proceed to hiring-manager interview.');
 });
 
 test('employment history does not treat inline location suffixes as company names', () => {

@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { briefingNeedsLanguageNormalization } = require('../../services/briefing-language-service');
+const {
+  briefingNeedsLanguageNormalization,
+  summaryNeedsLanguageNormalization
+} = require('../../services/briefing-language-service');
 
 test('briefingNeedsLanguageNormalization detects English narrative inside a Chinese briefing target', () => {
   const needsNormalization = briefingNeedsLanguageNormalization({
@@ -41,4 +44,19 @@ test('briefingNeedsLanguageNormalization leaves a Chinese briefing alone for a C
   }, 'zh');
 
   assert.equal(needsNormalization, false);
+});
+
+test('summaryNeedsLanguageNormalization detects Chinese recruiter summary content for an English target', () => {
+  const needsNormalization = summaryNeedsLanguageNormalization([
+    '### 候选人： Noah Zhang',
+    '目标职位：块链开发工程师 (Blockchain Developer)',
+    '',
+    '## Fit Summary',
+    '- 具备扎实的 Go 语言基础，熟悉 Go 的核心库和框架（如 Gin/go-zero）。',
+    '',
+    '## Relevant Experience',
+    '- 软件工程师，负责构建核心订单处理服务。'
+  ].join('\n'), 'en');
+
+  assert.equal(needsNormalization, true);
 });

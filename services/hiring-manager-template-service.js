@@ -312,8 +312,22 @@ function splitNonEmptyLines(value) {
 function normalizeHeadingKey(value) {
   return normalizeTextBlock(value)
     .replace(/^#+\s*/, '')
+    .replace(/[*_`]+/g, '')
+    .replace(/\s*\/\s*/g, ' / ')
     .replace(/[:：]$/, '')
     .toLowerCase();
+}
+
+function resolveSummaryFieldKey(value) {
+  const normalizedKey = normalizeHeadingKey(value);
+
+  return Object.entries(SUMMARY_FIELD_KEY_BY_LABEL).find(([label]) => normalizeHeadingKey(label) === normalizedKey)?.[1] || null;
+}
+
+function resolveSummarySectionKey(value) {
+  const normalizedKey = normalizeHeadingKey(value);
+
+  return Object.entries(SECTION_KEY_BY_HEADING).find(([heading]) => normalizeHeadingKey(heading) === normalizedKey)?.[1] || null;
 }
 
 function isKnownCvSectionHeading(value) {
@@ -1922,10 +1936,14 @@ function parseStructuredSummary(summary) {
   }
 
   for (const line of lines) {
+    if (/^\s*(?:[-*_]\s*){3,}\s*$/.test(line)) {
+      continue;
+    }
+
     const labelMatch = line.match(/^([^:：]+)[:：]\s*(.+)$/);
 
     if (labelMatch) {
-      const fieldKey = SUMMARY_FIELD_KEY_BY_LABEL[normalizeHeadingKey(labelMatch[1])];
+      const fieldKey = resolveSummaryFieldKey(labelMatch[1]);
 
       if (fieldKey) {
         flushSection();
@@ -1935,14 +1953,27 @@ function parseStructuredSummary(summary) {
       }
     }
 
-    const normalizedHeading = normalizeHeadingKey(line);
     const headingMatch = line.match(/^##+\s+(.+)$/);
-    const headingSource = headingMatch ? headingMatch[1] : normalizedHeading;
-    const sectionKey = SECTION_KEY_BY_HEADING[headingSource] || SECTION_KEY_BY_HEADING[line.replace(/^##+\s+/, '').trim()];
+    const headingSource = headingMatch ? headingMatch[1] : line;
+    const sectionKey = resolveSummarySectionKey(headingSource);
 
-    if (headingMatch || (sectionKey && !/^[-*•]\s*/.test(line))) {
+    if (headingMatch) {
+      if (sectionKey) {
+        flushSection();
+        currentKey = sectionKey;
+        continue;
+      }
+
+      if (currentKey) {
+        currentBuffer.push(line);
+      }
+
+      continue;
+    }
+
+    if (sectionKey && !/^[-*•]\s*/.test(line)) {
       flushSection();
-      currentKey = sectionKey || null;
+      currentKey = sectionKey;
       continue;
     }
 
@@ -2308,7 +2339,10 @@ function validateWordTemplateContract(templateInspection = {}) {
     repeatableLogicalTags: [...WORD_TEMPLATE_CONTRACT.repeatableLogicalTags],
     missingRequiredLogicalTagGroups,
     optionalSeparatorIssues,
-    isValid: missingRequiredLogicalTagGroups.length === 0 && optionalSeparatorIssues.length === 0
+    // Release 6/1.0.x still supports legacy templates that compose optional lines in-doc.
+    // Keep detecting those patterns for diagnostics, but do not hard-block export/email until
+    // the explicit adapter-based contract lands in Release 7.
+    isValid: missingRequiredLogicalTagGroups.length === 0
   };
 }
 
@@ -2459,12 +2493,6 @@ function assertTemplateContract(templateContract) {
   if (templateContract.missingRequiredLogicalTagGroups.length > 0) {
     problems.push(
       `missing required placeholder groups: ${templateContract.missingRequiredLogicalTagGroups.map((group) => group.map((tag) => `{{${tag}}}`).join(' or ')).join(', ')}`
-    );
-  }
-
-  if (Array.isArray(templateContract.optionalSeparatorIssues) && templateContract.optionalSeparatorIssues.length > 0) {
-    problems.push(
-      `hard-coded separators around optional fields: ${templateContract.optionalSeparatorIssues.map((issue) => `{{${issue.leftTag}}} ${issue.separator} {{${issue.rightTag}}} (${issue.label})`).join(', ')}`
     );
   }
 

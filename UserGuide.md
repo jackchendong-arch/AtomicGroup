@@ -44,6 +44,18 @@ This means the active candidate and role stay visible in the main stage, while l
 
 The `Current Candidate` panel is populated from the loaded CV and JD as soon as those documents are imported. It does not wait for summary generation.
 
+## LLM Settings
+In `Settings -> LLM`, the app currently supports:
+- `DeepSeek`
+- `DeepSeek R1 (Ollama Local)`
+- `OpenAI-Compatible`
+
+For `DeepSeek R1 (Ollama Local)`:
+- the default base URL is `http://localhost:11434/v1`
+- the default model is `deepseek-r1:latest`
+- the API key is optional for a local Ollama server
+- the app will try to query local Ollama models and reuse an installed `deepseek-r1:*` tag when available
+
 ## Recommended Way To Start
 Use a role workspace folder when possible.
 

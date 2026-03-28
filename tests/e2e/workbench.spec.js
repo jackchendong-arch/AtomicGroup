@@ -233,6 +233,38 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#settings-status-chip')).toHaveText(/Ready/i);
   });
 
+  test('preserves a typed API key when saving a required-key provider', async () => {
+    await fs.writeFile(
+      path.join(userDataPath, 'llm-settings.json'),
+      JSON.stringify({
+        providerId: 'deepseek',
+        providerLabel: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-chat',
+        apiKeyMode: 'empty',
+        apiKey: '',
+        temperature: 0.2,
+        maxTokens: 1200,
+        systemPrompt: defaultSystemPrompt,
+        outputTemplatePath: '',
+        outputTemplateName: '',
+        outputTemplateExtension: ''
+      }),
+      'utf8'
+    );
+
+    await page.evaluate(async () => {
+      await window.__atomicgroupTest.reloadConfiguration();
+    });
+
+    await expect(page.locator('#settings-view')).toBeVisible();
+    await page.locator('#api-key-input').fill('sk-test-deepseek-key');
+    await page.locator('#save-settings-button').click();
+
+    await expect(page.locator('#settings-issue-panel')).toBeHidden();
+    await expect(page.locator('#settings-status-chip')).toHaveText(/Ready/i);
+  });
+
   test('surfaces a session-only settings state when secure storage is unavailable', async () => {
     await page.locator('#open-settings-view').click();
     await expect(page.locator('#settings-view')).toBeVisible();

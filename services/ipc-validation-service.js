@@ -191,6 +191,15 @@ function validateLlmSettingsPayload(payload) {
   return requirePlainObject(payload, 'A settings payload is required.');
 }
 
+function validateLocalModelListPayload(payload) {
+  const normalizedPayload = requirePlainObject(payload || {}, 'A local model query payload is required.');
+
+  return {
+    providerId: normalizeString(normalizedPayload.providerId),
+    baseUrl: requireNonEmptyString(normalizedPayload.baseUrl, 'A base URL is required to query local models.')
+  };
+}
+
 function validateSummaryGenerationPayload(payload) {
   return validateDraftPayload(payload, { requireSummary: false });
 }
@@ -233,6 +242,7 @@ module.exports = {
   validateDocumentPickPayload,
   validateDraftTranslationPayload,
   validateLlmSettingsPayload,
+  validateLocalModelListPayload,
   validateLoadWorkspaceSnapshotPayload,
   validateRetrievalManifest,
   validateRenderBriefingPayload,

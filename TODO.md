@@ -313,33 +313,55 @@ Mark a release complete only when the work is:
 - Run regression testing across all previously shipped workflows.
   - Current release-gate command: `npm run test:release-hardening`
 
-## Release 7: Deterministic Word Report Adapter and Fidelity
-- [ ] Release 7 shipped, completed, and tested.
+## Release 7A: Source Normalization Foundation
+- [ ] Release 7A shipped, completed, and tested.
+- Preserve raw extracted CV/JD source separately from normalized content.
+- Introduce an explicit source-normalization stage for safe artifact stripping and line repair.
+- Normalize into section-aware source blocks with source refs, language hints, and parser metadata.
+- Add a bounded English working layer for internal processing while keeping original-language blocks authoritative.
+- Build the initial artifact-cleaning rule catalog from real fixtures and regression coverage instead of one-off heuristics.
+
+## Release 7B: Canonical Schema Extraction and Validation
+- [ ] Release 7B shipped, completed, and tested.
+- Introduce explicit canonical candidate and JD schemas as shared factual source-of-truth artifacts.
+- Add section-specific extraction for profile facts, education, employment history, project experiences, and JD requirements.
+- Add deterministic reconciliation and validation for chronology, malformed rows, section leakage, dedupe, and project-role ambiguity.
+- Keep the canonical candidate schema plus canonical JD schema as the shared content source of truth for summary, briefing, email, and Word-report generation.
+
+## Release 7C: Exception-Based Review and Quality Gates
+- [ ] Release 7C shipped, completed, and tested.
+- Keep factual consultant review exception-based rather than mandatory for every CV; only amber/red cases should require targeted step-in.
+- Define explicit green/amber/red operating states for Word reporting so STP remains the default and consultant step-in has clear triggers.
+- Define consultant review trigger rules and reason codes covering identity conflicts, malformed education, chronology conflicts, project-role ambiguity, required-field gaps, low confidence, and post-render report failures.
+- Add targeted consultant review of factual employment/project/education mapping when extraction confidence is weak before allowing final report export.
+- Define validation severity levels and explicit export-blocking versus override-required behavior for factual extraction issues.
+
+## Release 7D: Word Report Adapter MVP
+- [ ] Release 7D shipped, completed, and tested.
 - Implement a dedicated Word-report export path that treats the hiring-manager document as its own product slice rather than a side effect of the generic briefing/export pipeline.
 - Build an explicit versioned template adapter for the active hiring-manager report template so export is driven by a known code-owned contract instead of generic placeholder inference.
 - Move optional-field display composition such as education, role/company, date/location, and project role/company lines into the template adapter so Word templates stay layout-only.
-- Keep the canonical candidate schema plus approved narrative assessment as the content source of truth, but project a template-specific report payload before `.docx` rendering.
+- Keep the validated canonical candidate and JD schemas plus approved narrative assessment as the content source of truth, but project a template-specific report payload before `.docx` rendering.
 - Separate template-compatibility validation from factual report-quality validation so template issues and extraction issues do not masquerade as each other.
 - Support one clear MVP adapter target first for the active revised hiring-manager report template before generalizing to additional template versions.
 - Add explicit template-version and adapter-version compatibility checks before export.
-- Add adapter-payload fixture tests for representative CV/JD cases before `.docx` smoke tests.
 - Expand post-render validation so generated `.docx` files are checked for:
   - unexpanded placeholders
   - missing required sections/headings
   - repeated-section rendering problems
   - anonymous-mode correctness
   - obvious separator/empty-line artifacts
-- Add a focused recruiter-facing report-quality review path for factual sections that explains whether export is paused because of:
-  - extraction quality
-  - template compatibility
-  - missing required data
-  - unresolved factual mapping
+
+## Release 7E: Word Fidelity Expansion
+- [ ] Release 7E shipped, completed, and tested.
+- Add adapter-payload fixture tests for representative CV/JD cases before `.docx` smoke tests.
 - Add regression packs for representative CV families so Word-report fidelity can be assessed at:
   - canonical schema
   - report view model
   - template adapter payload
   - final `.docx`
-- Keep Word-report release quality separate from LLM Ops and observability so the export MVP can be shipped and stabilized independently.
+- Define translated-display versus authoritative-original rules for factual sections, including optional original-text appendix behavior.
+- Expand bilingual and fixture-family fidelity only after the MVP adapter path is stable.
 
 ## Release 8: LLM Ops Artifact Registry and Promotion
 - [ ] Release 8 shipped, completed, and tested.
@@ -391,8 +413,11 @@ Mark a release complete only when the work is:
 - Treat the original CV as evidence only; once normalized, downstream report generation should depend on canonical schema data and deterministic report projection rather than original CV styling, tables, or layout.
 - Keep a separate `project_experiences` model with explicit linkage metadata, confidence, and ambiguity flags instead of flattening project content into employment history.
 - Preserve richer source-block metadata such as structural parent/child relationships, paragraph/list/table origin, parser confidence, OCR fallback, and page lineage so project-role linkage stays explainable.
-- Add recruiter review of factual employment/project mapping when extraction confidence is weak before allowing final report export.
+- Keep factual consultant review exception-based rather than mandatory for every CV; only amber/red cases should require targeted step-in.
+- Add targeted consultant review of factual employment/project/education mapping when extraction confidence is weak before allowing final report export.
 - Define validation severity levels and explicit export-blocking versus override-required behavior for factual extraction issues.
+- Define explicit green/amber/red operating states for Word reporting so STP remains the default and consultant step-in has clear triggers.
+- Define consultant review trigger rules and reason codes covering identity conflicts, malformed education, chronology conflicts, project-role ambiguity, required-field gaps, low confidence, and post-render report failures.
 - Define a stricter `evidence_refs` contract for candidate facts, project-role linkage, and fit claims.
 - Keep deterministic rendering rules explicit for promotions, chronology sorting, partial dates, standalone projects, and empty report sections.
 - Keep factual report sections source-preserving after canonical-schema approval; allow deterministic reformatting but not silent shortening, summarization, or selective omission.

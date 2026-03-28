@@ -73,10 +73,15 @@ const state = {
   generationError: '',
   lastFailure: null,
   settingsIssue: null,
+  isSavingSettings: false,
+  lastSettingsSavedAt: 0,
+  localModelOptions: [],
+  localModelStatus: '',
   templateLabel: 'Default Recruiter Profile Template'
 };
 
 let currentContextProfileRequestId = 0;
+let settingsSaveFeedbackTimeoutId = 0;
 const documentImportRequestIds = {
   cv: 0,
   jd: 0
@@ -1625,6 +1630,7 @@ function renderSlot(slot) {
 function renderSettingsStatus() {
   const isValid = Boolean(state.settingsValidation?.isValid);
   const apiKeyStorageMode = state.settings?.apiKeyStorageMode || 'empty';
+  const showRecentSavedState = isValid && state.lastSettingsSavedAt > 0 && (Date.now() - state.lastSettingsSavedAt) < 5000;
 
   if (isValid && apiKeyStorageMode === 'session') {
     elements.settingsStatusChip.textContent = 'Session Only';
@@ -1633,9 +1639,13 @@ function renderSettingsStatus() {
     return;
   }
 
-  elements.settingsStatusChip.textContent = isValid ? 'Ready' : 'Settings Required';
+  elements.settingsStatusChip.textContent = isValid
+    ? 'Ready'
+    : 'Settings Required';
   elements.settingsStatusMessage.textContent = isValid
-    ? 'Settings saved. Summary generation is ready.'
+    ? (showRecentSavedState
+      ? 'Settings saved successfully. Summary generation is ready.'
+      : 'Settings saved. Summary generation is ready.')
     : (state.settingsValidation.errors[0] || 'Save a valid provider configuration before generating summaries.');
 }
 
@@ -1719,6 +1729,7 @@ function renderSettingsForm() {
   }
 
   const selectedProvider = state.providers.find((provider) => provider.id === state.settings.providerId);
+  const apiKeyRequired = selectedProvider?.requiresApiKey !== false;
 
   elements.providerSelect.innerHTML = state.providers
     .map((provider) => `<option value="${provider.id}">${provider.label}</option>`)
@@ -1726,8 +1737,11 @@ function renderSettingsForm() {
 
   elements.providerSelect.value = state.settings.providerId;
   elements.baseUrlInput.value = state.settings.baseUrl;
+  elements.baseUrlInput.placeholder = selectedProvider?.defaultBaseUrl || 'https://api.deepseek.com';
   elements.modelInput.value = state.settings.model;
+  elements.modelInput.placeholder = selectedProvider?.defaultModel || 'deepseek-chat';
   elements.apiKeyInput.value = state.settings.apiKey;
+  elements.apiKeyInput.placeholder = apiKeyRequired ? 'sk-...' : 'Optional for local Ollama';
   elements.temperatureInput.value = String(state.settings.temperature);
   elements.maxTokensInput.value = String(state.settings.maxTokens);
   elements.systemPromptInput.value = state.settings.systemPrompt;
@@ -1739,7 +1753,14 @@ function renderSettingsForm() {
   elements.referenceTemplateNote.textContent = state.settings.referenceTemplateMode === 'local-file'
     ? 'The selected Markdown reference template is loaded and included in LLM generation context for both recruiter and hiring-manager briefing outputs.'
     : 'The built-in recruiter summary template is currently guiding generation. Switch to a local Markdown reference template when you want external template guidance.';
-  elements.providerHelpText.textContent = selectedProvider?.helpText || '';
+  if (state.settings.providerId === 'ollama_deepseek_r1') {
+    const modelHint = state.localModelOptions.length > 0
+      ? ` Available local models: ${state.localModelOptions.join(', ')}.`
+      : (state.localModelStatus ? ` ${state.localModelStatus}` : '');
+    elements.providerHelpText.textContent = `${selectedProvider?.helpText || ''}${modelHint}`.trim();
+  } else {
+    elements.providerHelpText.textContent = selectedProvider?.helpText || '';
+  }
   elements.wordTemplateName.textContent = getTemplateDisplayName();
   elements.wordTemplatePath.textContent = getTemplateDisplayPath();
   elements.briefingOutputFolderName.textContent = getBriefingOutputFolderDisplayName();
@@ -1749,6 +1770,24 @@ function renderSettingsForm() {
   elements.templateConfigNote.textContent = state.settings.outputTemplatePath
     ? 'The Word template is stored locally and used for hiring-manager draft export and email handoff attachment generation.'
     : 'Add a Word template when you want a hiring-manager draft format.';
+  elements.saveSettingsButton.disabled = state.isSavingSettings;
+  elements.saveSettingsButton.textContent = state.isSavingSettings
+    ? 'Saving...'
+    : (((Date.now() - state.lastSettingsSavedAt) < 5000 && state.lastSettingsSavedAt > 0) ? 'Saved' : 'Save Settings');
+}
+
+function markSettingsSaved() {
+  state.lastSettingsSavedAt = Date.now();
+
+  if (settingsSaveFeedbackTimeoutId) {
+    clearTimeout(settingsSaveFeedbackTimeoutId);
+  }
+
+  settingsSaveFeedbackTimeoutId = window.setTimeout(() => {
+    state.lastSettingsSavedAt = 0;
+    settingsSaveFeedbackTimeoutId = 0;
+    render();
+  }, 5000);
 }
 
 function renderSummary() {
@@ -2424,13 +2463,65 @@ function applyProviderPreset(providerId) {
     return;
   }
 
+  const currentMaxTokens = Number(state.settings.maxTokens);
+  const nextMaxTokens = Number.isFinite(Number(provider.defaultMaxTokens))
+    ? Number(provider.defaultMaxTokens)
+    : currentMaxTokens;
+
   state.settings = {
     ...state.settings,
     providerId: provider.id,
     providerLabel: provider.label,
     baseUrl: provider.defaultBaseUrl || state.settings.baseUrl,
-    model: provider.defaultModel || state.settings.model
+    model: provider.defaultModel || state.settings.model,
+    maxTokens: Number.isFinite(nextMaxTokens) && nextMaxTokens > 0 ? nextMaxTokens : state.settings.maxTokens
   };
+}
+
+async function refreshLocalModelOptions() {
+  if (!state.settings || state.settings.providerId !== 'ollama_deepseek_r1') {
+    state.localModelOptions = [];
+    state.localModelStatus = '';
+    return;
+  }
+
+  try {
+    const result = await window.recruitmentApi.listLocalModels({
+      providerId: state.settings.providerId,
+      baseUrl: state.settings.baseUrl
+    });
+    const models = Array.isArray(result?.models) ? result.models.filter(Boolean) : [];
+    state.localModelOptions = models;
+    state.localModelStatus = models.length > 0 ? '' : 'No local Ollama models were returned.';
+
+    const preferredModel = models.find((entry) => entry.startsWith('deepseek-r1:')) || models[0] || '';
+    const currentModel = String(state.settings.model || '').trim();
+    const selectedProvider = state.providers.find((provider) => provider.id === state.settings.providerId);
+    const currentLooksLikeDefault = currentModel === String(selectedProvider?.defaultModel || '').trim();
+    const currentMaxTokens = Number(state.settings.maxTokens);
+    const recommendedMaxTokens = Number(selectedProvider?.defaultMaxTokens);
+    const shouldApplyRecommendedMaxTokens = Number.isFinite(recommendedMaxTokens) &&
+      (currentMaxTokens === 1200 || !Number.isFinite(currentMaxTokens));
+
+    if (shouldApplyRecommendedMaxTokens) {
+      state.settings = {
+        ...state.settings,
+        maxTokens: recommendedMaxTokens
+      };
+    }
+
+    if (preferredModel && (!currentModel || currentLooksLikeDefault || !models.includes(currentModel))) {
+      state.settings = {
+        ...state.settings,
+        model: preferredModel
+      };
+    }
+  } catch (error) {
+    state.localModelOptions = [];
+    state.localModelStatus = error instanceof Error
+      ? `Unable to read local Ollama models. ${error.message}`
+      : 'Unable to read local Ollama models.';
+  }
 }
 
 async function loadConfiguration({ forceSettingsView = false } = {}) {
@@ -2446,6 +2537,7 @@ async function loadConfiguration({ forceSettingsView = false } = {}) {
     state.settings = result.settings;
     state.settingsValidation = result.validation;
     applySettingsApiKeyStatus(result.apiKeyStatus, 'loadConfiguration');
+    await refreshLocalModelOptions();
 
     if (forceSettingsView || !result.validation.isValid) {
       state.view = 'settings';
@@ -2466,6 +2558,14 @@ async function loadConfiguration({ forceSettingsView = false } = {}) {
 }
 
 async function saveSettings() {
+  const payload = buildSettingsPayloadFromForm();
+  state.settings = {
+    ...state.settings,
+    ...payload
+  };
+  state.isSavingSettings = true;
+  render();
+
   try {
     const injectedFailure = consumeE2EFailure('saveSettings');
 
@@ -2473,12 +2573,13 @@ async function saveSettings() {
       throw new Error(injectedFailure);
     }
 
-    const payload = buildSettingsPayloadFromForm();
     const result = await window.recruitmentApi.saveLlmSettings(payload);
 
     state.settings = result.settings;
     state.settingsValidation = result.validation;
     applySettingsApiKeyStatus(result.apiKeyStatus, 'saveSettings');
+    await refreshLocalModelOptions();
+    state.lastSettingsSavedAt = 0;
 
     if (!result.validation.isValid) {
       state.view = 'settings';
@@ -2487,9 +2588,12 @@ async function saveSettings() {
         : (result.validation.errors.some((error) => /output template|word/i.test(error))
           ? 'word-template'
           : 'llm');
+    } else {
+      markSettingsSaved();
     }
   } catch (error) {
     state.view = 'settings';
+    state.lastSettingsSavedAt = 0;
     setSettingsIssue({
       title: 'Settings could not be saved',
       message: error instanceof Error
@@ -2498,6 +2602,8 @@ async function saveSettings() {
       actionType: 'saveSettings',
       actionLabel: 'Retry Save'
     });
+  } finally {
+    state.isSavingSettings = false;
   }
 
   render();
@@ -3851,7 +3957,9 @@ elements.openWordTemplateSettingsTab.addEventListener('click', () => {
 
 elements.providerSelect.addEventListener('change', () => {
   applyProviderPreset(elements.providerSelect.value);
-  render();
+  refreshLocalModelOptions().finally(() => {
+    render();
+  });
 });
 
 elements.referenceTemplateModeSelect.addEventListener('change', () => {

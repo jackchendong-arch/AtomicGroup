@@ -31,6 +31,9 @@ const recruitmentApi = Object.freeze({
   getLlmProviders() {
     return ipcRenderer.invoke('llm:get-providers');
   },
+  listLocalModels(payload) {
+    return ipcRenderer.invoke('llm:list-local-models', payload);
+  },
   loadLlmSettings() {
     return ipcRenderer.invoke('llm:load-settings');
   },

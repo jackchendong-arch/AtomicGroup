@@ -1,4 +1,5 @@
 const { normalizeOutputLanguage } = require('./output-language-service');
+const { parseStructuredSummary } = require('./hiring-manager-template-service');
 
 function normalizeLine(value) {
   return String(value || '').trim();
@@ -29,6 +30,35 @@ function collectBriefingNarrativeSegments(briefing = {}) {
     push(entry?.job_title);
     (Array.isArray(entry?.responsibilities) ? entry.responsibilities : []).forEach(push);
   });
+
+  return segments;
+}
+
+function collectSummaryNarrativeSegments(summary = '') {
+  const sections = parseStructuredSummary(summary);
+  const segments = [];
+  const push = (value) => {
+    const normalized = normalizeLine(value);
+
+    if (normalized) {
+      segments.push(normalized);
+    }
+  };
+
+  push(sections.fit_summary);
+  push(sections.relevant_experience);
+  push(sections.match_requirements);
+  push(sections.potential_concerns);
+  push(sections.recommended_next_step);
+
+  if (segments.length === 0) {
+    String(summary || '')
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach(push);
+  }
 
   return segments;
 }
@@ -93,7 +123,40 @@ function briefingNeedsLanguageNormalization(briefing, targetLanguage = 'en') {
   return oppositeCount >= 2 && oppositeCount > targetCount;
 }
 
+function summaryNeedsLanguageNormalization(summary, targetLanguage = 'en') {
+  const normalizedTargetLanguage = normalizeOutputLanguage(targetLanguage);
+  const segments = collectSummaryNarrativeSegments(summary);
+
+  if (segments.length === 0) {
+    return false;
+  }
+
+  let targetCount = 0;
+  let oppositeCount = 0;
+
+  segments.forEach((segment) => {
+    if (normalizedTargetLanguage === 'zh') {
+      if (isLikelyChineseNarrative(segment)) {
+        targetCount += 1;
+      } else if (isLikelyEnglishNarrative(segment)) {
+        oppositeCount += 1;
+      }
+
+      return;
+    }
+
+    if (isLikelyEnglishNarrative(segment)) {
+      targetCount += 1;
+    } else if (isLikelyChineseNarrative(segment)) {
+      oppositeCount += 1;
+    }
+  });
+
+  return oppositeCount >= 2 && oppositeCount > targetCount;
+}
+
 module.exports = {
   briefingNeedsLanguageNormalization,
-  collectBriefingNarrativeSegments
+  collectBriefingNarrativeSegments,
+  summaryNeedsLanguageNormalization
 };

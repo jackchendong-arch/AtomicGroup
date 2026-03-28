@@ -16,6 +16,7 @@ const {
   isChineseOutputLanguage,
   normalizeOutputLanguage
 } = require('./output-language-service');
+const { summaryNeedsLanguageNormalization } = require('./briefing-language-service');
 const {
   buildWorkspaceRetrievalQuery,
   buildWorkspaceSourceModel,
@@ -35,6 +36,14 @@ function cleanLine(value) {
     .replace(/\r\n/g, '\n')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function softenSummaryConfidenceLanguage(summary) {
+  return String(summary || '')
+    .replace(/\bideal candidate\b/gi, 'strong candidate')
+    .replace(/\bperfect (candidate|fit|match)\b/gi, 'strong $1')
+    .replace(/\b100%\s+(fit|match)\b/gi, 'strong $1')
+    .replace(/\b(?:fully meets all requirements|meets every requirement)\b/gi, 'addresses the core requirements well');
 }
 
 function splitNonEmptyLines(value) {
@@ -992,6 +1001,30 @@ function renderSummaryFromBriefing(briefing, outputLanguage = 'en') {
   }));
 }
 
+function repairRecruiterSummary(summary, briefing, outputLanguage = 'en') {
+  const normalizedSummary = normalizeGeneratedSummary(summary);
+
+  if (!cleanLine(normalizedSummary)) {
+    return softenSummaryConfidenceLanguage(renderSummaryFromBriefing(briefing, outputLanguage));
+  }
+
+  const sections = parseStructuredSummary(normalizedSummary);
+  const missingRequiredSection = [
+    sections.fit_summary,
+    sections.relevant_experience,
+    sections.match_requirements,
+    sections.recommended_next_step
+  ].some((value) => !cleanLine(value));
+  const needsLanguageNormalization = summaryNeedsLanguageNormalization(normalizedSummary, outputLanguage);
+
+  const mergedBriefing = applySummaryOverridesToBriefing(briefing, normalizedSummary);
+  const repairedSummary = (missingRequiredSection || needsLanguageNormalization)
+    ? renderSummaryFromBriefing(mergedBriefing, outputLanguage)
+    : normalizedSummary;
+
+  return softenSummaryConfidenceLanguage(repairedSummary);
+}
+
 function renderHiringManagerBriefingReviewFromBriefing(briefing, outputLanguage = 'en') {
   const normalized = normalizeBriefing(briefing);
   const copy = getLocalizedBriefingCopy(outputLanguage);
@@ -1540,6 +1573,7 @@ module.exports = {
   normalizeBriefing,
   parseBriefingResponse,
   prepareHiringManagerBriefingOutput,
+  repairRecruiterSummary,
   renderHiringManagerBriefingReviewFromBriefing,
   renderSummaryFromBriefing,
   validateBriefing

@@ -12,6 +12,7 @@ const {
   normalizeBriefing,
   parseBriefingResponse,
   prepareHiringManagerBriefingOutput,
+  repairRecruiterSummary,
   renderHiringManagerBriefingReviewFromBriefing,
   renderSummaryFromBriefing,
   validateBriefing
@@ -621,6 +622,46 @@ test('renderSummaryFromBriefing produces a recruiter-readable summary and valida
   assert.match(summary, /Candidate: Alex Wong/);
   assert.match(summary, /## Fit Summary/);
   assert.match(summary, /Technology leadership -> Led a regional engineering function/);
+});
+
+test('repairRecruiterSummary fills missing required sections from the briefing and softens strong certainty wording', () => {
+  const briefing = normalizeBriefing({
+    candidate: {
+      name: 'Noah Zhang'
+    },
+    role: {
+      title: 'Blockchain Developer'
+    },
+    fit_summary: 'Noah Zhang is a strong candidate for this role.',
+    relevant_experience: ['Built blockchain platform services at Sparksoft.'],
+    match_requirements: [
+      {
+        requirement: 'Go and Rust delivery',
+        evidence: 'Built backend and blockchain services.'
+      }
+    ],
+    potential_concerns: ['Limited direct production DeFi scale evidence.'],
+    recommended_next_step: 'Proceed to hiring-manager review.'
+  });
+
+  const repaired = repairRecruiterSummary([
+    '### Recruitment Summary for Noah Zhang',
+    'Target Role: Blockchain Developer',
+    '',
+    '#### Fit Summary',
+    'Noah Zhang is an ideal candidate for this role.',
+    '',
+    '#### Relevant Experience',
+    '- Built blockchain platform services at Sparksoft.',
+    '',
+    '#### Match Against Key Requirements',
+    '- Go and Rust delivery -> Built backend and blockchain services.'
+  ].join('\n'), briefing, 'en');
+
+  assert.match(repaired, /## Recommended Next Step/);
+  assert.match(repaired, /Proceed to hiring-manager review\./);
+  assert.doesNotMatch(repaired, /\bideal candidate\b/i);
+  assert.match(repaired, /\bstrong candidate\b/i);
 });
 
 test('renderHiringManagerBriefingReviewFromBriefing produces a reviewable hiring-manager briefing surface', () => {

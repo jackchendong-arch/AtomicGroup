@@ -2,6 +2,9 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
+const API_KEY_OPTIONAL_PROVIDER_IDS = new Set(['ollama_deepseek_r1']);
+const LOCAL_OLLAMA_MIN_MAX_TOKENS = 3200;
+
 function createDefaultSettings() {
   return {
     providerId: 'deepseek',
@@ -102,15 +105,20 @@ function normalizeSettings(input = {}) {
     ...defaults,
     ...input
   };
+  const providerId = String(merged.providerId || defaults.providerId);
+  const normalizedMaxTokens = normalizeNumericValue(merged.maxTokens, defaults.maxTokens);
+  const maxTokens = providerId === 'ollama_deepseek_r1'
+    ? Math.max(normalizedMaxTokens, LOCAL_OLLAMA_MIN_MAX_TOKENS)
+    : normalizedMaxTokens;
 
   return {
-    providerId: String(merged.providerId || defaults.providerId),
+    providerId,
     providerLabel: String(merged.providerLabel || defaults.providerLabel),
     baseUrl: String(merged.baseUrl || defaults.baseUrl).trim(),
     model: String(merged.model || defaults.model).trim(),
     apiKey: String(merged.apiKey || '').trim(),
     temperature: normalizeNumericValue(merged.temperature, defaults.temperature),
-    maxTokens: normalizeNumericValue(merged.maxTokens, defaults.maxTokens),
+    maxTokens,
     systemPrompt: String(merged.systemPrompt || defaults.systemPrompt).trim(),
     referenceTemplateMode: String(merged.referenceTemplateMode || defaults.referenceTemplateMode).trim() || 'default',
     referenceTemplatePath: String(merged.referenceTemplatePath || '').trim(),
@@ -124,6 +132,10 @@ function normalizeSettings(input = {}) {
     apiKeyStatusCode: String(merged.apiKeyStatusCode || '').trim(),
     apiKeyStatusMessage: String(merged.apiKeyStatusMessage || '').trim()
   };
+}
+
+function providerRequiresApiKey(providerId = '') {
+  return !API_KEY_OPTIONAL_PROVIDER_IDS.has(String(providerId || '').trim());
 }
 
 function validateSettings(input = {}) {
@@ -146,7 +158,7 @@ function validateSettings(input = {}) {
     errors.push('Model is required.');
   }
 
-  if (!settings.apiKey) {
+  if (!settings.apiKey && providerRequiresApiKey(settings.providerId)) {
     if (settings.apiKeyStatusCode === 'secure-storage-unavailable') {
       errors.push('Secure storage is unavailable, so the saved API key could not be loaded. Re-enter the API key for this session.');
     } else if (settings.apiKeyStatusCode === 'secure-storage-policy-blocked') {
@@ -550,7 +562,9 @@ class LlmSettingsStore {
 
 module.exports = {
   LlmSettingsStore,
+  LOCAL_OLLAMA_MIN_MAX_TOKENS,
   createDefaultSettings,
   normalizeSettings,
+  providerRequiresApiKey,
   validateSettings
 };

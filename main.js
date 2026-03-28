@@ -27,10 +27,11 @@ const {
   mergeBriefingWithFallback,
   parseBriefingResponse,
   prepareHiringManagerBriefingOutput,
+  repairRecruiterSummary,
   renderSummaryFromBriefing,
   validateBriefing
 } = require('./services/briefing-service');
-const { generateWithConfiguredProvider, getProviderOptions } = require('./services/llm-service');
+const { generateWithConfiguredProvider, getProviderOptions, listOllamaModels } = require('./services/llm-service');
 const { LlmSettingsStore, validateSettings } = require('./services/llm-settings-service');
 const {
   buildSummaryRequest,
@@ -78,6 +79,7 @@ const {
   validateDocumentImportPayload,
   validateDocumentPickPayload,
   validateDraftTranslationPayload,
+  validateLocalModelListPayload,
   validateLlmSettingsPayload,
   validateLoadWorkspaceSnapshotPayload,
   validateRenderBriefingPayload,
@@ -1128,6 +1130,28 @@ ipcMain.handle('llm:get-providers', async () => {
   return getProviderOptions();
 });
 
+ipcMain.handle('llm:list-local-models', async (_event, payload) => {
+  const { providerId, baseUrl } = validateLocalModelListPayload(payload);
+
+  if (providerId !== 'ollama_deepseek_r1') {
+    return {
+      providerId,
+      models: []
+    };
+  }
+
+  const result = await listOllamaModels({
+    baseUrl,
+    fetchImpl: (...args) => net.fetch(...args)
+  });
+
+  return {
+    providerId,
+    models: result.models,
+    requestUrl: result.requestUrl
+  };
+});
+
 ipcMain.handle('llm:load-settings', async () => {
   const settings = await getSettingsStore().load();
   const validation = validateSettings(settings);
@@ -1768,9 +1792,19 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       }
     }
 
+    const repairedRecruiterSummary = repairRecruiterSummary(
+      recruiterSummary,
+      validatedBriefing,
+      outputLanguage
+    );
+
+    if (repairedRecruiterSummary !== recruiterSummary) {
+      debugTrace.push(`Recruiter summary repaired for missing sections or wording normalization. New length: ${repairedRecruiterSummary.length}`);
+    }
+
     const preparedOutput = applyDraftOutputMode({
       outputMode,
-      recruiterSummary,
+      recruiterSummary: repairedRecruiterSummary,
       briefing: validatedBriefing,
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
@@ -1838,7 +1872,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
 
     return {
       templateLabel: summaryRequest.templateLabel,
-      summary: recruiterSummary,
+      summary: repairedRecruiterSummary,
       hiringManagerBriefingReview: hiringManagerBriefing.review,
       summaryRetrievalManifest: summaryRequest.retrievalManifest,
       briefingRetrievalManifest: briefingRequest.retrievalManifest,
@@ -2049,9 +2083,15 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       fetchImpl: (...args) => net.fetch(...args)
     });
 
+    const repairedTranslatedSummary = repairRecruiterSummary(
+      translated.summary,
+      translated.briefing,
+      targetLanguage
+    );
+
     const preparedOutput = applyDraftOutputMode({
       outputMode: normalizedPayload.outputMode,
-      recruiterSummary: translated.summary,
+      recruiterSummary: repairedTranslatedSummary,
       briefing: translated.briefing,
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument
@@ -2094,7 +2134,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     });
     await appendSummaryGenerationDebugLog(debugTrace);
     return {
-      summary: translated.summary,
+      summary: repairedTranslatedSummary,
       briefing: translated.briefing,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,

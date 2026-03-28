@@ -152,3 +152,43 @@ test('buildDraftReviewWarnings appends Word-report review blockers for recruiter
   assert(warnings.includes('Word report review required: Education entry 1 contains merged separator text instead of clean degree and institution fields.'));
   assert(warnings.includes('Word report review required: Project experience extraction looks over-expanded: 12 project rows were produced.'));
 });
+
+test('buildDraftReviewWarnings does not falsely flag nested markdown recruiter-summary sections as missing', () => {
+  const warnings = buildDraftReviewWarnings({
+    recruiterSummary: [
+      '### Candidate: Noah Zhang',
+      'Target Role: Blockchain Developer',
+      '',
+      '## Fit Summary',
+      'Strong alignment with the role.',
+      '',
+      '## Relevant Experience',
+      '### **2024.07 - 2025.05: Technical Research & Development (Tech Research)',
+      '- Role: Software Engineer at Sparksoft',
+      '- Built blockchain platform services.',
+      '',
+      '## Match Against Key Requirements',
+      '### Key Requirements for Blockchain Developer',
+      '1. Go and Rust delivery experience.',
+      '',
+      '## Recommended Next Step',
+      'Proceed to hiring-manager review.'
+    ].join('\n'),
+    briefing: createBriefing(),
+    summaryRetrievalManifest: [{ blockId: 'cv-1' }],
+    briefingRetrievalManifest: [{ blockId: 'jd-1' }]
+  });
+
+  assert.equal(
+    warnings.includes('Recruiter summary is missing the relevant experience section.'),
+    false
+  );
+  assert.equal(
+    warnings.includes('Recruiter summary is missing the match against key requirements section.'),
+    false
+  );
+  assert.equal(
+    warnings.includes('Recruiter summary is missing the recommended next step section.'),
+    false
+  );
+});

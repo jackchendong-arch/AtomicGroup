@@ -915,6 +915,30 @@ Validation should distinguish:
 
 The blocking and override rules should be explicit so the app behaves consistently instead of treating all validation findings as equivalent warnings.
 
+An initial severity matrix should make that policy concrete:
+
+| Issue type | Example | Severity | Export allowed | Consultant override allowed | Expected action | STP impact |
+| --- | --- | --- | --- | --- | --- | --- |
+| `candidate_identity_invalid` | candidate name is missing, generic, or clearly wrong | `block` | no | no | fix the factual record before export/share | breaks STP |
+| `role_identity_invalid` | role title is missing, generic, or conflicts with the JD | `block` | no | no | fix JD mapping before export/share | breaks STP |
+| `employment_history_corrupt` | skills or project fragments are classified as jobs | `block` | no | no | correct extraction before export/share | breaks STP |
+| `chronology_conflict` | impossible or contradictory employment dates | `block` | no | yes, after targeted correction | correct chronology, then regenerate/revalidate | breaks STP |
+| `education_row_malformed` | education row contains project/employment content or broken delimiters | `block` | no | yes, after targeted correction | correct education rows, then regenerate/revalidate | breaks STP |
+| `required_report_field_missing` | required report section or field cannot be mapped into the report payload | `block` | no | no | fix extraction or adapter/template contract | breaks STP |
+| `template_incompatible` | template/adapter contract mismatch prevents reliable rendering | `block` | no | no | fix template compatibility before export/share | breaks STP |
+| `post_render_invalid` | placeholder leakage or clearly malformed rendered report | `block` | no | no | fix rendering/template issue before export/share | breaks STP |
+| `project_role_ambiguous` | project could belong to more than one role and linkage matters to the report | `review-required` | only after confirmation | yes | consultant confirms or corrects linkage | breaks STP, but can still produce a valid report after step-in |
+| `low_confidence_key_section` | employment/project/education extraction is grounded but confidence is weak | `review-required` | only after confirmation | yes | consultant reviews only the flagged rows | breaks STP, but can still produce a valid report after step-in |
+| `translation_factual_ambiguity` | translated display text may materially alter a factual meaning | `review-required` | only after confirmation | yes | consultant confirms translated factual wording | breaks STP, but can still produce a valid report after step-in |
+| `optional_field_missing` | nationality, preferred location, or another optional field is absent | `informational` | yes | not needed | proceed, optionally review | does not break STP |
+| `minor_evidence_sparsity` | non-core section has thin evidence but no factual contradiction | `informational` | yes | not needed | proceed, optionally review | does not break STP |
+| `normalization_notice` | safe cleaning rules removed page markers or OCR junk | `informational` | yes | not needed | no action required | does not break STP |
+
+The matrix should not be treated as static. It should be tuned over time using real fixture evidence and later STP/intervention metrics:
+- some `block` cases may later be downgraded to `review-required` when the workflow and correction UX are proven safe
+- some `review-required` cases may later become `informational` when the extraction and validation quality improves
+- any downgrade should be driven by evidence that output quality remains trustworthy while STP improves
+
 ### Consultant Review Triggers
 Consultant review should be exception-based, not a mandatory manual validation pass on every CV.
 
@@ -1417,6 +1441,16 @@ Scope:
 - Section-aware normalized source blocks
 - Original-language source lineage and parser metadata
 - English working layer for bounded downstream processing
+
+Current implemented slice (`7A.1`):
+- a standalone source-normalization service now exists between raw extraction and workspace retrieval
+- workspace source documents now preserve `rawSource`, `cleaningManifest`, and normalized retrieval blocks together
+- the first safe cleaning rules are in place for:
+  - standalone page markers
+  - opaque PDF artifact lines
+  - decoration-only lines
+  - bullet-marker normalization
+- the existing retrieval contract stays stable while source normalization becomes explicit and testable
 
 Acceptance criteria:
 - The app preserves raw extracted source separately from normalized content.

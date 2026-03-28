@@ -320,6 +320,11 @@ Mark a release complete only when the work is:
 - Normalize into section-aware source blocks with source refs, language hints, and parser metadata.
 - Add a bounded English working layer for internal processing while keeping original-language blocks authoritative.
 - Build the initial artifact-cleaning rule catalog from real fixtures and regression coverage instead of one-off heuristics.
+- Current `7A.1` slice now covers:
+  - standalone source-normalization service
+  - preserved `rawSource` plus `cleaningManifest` in the workspace source model
+  - normalized source blocks feeding the existing retrieval path
+  - first safe cleaning rules for page markers, opaque PDF artifacts, decoration-only lines, and bullet-marker normalization
 
 ## Release 7B: Canonical Schema Extraction and Validation
 - [ ] Release 7B shipped, completed, and tested.
@@ -335,6 +340,8 @@ Mark a release complete only when the work is:
 - Define consultant review trigger rules and reason codes covering identity conflicts, malformed education, chronology conflicts, project-role ambiguity, required-field gaps, low confidence, and post-render report failures.
 - Add targeted consultant review of factual employment/project/education mapping when extraction confidence is weak before allowing final report export.
 - Define validation severity levels and explicit export-blocking versus override-required behavior for factual extraction issues.
+- Add and maintain an explicit severity matrix in the spec/product logic for `block`, `review-required`, and `informational` issues.
+- Tune the severity matrix over time using fixture evidence and later STP/intervention data so safe cases move toward higher STP without allowing low-trust reports through.
 
 ## Release 7D: Word Report Adapter MVP
 - [ ] Release 7D shipped, completed, and tested.

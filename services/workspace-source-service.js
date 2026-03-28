@@ -1,4 +1,4 @@
-const path = require('node:path');
+const { buildNormalizedSourceDocument } = require('./source-normalization-service');
 
 const STOP_WORDS = new Set([
   'a', 'about', 'after', 'all', 'also', 'an', 'and', 'any', 'are', 'as', 'at',
@@ -7,57 +7,6 @@ const STOP_WORDS = new Set([
   'our', 'she', 'that', 'the', 'their', 'them', 'they', 'this', 'to', 'was',
   'were', 'will', 'with', 'you', 'your'
 ]);
-
-const SECTION_KEY_BY_HEADING = {
-  experience: 'experience',
-  'work experience': 'experience',
-  'employment experience': 'experience',
-  'professional experience': 'experience',
-  'career history': 'experience',
-  'project experience': 'projects',
-  projects: 'projects',
-  education: 'education',
-  'education background': 'education',
-  skills: 'skills',
-  'technical skills': 'skills',
-  languages: 'languages',
-  language: 'languages',
-  requirements: 'requirements',
-  requirement: 'requirements',
-  responsibilities: 'responsibilities',
-  responsibility: 'responsibilities',
-  summary: 'overview',
-  overview: 'overview',
-  'job title': 'overview',
-  'target role': 'overview',
-  candidate: 'overview',
-  'fit summary': 'fit',
-  relevant: 'experience',
-  'relevant experience': 'experience',
-  'key requirements': 'requirements',
-  'match against key requirements': 'requirements',
-  'potential concerns / gaps': 'concerns',
-  'recommended next step': 'next-step',
-  工作经历: 'experience',
-  工作经验: 'experience',
-  职业经历: 'experience',
-  项目经历: 'projects',
-  教育背景: 'education',
-  教育经历: 'education',
-  技能: 'skills',
-  技术栈: 'skills',
-  语言: 'languages',
-  岗位职责: 'responsibilities',
-  任职要求: 'requirements',
-  岗位要求: 'requirements',
-  职位描述: 'overview',
-  岗位描述: 'overview',
-  匹配概述: 'fit',
-  相关经验: 'experience',
-  与关键要求的匹配: 'requirements',
-  '潜在顾虑 / 差距': 'concerns',
-  建议下一步: 'next-step'
-};
 
 const DEFAULT_LIMITS = {
   cv: 8,
@@ -69,13 +18,6 @@ function cleanLine(value) {
   return String(value || '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function normalizeHeading(value) {
-  return cleanLine(String(value || '')
-    .replace(/^#+\s*/, '')
-    .replace(/[:：]\s*$/, '')
-    .toLowerCase());
 }
 
 function tokenize(text) {
@@ -123,124 +65,37 @@ function buildManifestPreview(text, maxLength = 180) {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-function splitParagraphs(text) {
-  return String(text || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
-}
-
-function isStandalonePageMarker(text) {
-  const normalized = cleanLine(text);
-
-  if (!normalized) {
-    return false;
-  }
-
-  return /^[-–—\s]*\d+\s+of\s+\d+\s*[-–—\s]*$/i.test(normalized) ||
-    /^page\s+\d+\s+of\s+\d+$/i.test(normalized);
-}
-
-function stripArtifactLines(lines) {
-  return lines.filter((line) => !isStandalonePageMarker(line));
-}
-
-function resolveSectionKey(heading, fallback = 'general') {
-  return SECTION_KEY_BY_HEADING[normalizeHeading(heading)] || fallback;
-}
-
-function isHeadingParagraph(paragraph) {
-  const lines = paragraph.split('\n').map((line) => cleanLine(line)).filter(Boolean);
-
-  if (lines.length !== 1) {
-    return false;
-  }
-
-  const line = lines[0];
-  const normalized = normalizeHeading(line);
-
-  if (SECTION_KEY_BY_HEADING[normalized]) {
-    return true;
-  }
-
-  if (line.startsWith('#')) {
-    return true;
-  }
-
-  return /^[A-Z][A-Za-z\s/&-]{2,40}$/.test(line) || /^[\u4e00-\u9fffA-Za-z\s/&-]{2,20}$/.test(line);
-}
-
-function createBlockId(documentType, order) {
-  return `${documentType}-${order + 1}`;
-}
-
 function buildDocumentSourceBlocks(documentType, label, text, sourcePath = '') {
-  const paragraphs = splitParagraphs(text);
-  const blocks = [];
-  let currentSectionKey = 'overview';
-  let currentSectionLabel = 'Overview';
-
-  paragraphs.forEach((paragraph) => {
-    const lines = paragraph.split('\n').map((line) => cleanLine(line)).filter(Boolean);
-
-    if (lines.length === 0) {
-      return;
-    }
-
-    if (isHeadingParagraph(paragraph)) {
-      currentSectionLabel = lines[0];
-      currentSectionKey = resolveSectionKey(currentSectionLabel, currentSectionKey);
-      return;
-    }
-
-    if (lines.length > 1 && isHeadingParagraph(lines[0])) {
-      currentSectionLabel = lines[0];
-      currentSectionKey = resolveSectionKey(currentSectionLabel, currentSectionKey);
-      lines.shift();
-    }
-
-    const contentLines = stripArtifactLines(lines);
-    const blockText = contentLines.join('\n').trim();
-
-    if (!blockText) {
-      return;
-    }
-
-    blocks.push({
-      blockId: createBlockId(documentType, blocks.length),
-      documentType,
-      documentLabel: label,
-      sourcePath,
-      sourceName: sourcePath ? path.basename(sourcePath) : label,
-      sectionKey: currentSectionKey,
-      sectionLabel: currentSectionLabel,
-      order: blocks.length,
-      text: blockText,
-      tokenCount: uniqueTokens(blockText).length
-    });
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType,
+    label,
+    text,
+    sourcePath
   });
-
-  if (blocks.length === 0 && cleanLine(text)) {
-    blocks.push({
-      blockId: createBlockId(documentType, 0),
-      documentType,
-      documentLabel: label,
-      sourcePath,
-      sourceName: sourcePath ? path.basename(sourcePath) : label,
-      sectionKey: 'overview',
-      sectionLabel: 'Overview',
-      order: 0,
-      text: cleanLine(text),
-      tokenCount: uniqueTokens(text).length
-    });
-  }
+  const blocks = normalizedDocument.normalizedBlocks.map((block) => ({
+    blockId: block.blockId,
+    documentType: block.documentType,
+    documentLabel: block.documentLabel,
+    sourcePath: block.sourcePath,
+    sourceName: block.sourceName,
+    sectionKey: block.sectionKey,
+    sectionLabel: block.sectionLabel,
+    classificationReason: block.classificationReason,
+    classificationConfidence: block.classificationConfidence,
+    cleaningActions: block.cleaningActions,
+    sourceRefs: block.sourceRefs,
+    order: block.order,
+    text: block.textNormalized,
+    textOriginal: block.textOriginal,
+    tokenCount: uniqueTokens(block.textNormalized).length
+  }));
 
   return {
     documentType,
     label,
     sourcePath,
+    rawSource: normalizedDocument.rawSource,
+    cleaningManifest: normalizedDocument.cleaningManifest,
     blocks
   };
 }

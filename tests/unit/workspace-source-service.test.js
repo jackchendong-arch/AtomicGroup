@@ -70,6 +70,8 @@ test('buildWorkspaceSourceModel creates section-aware blocks for CV, JD, and gui
   assert.ok(sourceModel.documents.find((document) => document.documentType === 'cv'));
   assert.ok(sourceModel.documents.find((document) => document.documentType === 'jd'));
   assert.ok(sourceModel.documents.find((document) => document.documentType === 'guidance'));
+  assert.match(sourceModel.documents.find((document) => document.documentType === 'cv').rawSource.text, /Noah Zhang/);
+  assert.ok(Array.isArray(sourceModel.documents.find((document) => document.documentType === 'cv').cleaningManifest));
   assert.ok(sourceModel.documents.find((document) => document.documentType === 'cv').blocks.some((block) => block.sectionKey === 'experience'));
   assert.ok(sourceModel.documents.find((document) => document.documentType === 'jd').blocks.some((block) => block.sectionKey === 'requirements'));
 });
@@ -102,9 +104,11 @@ test('buildWorkspaceSourceModel strips standalone PDF page-marker paragraphs fro
   });
 
   const cvBlocks = sourceModel.documents.find((document) => document.documentType === 'cv').blocks;
+  const cvCleaningManifest = sourceModel.documents.find((document) => document.documentType === 'cv').cleaningManifest;
 
   assert.equal(cvBlocks.some((block) => /of 3/i.test(block.text)), false);
   assert.ok(cvBlocks.some((block) => /Built backend systems in Go/i.test(block.text)));
+  assert.ok(cvCleaningManifest.some((entry) => entry.ruleId === 'strip_page_marker'));
 });
 
 test('selectWorkspaceSourceBlocks favors relevant experience and requirement blocks for the workspace query', () => {

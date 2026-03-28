@@ -2,14 +2,22 @@
 
 ## Workflow Source of Truth
 - Use `TODO.md` as the ordered source of truth for UI/UX follow-up work.
+- Use `spec.md` as the source of truth for approved design, architecture, contracts, and release intent.
 - Always start from the top incomplete release in `TODO.md`.
 - Propose that top incomplete release first before starting implementation.
 - Treat the task bullets inside that release as the required scope for the active work.
 - When scope changes, new product requirements are introduced, or additional follow-up work is discovered, update `TODO.md` first before implementation continues.
+- When design, architecture, data contracts, validation policy, or slice boundaries change, update both `spec.md` and `TODO.md` before implementation begins.
 - Keep `TODO.md` current so future work remains TODO-driven instead of drifting into undocumented scope.
+
+## Design Review Rule
+- During design review, do not update `spec.md` or `TODO.md` until the user explicitly approves the proposed design change.
+- Treat design discussion as proposal-only until that approval is given.
+- Once the user approves the slice design, update `spec.md` and `TODO.md` before starting implementation.
 
 ## Start Rule
 - Do not begin implementation until the user confirms to start the proposed release.
+- Do not begin implementation until the approved slice design is reflected in `spec.md` and `TODO.md`.
 - Once the user confirms, mark that release with `[-]` in `TODO.md` before implementation begins.
 
 ## Completion Rule

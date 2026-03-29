@@ -5,6 +5,24 @@ const PAGE_OF_PATTERN = /^page\s+\d+\s+of\s+\d+$/i;
 const OPAQUE_PDF_ARTIFACT_PATTERN = /^(?:~+|(?=.*\d)(?=.*[A-Za-z])(?=.*[_~-])[A-Za-z0-9_~-]{20,})$/;
 const DECORATION_ONLY_PATTERN = /^[\s\-–—_=~*•·•▪●○◦]{3,}$/;
 const BULLET_PREFIX_PATTERN = /^\s*[•●◦▪■○*\-–—]+\s+/;
+const YEAR_RANGE_PATTERN = /(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*(?:–|-|—|to|至)\s*(?:present|current|now|(?:19|20)\d{2})(?:[./-]\d{1,2})?/i;
+const DEGREE_HINT_PATTERN = /\b(?:bachelor|master|msc|mba|phd|bsc|ma|ba|degree)\b|(?:本科|硕士|博士|学士|研究生)/i;
+const EDUCATION_ORG_HINT_PATTERN = /\b(?:university|college|school|institute)\b|(?:大学|学院|研究所)/i;
+const EMPLOYMENT_TITLE_HINT_PATTERN = /\b(?:engineer|developer|manager|consultant|analyst|architect|designer|lead|director)\b|(?:工程师|经理|顾问|开发|架构师|设计师|主任)/i;
+const COMPANY_HINT_PATTERN = /\b(?:ltd|limited|inc|corp|company|technologies|technology|bank|group|studio)\b|(?:公司|科技|信息|银行|集团|工作室)/i;
+const PROJECT_HINT_PATTERN = /\b(?:project|platform|system|engine|aggregator|app|bot)\b|(?:项目|系统|平台|应用|引擎)/i;
+const TECH_STACK_HINT_PATTERN = /(?:tech stack|使用技术)\s*[:：]/i;
+const REQUIREMENT_HINT_PATTERN = /\b(?:requirements?|qualifications?|must have|required)\b|(?:任职要求|岗位要求)/i;
+const RESPONSIBILITY_HINT_PATTERN = /\b(?:responsibilities?|duties)\b|(?:职责|岗位职责)/i;
+
+const SECTION_LABEL_BY_KEY = {
+  overview: 'Overview',
+  education: 'Education',
+  experience: 'Experience',
+  projects: 'Projects',
+  requirements: 'Requirements',
+  responsibilities: 'Responsibilities'
+};
 
 const SECTION_KEY_BY_HEADING = {
   experience: 'experience',
@@ -121,6 +139,10 @@ function normalizeBulletMarker(text) {
     : normalized;
 }
 
+function defaultSectionLabel(sectionKey) {
+  return SECTION_LABEL_BY_KEY[sectionKey] || 'Overview';
+}
+
 function resolveSectionKey(heading, fallback = 'overview') {
   return SECTION_KEY_BY_HEADING[normalizeHeading(heading)] || fallback;
 }
@@ -144,6 +166,187 @@ function isHeadingParagraph(paragraph) {
   }
 
   return /^[A-Z][A-Za-z\s/&-]{2,40}$/.test(line) || /^[\u4e00-\u9fffA-Za-z\s/&-]{2,20}$/.test(line);
+}
+
+function looksLikeEducationParagraph(lines) {
+  const paragraphText = lines.join(' ');
+
+  if (!paragraphText) {
+    return false;
+  }
+
+  return (
+    (hasDateRangeHint(paragraphText) && (DEGREE_HINT_PATTERN.test(paragraphText) || EDUCATION_ORG_HINT_PATTERN.test(paragraphText))) ||
+    (DEGREE_HINT_PATTERN.test(paragraphText) && EDUCATION_ORG_HINT_PATTERN.test(paragraphText))
+  );
+}
+
+function hasDateRangeHint(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return YEAR_RANGE_PATTERN.test(normalized) ||
+    /(?:19|20)\d{2}.*(?:–|-|—|to|至).*?(?:present|current|now|(?:19|20)\d{2})/i.test(normalized);
+}
+
+function looksLikeEmploymentParagraph(lines) {
+  const paragraphText = lines.join(' ');
+  const firstLine = lines[0] || '';
+  const secondLine = lines[1] || '';
+
+  if (!paragraphText) {
+    return false;
+  }
+
+  return (
+    (hasDateRangeHint(paragraphText) && (COMPANY_HINT_PATTERN.test(paragraphText) || EMPLOYMENT_TITLE_HINT_PATTERN.test(paragraphText))) ||
+    (firstLine.includes('|') && hasDateRangeHint(firstLine) && (COMPANY_HINT_PATTERN.test(firstLine) || EMPLOYMENT_TITLE_HINT_PATTERN.test(firstLine))) ||
+    ((COMPANY_HINT_PATTERN.test(firstLine) || EMPLOYMENT_TITLE_HINT_PATTERN.test(firstLine)) && hasDateRangeHint(secondLine))
+  );
+}
+
+function looksLikeProjectParagraph(lines) {
+  const paragraphText = lines.join(' ');
+  const firstLine = lines[0] || '';
+
+  if (!paragraphText) {
+    return false;
+  }
+
+  return (
+    TECH_STACK_HINT_PATTERN.test(paragraphText) ||
+    (PROJECT_HINT_PATTERN.test(firstLine) && !looksLikeEducationParagraph(lines) && !looksLikeEmploymentParagraph(lines)) ||
+    (hasDateRangeHint(firstLine) && PROJECT_HINT_PATTERN.test(paragraphText))
+  );
+}
+
+function looksLikeRequirementsParagraph(lines) {
+  const paragraphText = lines.join(' ');
+  return REQUIREMENT_HINT_PATTERN.test(paragraphText) || lines.some((line) => line.startsWith('- ') && /must|experience|required|qualification/i.test(line));
+}
+
+function looksLikeResponsibilitiesParagraph(lines) {
+  const paragraphText = lines.join(' ');
+  return RESPONSIBILITY_HINT_PATTERN.test(paragraphText) || lines.some((line) => line.startsWith('- ') && /responsib|duty|design|build|lead/i.test(line));
+}
+
+function inferStructuralSection(lines, documentType) {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return null;
+  }
+
+  if (documentType === 'cv') {
+    if (looksLikeEducationParagraph(lines)) {
+      return {
+        sectionKey: 'education',
+        sectionLabel: defaultSectionLabel('education'),
+        reason: 'structural_pattern',
+        confidence: 'medium'
+      };
+    }
+
+    if (looksLikeEmploymentParagraph(lines)) {
+      return {
+        sectionKey: 'experience',
+        sectionLabel: defaultSectionLabel('experience'),
+        reason: 'structural_pattern',
+        confidence: 'medium'
+      };
+    }
+
+    if (looksLikeProjectParagraph(lines)) {
+      return {
+        sectionKey: 'projects',
+        sectionLabel: defaultSectionLabel('projects'),
+        reason: 'structural_pattern',
+        confidence: 'medium'
+      };
+    }
+  }
+
+  if (documentType === 'jd') {
+    if (looksLikeRequirementsParagraph(lines)) {
+      return {
+        sectionKey: 'requirements',
+        sectionLabel: defaultSectionLabel('requirements'),
+        reason: 'structural_pattern',
+        confidence: 'medium'
+      };
+    }
+
+    if (looksLikeResponsibilitiesParagraph(lines)) {
+      return {
+        sectionKey: 'responsibilities',
+        sectionLabel: defaultSectionLabel('responsibilities'),
+        reason: 'structural_pattern',
+        confidence: 'medium'
+      };
+    }
+  }
+
+  return null;
+}
+
+function shouldMergeWithPreviousBullet(previousLine, currentLine, sectionKey) {
+  if (!['experience', 'projects', 'requirements', 'responsibilities'].includes(sectionKey)) {
+    return false;
+  }
+
+  if (!String(previousLine || '').startsWith('- ')) {
+    return false;
+  }
+
+  if (String(currentLine || '').startsWith('- ')) {
+    return false;
+  }
+
+  if (isHeadingParagraph(currentLine)) {
+    return false;
+  }
+
+  return /^[a-z(]/.test(String(currentLine || '').trim());
+}
+
+function mergeSectionAwareContinuations(linePairs, {
+  sectionKey,
+  documentType,
+  paragraphIndex,
+  cleaningManifest
+}) {
+  const merged = [];
+
+  linePairs.forEach((pair, lineIndex) => {
+    const previous = merged[merged.length - 1];
+
+    if (previous && shouldMergeWithPreviousBullet(previous.normalized, pair.normalized, sectionKey)) {
+      const mergedNormalized = `${previous.normalized} ${pair.normalized}`.trim();
+      const mergedOriginal = `${previous.original} ${pair.original}`.trim();
+
+      cleaningManifest.push(createCleaningManifestEntry({
+        ruleId: 'normalize_wrapped_bullet_continuation',
+        action: 'normalize',
+        documentType,
+        paragraphIndex,
+        lineIndex,
+        before: pair.original,
+        after: mergedNormalized
+      }));
+
+      previous.normalized = mergedNormalized;
+      previous.original = mergedOriginal;
+      previous.actions = [...new Set([...previous.actions, 'normalize_wrapped_bullet_continuation'])];
+      return;
+    }
+
+    merged.push({
+      ...pair
+    });
+  });
+
+  return merged;
 }
 
 function createCleaningManifestEntry({
@@ -261,7 +464,7 @@ function buildNormalizedSourceDocument({
   let currentSectionKey = 'overview';
   let currentSectionLabel = 'Overview';
   let currentClassificationReason = 'default_overview';
-  let currentClassificationConfidence = 'medium';
+  let currentClassificationConfidence = 'low';
 
   paragraphs.forEach((paragraph, paragraphIndex) => {
     const normalizedLinePairs = normalizeParagraphLines(paragraph, {
@@ -275,7 +478,6 @@ function buildNormalizedSourceDocument({
     }
 
     const normalizedLines = normalizedLinePairs.map((entry) => entry.normalized);
-    const originalLines = normalizedLinePairs.map((entry) => entry.original);
     const normalizedParagraph = normalizedLines.join('\n');
 
     if (isHeadingParagraph(normalizedParagraph)) {
@@ -286,18 +488,48 @@ function buildNormalizedSourceDocument({
       return;
     }
 
+    let workingLinePairs = normalizedLinePairs;
+
     if (normalizedLines.length > 1 && isHeadingParagraph(normalizedLines[0])) {
       currentSectionLabel = normalizedLines[0];
       currentSectionKey = resolveSectionKey(currentSectionLabel, currentSectionKey);
       currentClassificationReason = 'explicit_heading';
       currentClassificationConfidence = 'high';
-      normalizedLines.shift();
-      originalLines.shift();
-      normalizedLinePairs.shift();
+      workingLinePairs = normalizedLinePairs.slice(1);
     }
 
-    const blockOriginal = originalLines.join('\n').trim();
-    const blockNormalized = normalizedLines.join('\n').trim();
+    let blockSectionKey = currentSectionKey;
+    let blockSectionLabel = currentSectionLabel;
+    let blockClassificationReason = currentClassificationReason;
+    let blockClassificationConfidence = currentClassificationConfidence;
+    const structuralSection = inferStructuralSection(
+      workingLinePairs.map((entry) => entry.normalized),
+      documentType
+    );
+
+    if (structuralSection && !(currentClassificationReason === 'explicit_heading' && structuralSection.sectionKey === currentSectionKey)) {
+      blockSectionKey = structuralSection.sectionKey;
+      blockSectionLabel = structuralSection.sectionLabel;
+      blockClassificationReason = structuralSection.reason;
+      blockClassificationConfidence = structuralSection.confidence;
+      currentSectionKey = blockSectionKey;
+      currentSectionLabel = blockSectionLabel;
+      currentClassificationReason = blockClassificationReason;
+      currentClassificationConfidence = blockClassificationConfidence;
+    } else if (currentClassificationReason !== 'default_overview') {
+      blockClassificationReason = 'inherited_context';
+      blockClassificationConfidence = 'medium';
+    }
+
+    workingLinePairs = mergeSectionAwareContinuations(workingLinePairs, {
+      sectionKey: blockSectionKey,
+      documentType,
+      paragraphIndex,
+      cleaningManifest
+    });
+
+    const blockOriginal = workingLinePairs.map((entry) => entry.original).join('\n').trim();
+    const blockNormalized = workingLinePairs.map((entry) => entry.normalized).join('\n').trim();
 
     if (!blockNormalized) {
       return;
@@ -309,14 +541,14 @@ function buildNormalizedSourceDocument({
       documentLabel: label,
       sourcePath,
       sourceName: sourcePath ? path.basename(sourcePath) : label,
-      sectionKey: currentSectionKey,
-      sectionLabel: currentSectionLabel,
-      classificationReason: currentClassificationReason,
-      classificationConfidence: currentClassificationConfidence,
+      sectionKey: blockSectionKey,
+      sectionLabel: blockSectionLabel,
+      classificationReason: blockClassificationReason,
+      classificationConfidence: blockClassificationConfidence,
       order: normalizedBlocks.length,
       textOriginal: blockOriginal,
       textNormalized: blockNormalized,
-      cleaningActions: [...new Set(normalizedLinePairs.flatMap((entry) => entry.actions))],
+      cleaningActions: [...new Set(workingLinePairs.flatMap((entry) => entry.actions))],
       sourceRefs: [
         {
           paragraph: paragraphIndex + 1

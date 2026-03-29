@@ -69,7 +69,54 @@ test('buildNormalizedSourceDocument classifies explicit headings with confidence
   const requirementBlock = normalizedDocument.normalizedBlocks.find((block) => block.sectionKey === 'requirements');
 
   assert.ok(requirementBlock);
-  assert.equal(requirementBlock.classificationReason, 'explicit_heading');
-  assert.equal(requirementBlock.classificationConfidence, 'high');
+  assert.equal(requirementBlock.classificationReason, 'inherited_context');
+  assert.equal(requirementBlock.classificationConfidence, 'medium');
   assert.deepEqual(requirementBlock.sourceRefs, [{ paragraph: 2 }]);
+});
+
+test('buildNormalizedSourceDocument infers structural education and employment sections when headings are delayed', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'cv',
+    label: 'Candidate CV',
+    text: [
+      'MSc in Computing',
+      'Cardiff University, UK | 2019 - 2020',
+      '',
+      'Shanghai Xiaohan Technology Co., Ltd. — Blockchain Engineer',
+      'Sep 2021 - Sep 2025'
+    ].join('\n'),
+    sourcePath: '/tmp/candidate-cv.pdf'
+  });
+
+  const sectionKeys = normalizedDocument.normalizedBlocks.map((block) => block.sectionKey);
+  const educationBlock = normalizedDocument.normalizedBlocks.find((block) => block.sectionKey === 'education');
+  const employmentBlock = normalizedDocument.normalizedBlocks.find((block) => block.sectionKey === 'experience');
+
+  assert.deepEqual(sectionKeys, ['education', 'experience']);
+  assert.equal(educationBlock.classificationReason, 'structural_pattern');
+  assert.equal(educationBlock.classificationConfidence, 'medium');
+  assert.equal(employmentBlock.classificationReason, 'structural_pattern');
+  assert.equal(employmentBlock.classificationConfidence, 'medium');
+});
+
+test('buildNormalizedSourceDocument merges wrapped bullet continuations only after section classification is known', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'jd',
+    label: 'Job Description',
+    text: [
+      'Requirements',
+      '',
+      '- Strong Rust smart contract experience',
+      'across Solana and EVM ecosystems',
+      '- Backend API design'
+    ].join('\n'),
+    sourcePath: '/tmp/job-description.docx'
+  });
+
+  const requirementBlock = normalizedDocument.normalizedBlocks.find((block) => block.sectionKey === 'requirements');
+
+  assert.ok(requirementBlock);
+  assert.match(requirementBlock.textNormalized, /- Strong Rust smart contract experience across Solana and EVM ecosystems/);
+  assert.ok(requirementBlock.cleaningActions.includes('normalize_wrapped_bullet_continuation'));
+  assert.ok(normalizedDocument.cleaningManifest.some((entry) => entry.ruleId === 'normalize_wrapped_bullet_continuation'));
 });

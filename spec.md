@@ -1452,6 +1452,12 @@ Current implemented slice (`7A.1`):
   - bullet-marker normalization
 - the existing retrieval contract stays stable while source normalization becomes explicit and testable
 
+Approved next slice (`7A.2`) boundary:
+- strengthen section classification beyond explicit headings using only conservative structural precedence
+- add section-aware wrapped-line handling only after section classification is known
+- keep the retrieval and downstream generation contract unchanged
+- defer the English working layer and canonical schema extraction changes to later slices
+
 Acceptance criteria:
 - The app preserves raw extracted source separately from normalized content.
 - Known safe artifacts such as standalone page markers, repeated headers/footers, OCR junk, and broken wrapping can be removed or normalized without losing source traceability.

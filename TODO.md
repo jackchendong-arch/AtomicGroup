@@ -314,7 +314,7 @@ Mark a release complete only when the work is:
   - Current release-gate command: `npm run test:release-hardening`
 
 ## Release 7A: Source Normalization Foundation
-- [ ] Release 7A shipped, completed, and tested.
+- [-] Release 7A in progress.
 - Preserve raw extracted CV/JD source separately from normalized content.
 - Introduce an explicit source-normalization stage for safe artifact stripping and line repair.
 - Normalize into section-aware source blocks with source refs, language hints, and parser metadata.
@@ -325,6 +325,11 @@ Mark a release complete only when the work is:
   - preserved `rawSource` plus `cleaningManifest` in the workspace source model
   - normalized source blocks feeding the existing retrieval path
   - first safe cleaning rules for page markers, opaque PDF artifacts, decoration-only lines, and bullet-marker normalization
+- Approved `7A.2` slice should cover:
+  - stronger section classification beyond explicit headings
+  - conservative section-aware wrapped-line handling
+  - no English working layer yet
+  - no schema extraction changes yet
 
 ## Release 7B: Canonical Schema Extraction and Validation
 - [ ] Release 7B shipped, completed, and tested.

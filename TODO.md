@@ -332,11 +332,19 @@ Mark a release complete only when the work is:
   - no schema extraction changes yet
 
 ## Release 7B: Canonical Schema Extraction and Validation
-- [ ] Release 7B shipped, completed, and tested.
+- [-] Release 7B in progress.
 - Introduce explicit canonical candidate and JD schemas as shared factual source-of-truth artifacts.
 - Add section-specific extraction for profile facts, education, employment history, project experiences, and JD requirements.
 - Add deterministic reconciliation and validation for chronology, malformed rows, section leakage, dedupe, and project-role ambiguity.
 - Keep the canonical candidate schema plus canonical JD schema as the shared content source of truth for summary, briefing, email, and Word-report generation.
+- Approved `7B.1` slice should cover:
+  - canonical candidate schema and canonical JD schema MVP contracts
+  - section-specific extraction for education, employment history, project experiences, and JD requirements only
+  - minimal deterministic reconciliation for dedupe, chronology ordering, section leakage, and project-role linkage
+  - minimal validation summary output with normalized issue codes and provisional `green|amber|red` state
+  - no recruiter correction UI yet
+  - no English working layer yet
+  - no Word adapter redesign yet
 
 ## Release 7C: Exception-Based Review and Quality Gates
 - [ ] Release 7C shipped, completed, and tested.

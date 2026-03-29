@@ -1474,6 +1474,23 @@ Scope:
 - Section-specific extraction for education, employment, projects, profile facts, and JD requirements
 - Deterministic reconciliation and validation rules
 
+Approved first implementation slice (`7B.1`) boundary:
+- define the first canonical candidate schema and canonical JD schema contracts
+- extract only:
+  - education
+  - employment history
+  - project experiences
+  - JD requirements
+- keep the first canonical model minimal, with entry-level confidence, validation flags, and source references where required for traceability
+- use normalized source blocks from `7A` as the input boundary
+- add only minimal deterministic reconciliation for:
+  - dedupe
+  - chronology ordering
+  - section leakage detection
+  - conservative project-role linkage
+- emit a minimal validation summary with normalized issue codes and a provisional `green|amber|red` state
+- defer recruiter correction UI, English working layer usage, narrative-generation redesign, and Word adapter changes
+
 Acceptance criteria:
 - Candidate and JD facts can be represented as explicit canonical JSON artifacts.
 - Section-specific extraction is preferred over one broad CV-to-JSON call for the core factual sections.

@@ -1,5 +1,12 @@
-const { extractRequirements } = require('./summary-service');
-const { extractDocumentDerivedProfile } = require('./hiring-manager-template-service');
+const path = require('node:path');
+
+const { extractCandidateName, extractRequirements, extractRoleTitle } = require('./summary-service');
+const {
+  extractEducationEntries,
+  extractDocumentDerivedProfile,
+  extractExperienceHistory,
+  extractProjectExperiences
+} = require('./hiring-manager-template-service');
 const { buildWorkspaceSourceModel } = require('./workspace-source-service');
 
 const GENERIC_CANDIDATE_LABELS = new Set([
@@ -30,6 +37,23 @@ const GENERIC_ROLE_LABELS = new Set([
   'requirements',
   'responsibilities',
   'role'
+]);
+
+const GENERIC_SECTION_LABELS = new Set([
+  'candidate cv',
+  'education',
+  'experience',
+  'job description',
+  'key projects',
+  'languages',
+  'overview',
+  'professional experience',
+  'projects',
+  'requirements',
+  'responsibilities',
+  'skills',
+  'technical skills',
+  'work experience'
 ]);
 
 const COMPANY_HINT_PATTERN =
@@ -88,6 +112,62 @@ function compareYearDescending(left = '', right = '') {
   const leftYear = Number.parseInt(extractYear(left), 10) || 0;
   const rightYear = Number.parseInt(extractYear(right), 10) || 0;
   return rightYear - leftYear;
+}
+
+function parseDatePoint(value, boundary = 'start') {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/present|current|now/i.test(normalized)) {
+    return boundary === 'start' ? 9999 * 12 : (9999 * 12) + 11;
+  }
+
+  const namedMonthMatch = normalized.match(
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+((?:19|20)\d{2})\b/i
+  );
+
+  if (namedMonthMatch) {
+    const monthToken = namedMonthMatch[1].slice(0, 3).toLowerCase();
+    const year = Number.parseInt(namedMonthMatch[2], 10);
+    const monthIndex = {
+      jan: 0,
+      feb: 1,
+      mar: 2,
+      apr: 3,
+      may: 4,
+      jun: 5,
+      jul: 6,
+      aug: 7,
+      sep: 8,
+      oct: 9,
+      nov: 10,
+      dec: 11
+    }[monthToken];
+
+    return (year * 12) + monthIndex;
+  }
+
+  const numericMonthMatch = normalized.match(/\b((?:19|20)\d{2})[./-](\d{1,2})\b/);
+
+  if (numericMonthMatch) {
+    const year = Number.parseInt(numericMonthMatch[1], 10);
+    const month = Number.parseInt(numericMonthMatch[2], 10);
+
+    if (month >= 1 && month <= 12) {
+      return (year * 12) + (month - 1);
+    }
+  }
+
+  const year = Number.parseInt(extractYear(normalized), 10);
+
+  if (year) {
+    return (year * 12) + (boundary === 'start' ? 0 : 11);
+  }
+
+  return null;
 }
 
 function dedupeBy(values, buildKey) {
@@ -152,7 +232,23 @@ function looksLikeSuspiciousProjectName(value) {
     return true;
   }
 
+  if (/^(?:achieved|architected|built|contributed|delivered|designed|developed|handled|implemented|integrated|migrated|optimized|reduced)\b/i.test(normalized)) {
+    return true;
+  }
+
   if (normalized.length > 90) {
+    return true;
+  }
+
+  if (/[。.!?]$/.test(normalized)) {
+    return true;
+  }
+
+  if (/[。]/.test(normalized) || /(?:掌握|熟练|能够|负责|使用)/.test(normalized)) {
+    return true;
+  }
+
+  if (normalized.length > 60 && !/[()（）]/.test(normalized)) {
     return true;
   }
 
@@ -210,6 +306,440 @@ function selectSourceRefs(blocks = [], { preferredSectionKeys = [], terms = [], 
     .map(buildSourceRef);
 
   return fallbackBlocks;
+}
+
+function looksLikeGenericSectionLabel(value) {
+  return GENERIC_SECTION_LABELS.has(normalizeKey(value));
+}
+
+function buildBlockExtractionText(block) {
+  const blockText = String(block?.text || '').trim();
+  const sectionLabel = cleanLine(block?.sectionLabel);
+
+  if (!sectionLabel || looksLikeGenericSectionLabel(sectionLabel) || sectionLabel === blockText) {
+    return blockText;
+  }
+
+  return [sectionLabel, blockText].filter(Boolean).join('\n');
+}
+
+function resolveDocumentFileName(document, sourceDocument, fallbackName) {
+  const explicitName = cleanLine(document?.file?.name);
+
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const sourcePath = cleanLine(sourceDocument?.sourcePath);
+
+  if (sourcePath) {
+    return path.basename(sourcePath);
+  }
+
+  const sourceName = cleanLine(sourceDocument?.blocks?.[0]?.sourceName);
+
+  if (sourceName) {
+    return sourceName;
+  }
+
+  return fallbackName;
+}
+
+function collectLinesFromBlocks(blocks = []) {
+  return blocks.flatMap((block) => buildBlockExtractionText(block)
+    .split('\n')
+    .map((line) => cleanLine(line))
+    .filter(Boolean));
+}
+
+function collectSectionLines(blocks = [], sectionKeys = []) {
+  const sectionKeySet = new Set(sectionKeys);
+  return collectLinesFromBlocks(
+    blocks.filter((block) => sectionKeySet.has(block.sectionKey))
+  );
+}
+
+function collectPreferredSectionLines(blocks = [], primarySectionKeys = [], fallbackSectionKeys = []) {
+  const primaryLines = collectSectionLines(blocks, primarySectionKeys);
+
+  if (primaryLines.length > 0) {
+    return primaryLines;
+  }
+
+  const fallbackLines = collectSectionLines(blocks, fallbackSectionKeys);
+
+  if (fallbackLines.length > 0) {
+    return fallbackLines;
+  }
+
+  return collectLinesFromBlocks(blocks);
+}
+
+function joinLines(lines = []) {
+  return lines.join('\n');
+}
+
+function buildDocumentTextFromBlocks(blocks = []) {
+  return blocks
+    .map((block) => buildBlockExtractionText(block).trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function isLikelyValidEducationEntry(entry = {}) {
+  const degreeName = cleanLine(entry.degreeName);
+  const institutionName = cleanLine(entry.university);
+  const combined = cleanLine([degreeName, institutionName].join(' '));
+
+  if (!combined || !EDUCATION_HINT_PATTERN.test(combined)) {
+    return false;
+  }
+
+  if (degreeName && looksLikeEmploymentOrProjectPollution(degreeName) && !EDUCATION_HINT_PATTERN.test(degreeName)) {
+    return false;
+  }
+
+  if (institutionName && looksLikeEmploymentOrProjectPollution(institutionName) && !EDUCATION_HINT_PATTERN.test(institutionName)) {
+    return false;
+  }
+
+  return true;
+}
+
+function scoreEducationEntries(entries = []) {
+  return entries.reduce((score, entry) => {
+    const hasContent = cleanLine([
+      entry.degreeName,
+      entry.university,
+      entry.startYear,
+      entry.endYear
+    ].join(' '));
+
+    if (!hasContent) {
+      return score;
+    }
+
+    if (isLikelyValidEducationEntry(entry)) {
+      score.validCount += 1;
+      return score;
+    }
+
+    score.malformedCount += 1;
+    return score;
+  }, {
+    validCount: 0,
+    malformedCount: 0
+  });
+}
+
+function chooseEducationEntries(sectionEntries = [], fallbackEntries = []) {
+  const sectionScore = scoreEducationEntries(sectionEntries);
+  const fallbackScore = scoreEducationEntries(fallbackEntries);
+
+  if (sectionScore.validCount === 0 && fallbackScore.validCount === 0) {
+    return [];
+  }
+
+  if (
+    sectionScore.validCount > 0 &&
+    (
+      fallbackScore.validCount === 0 ||
+      sectionScore.malformedCount <= fallbackScore.malformedCount
+    )
+  ) {
+    return sectionEntries;
+  }
+
+  return fallbackScore.validCount > 0 ? fallbackEntries : [];
+}
+
+function scoreProjectEntries(entries = []) {
+  return entries.reduce((score, entry) => {
+    const projectName = cleanLine(entry.project_name);
+
+    if (!projectName) {
+      return score;
+    }
+
+    if (looksLikeSuspiciousProjectName(projectName)) {
+      score.suspiciousCount += 1;
+      return score;
+    }
+
+    score.validCount += 1;
+    return score;
+  }, {
+    validCount: 0,
+    suspiciousCount: 0
+  });
+}
+
+function chooseProjectEntries(sectionEntries = [], fallbackEntries = []) {
+  const mergedByName = new Map();
+
+  [...sectionEntries, ...fallbackEntries].forEach((entry) => {
+    const key = normalizeKey(entry.project_name);
+
+    if (!key) {
+      return;
+    }
+
+    const existing = mergedByName.get(key);
+
+    if (!existing || scoreRawProjectEntry(entry) > scoreRawProjectEntry(existing)) {
+      mergedByName.set(key, entry);
+    }
+  });
+
+  if (mergedByName.size === 0) {
+    return [];
+  }
+
+  return [...mergedByName.values()];
+}
+
+function cleanBulletPrefix(value) {
+  return cleanLine(String(value || '').replace(/^[-*•]\s*/, ''));
+}
+
+function parseProjectHeadingParts(value) {
+  const normalized = cleanLine(value);
+  const trailingDateMatch = normalized.match(/^(.*?)\s*[（(]\s*([^()（）]+?)\s*[)）]\s*$/);
+
+  if (!trailingDateMatch || !/(19|20)\d{2}/.test(trailingDateMatch[2])) {
+    return {
+      projectName: normalized,
+      startDate: '',
+      endDate: ''
+    };
+  }
+
+  const rangeParts = trailingDateMatch[2]
+    .split(/[–-]/)
+    .map((part) => cleanLine(part))
+    .filter(Boolean);
+
+  return {
+    projectName: cleanLine(trailingDateMatch[1]),
+    startDate: rangeParts[0] || '',
+    endDate: rangeParts[1] || rangeParts[0] || ''
+  };
+}
+
+function looksLikeProjectHeadingCandidate(value) {
+  const normalized = cleanLine(value);
+  const parsedHeading = parseProjectHeadingParts(normalized);
+
+  if (!normalized || normalized === '.' || /^[-*•]\s*/.test(normalized)) {
+    return false;
+  }
+
+  if (/^(?:tech stack|使用技术)\s*[:：]/i.test(normalized)) {
+    return false;
+  }
+
+  if (parsedHeading.startDate || parsedHeading.endDate) {
+    return true;
+  }
+
+  if (/[.?!]$/.test(normalized)) {
+    return false;
+  }
+
+  if (/^(?:achieved|architected|built|contributed|delivered|designed|developed|handled|implemented|integrated|migrated|optimized|reduced)\b/i.test(normalized)) {
+    return false;
+  }
+
+  return !looksLikeSuspiciousProjectName(normalized) && normalized.split(/\s+/).length <= 12;
+}
+
+function scoreRawProjectEntry(entry = {}) {
+  const bulletCount = Array.isArray(entry.project_bullets) ? entry.project_bullets.length : 0;
+  const dateSpecificity = [entry.project_start_date, entry.project_end_date]
+    .filter(Boolean)
+    .reduce((score, value) => {
+      if (/\d{4}[./-]\d{1,2}/.test(String(value))) {
+        return score + 2;
+      }
+
+      if (/\d{4}/.test(String(value))) {
+        return score + 1;
+      }
+
+      return score;
+    }, 0);
+
+  return dateSpecificity + Math.min(bulletCount, 3);
+}
+
+function buildProjectEntryFromBlock(block) {
+  const lines = buildBlockExtractionText(block)
+    .split('\n')
+    .map((line) => cleanLine(line))
+    .filter(Boolean);
+  const customHeading = !looksLikeGenericSectionLabel(block?.sectionLabel)
+    ? cleanLine(block.sectionLabel)
+    : '';
+  const heading = customHeading || (looksLikeProjectHeadingCandidate(lines[0] || '') ? lines[0] : '');
+
+  if (!heading || heading === '.') {
+    return null;
+  }
+
+  const parsedHeading = parseProjectHeadingParts(heading);
+  const bulletLines = lines
+    .filter((line, index) => {
+      if (customHeading && index === 0 && line === customHeading) {
+        return false;
+      }
+
+      return line !== heading && line !== '.';
+    })
+    .map((line) => cleanBulletPrefix(line))
+    .filter(Boolean);
+
+  return {
+    project_name: parsedHeading.projectName,
+    project_start_date: parsedHeading.startDate,
+    project_end_date: parsedHeading.endDate,
+    project_timeline_basis: parsedHeading.startDate || parsedHeading.endDate ? 'explicit' : '',
+    linked_job_title: '',
+    linked_company_name: '',
+    project_bullets: bulletLines,
+    project_bullet_originals: bulletLines.slice()
+  };
+}
+
+function extractCanonicalProjectEntries(projectBlocks = []) {
+  const sectionEntries = extractProjectExperiences(collectLinesFromBlocks(projectBlocks));
+  const blockEntries = projectBlocks
+    .map((block) => buildProjectEntryFromBlock(block))
+    .filter(Boolean);
+  const bestEntryByName = new Map();
+
+  [...sectionEntries, ...blockEntries].forEach((entry) => {
+    const key = normalizeKey(entry.project_name);
+
+    if (!key) {
+      return;
+    }
+
+    const existing = bestEntryByName.get(key);
+
+    if (!existing || scoreRawProjectEntry(entry) > scoreRawProjectEntry(existing)) {
+      bestEntryByName.set(key, entry);
+    }
+  });
+
+  return [...bestEntryByName.values()];
+}
+
+function looksLikeCandidateLocation(value, candidateName = '') {
+  const normalized = cleanLine(value);
+
+  if (!normalized || normalized === candidateName) {
+    return false;
+  }
+
+  if (
+    /@/.test(normalized) ||
+    /\d{5,}/.test(normalized) ||
+    /^[-*•]\s*/.test(normalized) ||
+    /^(?:education|experience|projects|skills|languages|summary|profile)$/i.test(normalized)
+  ) {
+    return false;
+  }
+
+  return (
+    /^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i.test(normalized) ||
+    /,/.test(normalized) ||
+    /\b(?:beijing|china|dubai|france|germany|hong kong|india|japan|london|new york|paris|san francisco|shanghai|shenzhen|singapore|sydney|tokyo|united arab emirates|united kingdom|united states|usa)\b/i.test(normalized) ||
+    /(?:北京|上海|深圳|广州|杭州|香港|中国|新加坡|伦敦|纽约|东京)/.test(normalized)
+  );
+}
+
+function extractCandidateLocationFromBlocks(cvBlocks = [], candidateName = '') {
+  const overviewLines = collectPreferredSectionLines(cvBlocks, ['overview', 'unknown'], []).slice(0, 12);
+
+  for (const line of overviewLines) {
+    if (/^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i.test(line)) {
+      return cleanLine(line.split(/[:：]/).slice(1).join(':'));
+    }
+
+    if (looksLikeCandidateLocation(line, candidateName)) {
+      return line;
+    }
+  }
+
+  return '';
+}
+
+function extractCanonicalProfile({ cvDocument, jdDocument, cvSourceDocument, jdSourceDocument }) {
+  const cvBlocks = cvSourceDocument?.blocks || [];
+  const jdBlocks = jdSourceDocument?.blocks || [];
+  const cvFileName = resolveDocumentFileName(cvDocument, cvSourceDocument, 'candidate');
+  const jdFileName = resolveDocumentFileName(jdDocument, jdSourceDocument, 'role');
+  const cvAllText = buildDocumentTextFromBlocks(cvBlocks);
+  const jdAllText = buildDocumentTextFromBlocks(jdBlocks);
+  const sourceBoundProfile = extractDocumentDerivedProfile({
+    cvDocument: {
+      text: cvAllText,
+      file: {
+        name: cvFileName,
+        path: cleanLine(cvSourceDocument?.sourcePath)
+      }
+    },
+    jdDocument: {
+      text: jdAllText,
+      file: {
+        name: jdFileName,
+        path: cleanLine(jdSourceDocument?.sourcePath)
+      }
+    }
+  });
+  const candidateNameFromBlocks = extractCandidateName(
+    joinLines(collectPreferredSectionLines(cvBlocks, ['overview', 'unknown'], [])) || cvAllText,
+    cvFileName
+  );
+  const roleTitleFromBlocks = extractRoleTitle(
+    joinLines(collectPreferredSectionLines(jdBlocks, ['overview'], ['requirements', 'responsibilities'])) || jdAllText,
+    jdFileName
+  );
+  const educationLines = collectSectionLines(cvBlocks, ['education']);
+  const experienceLines = collectSectionLines(cvBlocks, ['experience']);
+  const projectBlocks = cvBlocks.filter((block) => block.sectionKey === 'projects');
+  const requirementLines = collectPreferredSectionLines(jdBlocks, ['requirements'], ['responsibilities']);
+  const requirementEntries = extractRequirements(joinLines(requirementLines));
+  const sectionEducationEntries = educationLines.length > 0
+    ? extractEducationEntries(educationLines)
+    : [];
+  const sectionProjectEntries = projectBlocks.length > 0
+    ? extractCanonicalProjectEntries(projectBlocks)
+    : [];
+
+  return {
+    candidateName: cleanLine(candidateNameFromBlocks) && !looksLikeGenericCandidateLabel(candidateNameFromBlocks)
+      ? candidateNameFromBlocks
+      : sourceBoundProfile.candidateName,
+    candidateLocation: extractCandidateLocationFromBlocks(cvBlocks, candidateNameFromBlocks) || sourceBoundProfile.candidateLocation,
+    roleTitle: cleanLine(roleTitleFromBlocks) && !looksLikeGenericRoleLabel(roleTitleFromBlocks)
+      ? roleTitleFromBlocks
+      : sourceBoundProfile.roleTitle,
+    educationEntries: chooseEducationEntries(
+      sectionEducationEntries,
+      sourceBoundProfile.educationEntries || []
+    ),
+    employmentHistory: experienceLines.length > 0
+      ? extractExperienceHistory(experienceLines)
+      : (sourceBoundProfile.employmentHistory || []),
+    projectExperiences: chooseProjectEntries(
+      sectionProjectEntries,
+      sourceBoundProfile.projectExperiences || []
+    ),
+    requirementEntries: requirementEntries.length > 0
+      ? requirementEntries
+      : extractRequirements(jdAllText)
+  };
 }
 
 function parseDegreeAndField(degreeName) {
@@ -332,10 +862,10 @@ function buildProjectSummary(projectBullets = []) {
 }
 
 function findEmploymentLinkIndex(project, employmentHistory) {
-  const projectStartYear = extractYear(project.startDate);
-  const projectEndYear = extractYear(project.endDate) || projectStartYear;
+  const projectStart = parseDatePoint(project.startDate, 'start');
+  const projectEnd = parseDatePoint(project.endDate || project.startDate, 'end');
 
-  if (!projectStartYear) {
+  if (projectStart === null) {
     return {
       linkedEmploymentIndex: null,
       ambiguous: false
@@ -345,16 +875,16 @@ function findEmploymentLinkIndex(project, employmentHistory) {
   const matches = employmentHistory
     .map((employmentEntry, index) => ({ employmentEntry, index }))
     .filter(({ employmentEntry }) => {
-      const employmentStartYear = extractYear(employmentEntry.startDate);
-      const employmentEndYear = extractYear(employmentEntry.endDate) || employmentStartYear;
+      const employmentStart = parseDatePoint(employmentEntry.startDate, 'start');
+      const employmentEnd = parseDatePoint(employmentEntry.endDate || employmentEntry.startDate, 'end');
 
-      if (!employmentStartYear || !employmentEndYear) {
+      if (employmentStart === null || employmentEnd === null) {
         return false;
       }
 
       return (
-        Number.parseInt(projectStartYear, 10) >= Number.parseInt(employmentStartYear, 10) &&
-        Number.parseInt(projectEndYear, 10) <= Number.parseInt(employmentEndYear, 10)
+        projectStart >= employmentStart &&
+        (projectEnd === null ? projectStart : projectEnd) <= employmentEnd
       );
     });
 
@@ -377,8 +907,12 @@ function normalizeProjectEntries(entries = [], cvBlocks = [], employmentHistory 
     entry.project_start_date,
     entry.project_end_date
   ].join('|')));
+  const nonSuspiciousEntries = deduped.filter((entry) => !looksLikeSuspiciousProjectName(entry.project_name));
+  const candidateEntries = nonSuspiciousEntries.length > 0
+    ? nonSuspiciousEntries
+    : deduped.filter((entry) => cleanLine(entry.project_name));
 
-  return deduped
+  return candidateEntries
     .map((entry) => {
       const projectBullets = Array.isArray(entry.project_bullets) ? entry.project_bullets : [];
       const validationFlags = [];
@@ -526,6 +1060,16 @@ function buildCanonicalValidationSummary({ candidateSchema, jdSchema }) {
       });
     }
 
+    if (entry.validationFlags.includes('project_role_ambiguous')) {
+      issues.push({
+        code: 'project_role_ambiguous',
+        severity: 'amber',
+        section: 'projects',
+        entryIndex: index,
+        message: `Project entry ${index + 1} could not be linked to one role unambiguously.`,
+        sourceRefs: entry.sourceRefs
+      });
+    }
   });
 
   if (!jdSchema.requirements.length) {
@@ -554,10 +1098,11 @@ function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = 
   const resolvedSourceModel = sourceModel || buildWorkspaceSourceModel({ cvDocument, jdDocument });
   const cvSourceDocument = resolvedSourceModel.documents.find((document) => document.documentType === 'cv');
   const jdSourceDocument = resolvedSourceModel.documents.find((document) => document.documentType === 'jd');
-
-  const profile = extractDocumentDerivedProfile({
+  const profile = extractCanonicalProfile({
     cvDocument,
-    jdDocument
+    jdDocument,
+    cvSourceDocument,
+    jdSourceDocument
   });
 
   const candidateSchema = {
@@ -593,7 +1138,7 @@ function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = 
       })
     },
     requirements: normalizeRequirementEntries(
-      extractRequirements(jdDocument?.text || ''),
+      profile.requirementEntries || [],
       jdSourceDocument?.blocks || [],
       profile.roleTitle
     )

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const { importDocument } = require('../../services/document-service');
 const { buildCanonicalSchemas } = require('../../services/canonical-schema-service');
+const { buildWorkspaceSourceModel } = require('../../services/workspace-source-service');
 
 const ROLE4_ROOT = '/Users/jack/Dev/Test/AtomicGroup/Role4';
 const JD4_PATH = path.join(ROLE4_ROOT, 'JD4.docx');
@@ -74,6 +75,127 @@ test('buildCanonicalSchemas produces canonical candidate and JD schemas with sou
   assert(result.jdSchema.requirements[0].sourceRefs.length > 0);
 });
 
+test('buildCanonicalSchemas uses normalized source blocks as the extraction boundary when sourceModel is supplied', () => {
+  const sourceModel = buildWorkspaceSourceModel({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        'Shanghai, China',
+        '',
+        'Education',
+        'MSc in Computing',
+        'Cardiff University, UK | 2019 – 2020',
+        '',
+        'Work Experience',
+        'Shanghai Xiaohan Technology Co., Ltd. — Blockchain Engineer',
+        'Sep 2021 – Sep 2025',
+        '- Built backend services',
+        '',
+        'Projects',
+        'Rust Copy-Trading Arbitrage Bot & Jupiter-style Aggregator (2025.04 – 2025.08)',
+        '- Tech Stack: Rust, Solana',
+        '- Built a Jupiter-style token swap aggregator on Solana'
+      ].join('\n'),
+      file: {
+        name: 'source-cv.pdf',
+        path: '/tmp/source-cv.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Blockchain Engineer',
+        '',
+        'Requirements',
+        '- Experience building backend services',
+        '- Solana or blockchain delivery experience'
+      ].join('\n'),
+      file: {
+        name: 'source-jd.docx',
+        path: '/tmp/source-jd.docx'
+      }
+    }
+  });
+
+  const result = buildCanonicalSchemas({
+    cvDocument: {
+      text: [
+        'Candidate',
+        'Skills',
+        '- JavaScript'
+      ].join('\n'),
+      file: {
+        name: 'candidate.pdf',
+        path: '/tmp/raw-candidate.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role',
+        '',
+        'Responsibilities',
+        '- Own roadmap'
+      ].join('\n'),
+      file: {
+        name: 'role.docx',
+        path: '/tmp/raw-role.docx'
+      }
+    },
+    sourceModel
+  });
+
+  assert.equal(result.candidateSchema.identity.name, 'Noah Zhang');
+  assert.equal(result.candidateSchema.education.length, 1);
+  assert.equal(result.candidateSchema.employmentHistory.length, 1);
+  assert.equal(result.candidateSchema.projectExperiences.length, 1);
+  assert.equal(result.jdSchema.role.title, 'Blockchain Engineer');
+  assert.equal(result.jdSchema.requirements.length, 2);
+  assert.equal(result.validationSummary.state, 'green');
+});
+
+test('buildCanonicalSchemas surfaces ambiguous project-role linkage as amber validation', () => {
+  const result = buildCanonicalSchemas({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        'Shanghai, China',
+        '',
+        'Work Experience',
+        'Acme Capital — Blockchain Engineer',
+        '2020 – 2023',
+        '- Built backend services',
+        '',
+        'Beta Labs — Lead Engineer',
+        '2021 – 2024',
+        '- Led protocol delivery',
+        '',
+        'Projects',
+        'Liquidity Router (2022 – 2022)',
+        '- Built low-latency routing services'
+      ].join('\n'),
+      file: {
+        name: 'Noah Zhang CV.pdf',
+        path: '/tmp/noah-zhang-ambiguous.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Blockchain Engineer',
+        '',
+        'Requirements',
+        '- Experience building backend services'
+      ].join('\n'),
+      file: {
+        name: 'JD4.docx',
+        path: '/tmp/jd4-ambiguous.docx'
+      }
+    }
+  });
+
+  assert.equal(result.validationSummary.state, 'amber');
+  assert(result.validationSummary.issues.some((issue) => issue.code === 'project_role_ambiguous'));
+  assert.equal(result.candidateSchema.projectExperiences[0].linkedEmploymentIndex, null);
+});
+
 test(
   'Role4 CV4-1 canonical schema keeps compact Chinese education and project sections clean',
   {
@@ -109,8 +231,10 @@ test(
   async () => {
     const result = await loadRole4Canonical('CV4-2.pdf');
     const projectNames = result.candidateSchema.projectExperiences.map((entry) => entry.projectName);
+    const issueCodes = result.validationSummary.issues.map((issue) => issue.code);
 
-    assert.equal(result.validationSummary.state, 'green');
+    assert.equal(result.validationSummary.state, 'amber');
+    assert(issueCodes.includes('project_role_ambiguous'));
     assert.deepEqual(
       result.candidateSchema.education.map((entry) => ({
         degreeName: entry.degreeName,

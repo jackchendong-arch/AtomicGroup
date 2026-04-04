@@ -1442,7 +1442,7 @@ Scope:
 - Original-language source lineage and parser metadata
 - English working layer for bounded downstream processing
 
-Current implemented slice (`7A.1`):
+Current implemented slice (`7A.2`):
 - a standalone source-normalization service now exists between raw extraction and workspace retrieval
 - workspace source documents now preserve `rawSource`, `cleaningManifest`, and normalized retrieval blocks together
 - the first safe cleaning rules are in place for:
@@ -1450,13 +1450,14 @@ Current implemented slice (`7A.1`):
   - opaque PDF artifact lines
   - decoration-only lines
   - bullet-marker normalization
+- section classification now extends beyond explicit headings using conservative structural precedence from real fixture evidence
+- wrapped-line repair now occurs only after section classification is known, including same-section wrapped block repair where the section stays stable
 - the existing retrieval contract stays stable while source normalization becomes explicit and testable
 
-Approved next slice (`7A.2`) boundary:
-- strengthen section classification beyond explicit headings using only conservative structural precedence
-- add section-aware wrapped-line handling only after section classification is known
-- keep the retrieval and downstream generation contract unchanged
-- defer the English working layer and canonical schema extraction changes to later slices
+Remaining open `7A` scope:
+- add the bounded English working layer for internal processing while keeping original-language evidence authoritative
+- keep the retrieval and downstream generation contract unchanged while the English working layer is introduced
+- defer canonical schema extraction changes to later slices
 
 Acceptance criteria:
 - The app preserves raw extracted source separately from normalized content.

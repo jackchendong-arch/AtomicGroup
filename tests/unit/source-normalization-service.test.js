@@ -120,3 +120,57 @@ test('buildNormalizedSourceDocument merges wrapped bullet continuations only aft
   assert.ok(requirementBlock.cleaningActions.includes('normalize_wrapped_bullet_continuation'));
   assert.ok(normalizedDocument.cleaningManifest.some((entry) => entry.ruleId === 'normalize_wrapped_bullet_continuation'));
 });
+
+test('buildNormalizedSourceDocument does not misclassify project sections as education when later bullets mention BSC-based work', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'cv',
+    label: 'Candidate CV',
+    text: [
+      'Cardiff University, UK | 2019 - 2020',
+      'Bachelor of Business Administration (BBA)',
+      '',
+      'Pongolo Tequila RWA Project (2025.01 - 2025.03)',
+      '- Built a BSC-based GameFi trading experience',
+      '- Minted Solana NFTs for asset ownership'
+    ].join('\n'),
+    sourcePath: '/tmp/candidate-cv.pdf'
+  });
+
+  assert.deepEqual(
+    normalizedDocument.normalizedBlocks.map((block) => block.sectionKey),
+    ['education', 'projects']
+  );
+  assert.equal(normalizedDocument.normalizedBlocks[1].classificationReason, 'structural_pattern');
+});
+
+test('buildNormalizedSourceDocument merges same-section wrapped blocks only after classification is established', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'cv',
+    label: 'Candidate CV',
+    text: [
+      'Skills',
+      '',
+      'Programming Languages: Golang, go-',
+      '',
+      'ethereum, Solidity, PHP, Python',
+      '',
+      'Operating Systems: Linux, shell scripting,',
+      '',
+      'production system operations'
+    ].join('\n'),
+    sourcePath: '/tmp/candidate-cv.pdf'
+  });
+
+  assert.equal(normalizedDocument.normalizedBlocks.length, 2);
+  assert.equal(normalizedDocument.normalizedBlocks[0].sectionKey, 'skills');
+  assert.equal(
+    normalizedDocument.normalizedBlocks[0].textNormalized,
+    'Programming Languages: Golang, go-ethereum, Solidity, PHP, Python'
+  );
+  assert.equal(
+    normalizedDocument.normalizedBlocks[1].textNormalized,
+    'Operating Systems: Linux, shell scripting, production system operations'
+  );
+  assert.ok(normalizedDocument.normalizedBlocks[0].cleaningActions.includes('normalize_wrapped_block_continuation'));
+  assert.ok(normalizedDocument.cleaningManifest.some((entry) => entry.ruleId === 'normalize_wrapped_block_continuation'));
+});

@@ -14,6 +14,9 @@ const PROJECT_HINT_PATTERN = /\b(?:project|platform|system|engine|aggregator|app
 const TECH_STACK_HINT_PATTERN = /(?:tech stack|使用技术)\s*[:：]/i;
 const REQUIREMENT_HINT_PATTERN = /\b(?:requirements?|qualifications?|must have|required)\b|(?:任职要求|岗位要求)/i;
 const RESPONSIBILITY_HINT_PATTERN = /\b(?:responsibilities?|duties)\b|(?:职责|岗位职责)/i;
+const PROJECT_TITLE_HINT_PATTERN = /\b(?:project|marketplace|gamefi|blockchain|relayer|indexer|oracle|livestream|agent|token|wallet|exchange|nft|defi)\b|(?:项目|平台|链|区块链|机器人|交易|钱包|索引)/i;
+const WRAPPED_CONTINUATION_PREFIX_PATTERN = /^(?:[a-z(]|\d+[a-z%)]|\)|%)/;
+const WRAPPED_TRAILING_CONNECTOR_PATTERN = /(?:[-/]|[,;:(]|\b(?:and|or|with|to|of|for|on|in|via)\b)$/i;
 
 const SECTION_LABEL_BY_KEY = {
   overview: 'Overview',
@@ -143,6 +146,40 @@ function defaultSectionLabel(sectionKey) {
   return SECTION_LABEL_BY_KEY[sectionKey] || 'Overview';
 }
 
+function getFirstLine(lines = []) {
+  return cleanLine(lines[0] || '');
+}
+
+function getSecondLine(lines = []) {
+  return cleanLine(lines[1] || '');
+}
+
+function countBulletLines(lines = []) {
+  return lines.filter((line) => String(line || '').startsWith('- ')).length;
+}
+
+function isShortTitleLikeLine(line) {
+  const normalized = cleanLine(line);
+
+  if (!normalized || normalized.length > 120 || normalized.startsWith('- ')) {
+    return false;
+  }
+
+  return /^[A-Z0-9][A-Za-z0-9 .,&+/'()–—-]{2,120}$/.test(normalized) ||
+    /^[\u4e00-\u9fffA-Za-z0-9 .,&+/'()–—-]{2,120}$/.test(normalized);
+}
+
+function looksLikeProjectTitleLine(line) {
+  const normalized = cleanLine(line);
+
+  if (!normalized || normalized.startsWith('- ') || /^[a-z]/.test(normalized)) {
+    return false;
+  }
+
+  return PROJECT_TITLE_HINT_PATTERN.test(normalized) ||
+    (isShortTitleLikeLine(normalized) && hasDateRangeHint(normalized));
+}
+
 function resolveSectionKey(heading, fallback = 'overview') {
   return SECTION_KEY_BY_HEADING[normalizeHeading(heading)] || fallback;
 }
@@ -170,14 +207,20 @@ function isHeadingParagraph(paragraph) {
 
 function looksLikeEducationParagraph(lines) {
   const paragraphText = lines.join(' ');
+  const leadText = [getFirstLine(lines), getSecondLine(lines)].filter(Boolean).join(' ');
+  const bulletCount = countBulletLines(lines);
 
-  if (!paragraphText) {
+  if (!paragraphText || !leadText) {
+    return false;
+  }
+
+  if (bulletCount > 0 && looksLikeProjectTitleLine(getFirstLine(lines))) {
     return false;
   }
 
   return (
-    (hasDateRangeHint(paragraphText) && (DEGREE_HINT_PATTERN.test(paragraphText) || EDUCATION_ORG_HINT_PATTERN.test(paragraphText))) ||
-    (DEGREE_HINT_PATTERN.test(paragraphText) && EDUCATION_ORG_HINT_PATTERN.test(paragraphText))
+    (hasDateRangeHint(paragraphText) && (DEGREE_HINT_PATTERN.test(leadText) || EDUCATION_ORG_HINT_PATTERN.test(leadText))) ||
+    (DEGREE_HINT_PATTERN.test(leadText) && EDUCATION_ORG_HINT_PATTERN.test(paragraphText))
   );
 }
 
@@ -211,15 +254,21 @@ function looksLikeEmploymentParagraph(lines) {
 function looksLikeProjectParagraph(lines) {
   const paragraphText = lines.join(' ');
   const firstLine = lines[0] || '';
+  const bulletCount = countBulletLines(lines);
 
   if (!paragraphText) {
     return false;
   }
 
+  if (looksLikeEducationParagraph(lines) || looksLikeEmploymentParagraph(lines)) {
+    return false;
+  }
+
   return (
     TECH_STACK_HINT_PATTERN.test(paragraphText) ||
-    (PROJECT_HINT_PATTERN.test(firstLine) && !looksLikeEducationParagraph(lines) && !looksLikeEmploymentParagraph(lines)) ||
-    (hasDateRangeHint(firstLine) && PROJECT_HINT_PATTERN.test(paragraphText))
+    (looksLikeProjectTitleLine(firstLine) && bulletCount > 0) ||
+    (hasDateRangeHint(firstLine) && bulletCount > 0 && isShortTitleLikeLine(firstLine)) ||
+    (PROJECT_HINT_PATTERN.test(firstLine) && bulletCount > 0)
   );
 }
 
@@ -308,6 +357,62 @@ function shouldMergeWithPreviousBullet(previousLine, currentLine, sectionKey) {
   }
 
   return /^[a-z(]/.test(String(currentLine || '').trim());
+}
+
+function getLeadingLine(text) {
+  return String(text || '')
+    .split('\n')
+    .map((line) => cleanLine(line))
+    .find(Boolean) || '';
+}
+
+function getTrailingLine(text) {
+  const lines = String(text || '')
+    .split('\n')
+    .map((line) => cleanLine(line))
+    .filter(Boolean);
+
+  return lines[lines.length - 1] || '';
+}
+
+function joinWrappedContinuation(previousText, currentText) {
+  if (/[-/]$/.test(String(previousText || '').trim())) {
+    return `${String(previousText || '').trim()}${String(currentText || '').trim()}`.trim();
+  }
+
+  return `${String(previousText || '').trim()} ${String(currentText || '').trim()}`.trim();
+}
+
+function shouldMergeWithPreviousBlock(previousBlock, currentBlock) {
+  if (!previousBlock || !currentBlock) {
+    return false;
+  }
+
+  if (previousBlock.sectionKey !== currentBlock.sectionKey) {
+    return false;
+  }
+
+  if (!['education', 'experience', 'projects', 'requirements', 'responsibilities', 'skills', 'languages'].includes(currentBlock.sectionKey)) {
+    return false;
+  }
+
+  if (String(currentBlock.textNormalized || '').includes('\n')) {
+    return false;
+  }
+
+  const previousTrailingLine = getTrailingLine(previousBlock.textNormalized);
+  const currentLeadingLine = getLeadingLine(currentBlock.textNormalized);
+
+  if (!previousTrailingLine || !currentLeadingLine) {
+    return false;
+  }
+
+  if (currentLeadingLine.startsWith('- ') || isHeadingParagraph(currentLeadingLine)) {
+    return false;
+  }
+
+  return WRAPPED_CONTINUATION_PREFIX_PATTERN.test(currentLeadingLine) ||
+    WRAPPED_TRAILING_CONNECTOR_PATTERN.test(previousTrailingLine);
 }
 
 function mergeSectionAwareContinuations(linePairs, {
@@ -557,8 +662,44 @@ function buildNormalizedSourceDocument({
     });
   });
 
+  const mergedBlocks = [];
+
+  normalizedBlocks.forEach((block) => {
+    const previousBlock = mergedBlocks[mergedBlocks.length - 1];
+
+    if (shouldMergeWithPreviousBlock(previousBlock, block)) {
+      cleaningManifest.push(createCleaningManifestEntry({
+        ruleId: 'normalize_wrapped_block_continuation',
+        action: 'normalize',
+        documentType,
+        paragraphIndex: (block.sourceRefs[0]?.paragraph || 1) - 1,
+        lineIndex: 0,
+        before: block.textOriginal,
+        after: joinWrappedContinuation(previousBlock.textNormalized, block.textNormalized),
+        confidence: 'medium'
+      }));
+
+      previousBlock.textOriginal = joinWrappedContinuation(previousBlock.textOriginal, block.textOriginal);
+      previousBlock.textNormalized = joinWrappedContinuation(previousBlock.textNormalized, block.textNormalized);
+      previousBlock.cleaningActions = [...new Set([
+        ...previousBlock.cleaningActions,
+        ...block.cleaningActions,
+        'normalize_wrapped_block_continuation'
+      ])];
+      previousBlock.sourceRefs = [
+        ...previousBlock.sourceRefs,
+        ...block.sourceRefs.filter((sourceRef) => !previousBlock.sourceRefs.some(
+          (existingRef) => existingRef.paragraph === sourceRef.paragraph
+        ))
+      ];
+      return;
+    }
+
+    mergedBlocks.push(block);
+  });
+
   if (normalizedBlocks.length === 0 && cleanLine(text)) {
-    normalizedBlocks.push({
+    mergedBlocks.push({
       blockId: createBlockId(documentType, 0),
       documentType,
       documentLabel: label,
@@ -588,7 +729,11 @@ function buildNormalizedSourceDocument({
       sourceName: sourcePath ? path.basename(sourcePath) : label,
       text: String(text || '')
     },
-    normalizedBlocks,
+    normalizedBlocks: mergedBlocks.map((block, order) => ({
+      ...block,
+      blockId: createBlockId(documentType, order),
+      order
+    })),
     cleaningManifest
   };
 }

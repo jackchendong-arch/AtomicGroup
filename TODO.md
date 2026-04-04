@@ -246,7 +246,7 @@ Mark a release complete only when the work is:
 - Add targeted structured-briefing generation diagnostics and unit regressions so mixed-language hiring-manager briefing issues can be traced at the fallback/parsed/merged employment-history level without relying on UI-only retesting.
 
 ## Release 6: Production Hardening
-- [-] Release 6 shipped, completed, and tested.
+- [x] Release 6 shipped, completed, and tested.
 - Address Tier 1 security remediation items from `/Users/jack/dev/documentation/AtomicGroupsecurity_design.html` before lower-priority production polish work.
 - Implemented so far:
   - explicit Electron `BrowserWindow` hardening with `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`, and blocked insecure content

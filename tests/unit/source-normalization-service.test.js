@@ -174,3 +174,28 @@ test('buildNormalizedSourceDocument merges same-section wrapped blocks only afte
   assert.ok(normalizedDocument.normalizedBlocks[0].cleaningActions.includes('normalize_wrapped_block_continuation'));
   assert.ok(normalizedDocument.cleaningManifest.some((entry) => entry.ruleId === 'normalize_wrapped_block_continuation'));
 });
+
+test('buildNormalizedSourceDocument keeps original-language blocks authoritative while adding bounded English working text', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'cv',
+    label: 'Candidate CV',
+    text: [
+      '项目经历',
+      '',
+      '钱包集成平台',
+      '- 负责后端 API 设计',
+      '- 负责区块链 SDK 集成'
+    ].join('\n'),
+    sourcePath: '/tmp/candidate-cv.pdf'
+  });
+
+  const projectBlock = normalizedDocument.normalizedBlocks.find((block) => block.sectionKey === 'projects');
+
+  assert.ok(projectBlock);
+  assert.match(projectBlock.textNormalized, /钱包集成平台/);
+  assert.equal(projectBlock.languageHint, 'mixed');
+  assert.match(projectBlock.englishWorkingText, /wallet integration platform/i);
+  assert.match(projectBlock.englishWorkingText, /backend API design/i);
+  assert.match(projectBlock.englishWorkingText, /blockchain SDK integration/i);
+  assert.equal(projectBlock.englishWorkingTextSource, 'deterministic_translation');
+});

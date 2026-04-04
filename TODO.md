@@ -314,21 +314,23 @@ Mark a release complete only when the work is:
   - Current release-gate command: `npm run test:release-hardening`
 
 ## Release 7A: Source Normalization Foundation
-- [-] Release 7A in progress.
+- [x] Release 7A shipped, completed, and tested.
 - Preserve raw extracted CV/JD source separately from normalized content.
 - Introduce an explicit source-normalization stage for safe artifact stripping and line repair.
 - Normalize into section-aware source blocks with source refs, language hints, and parser metadata.
 - Add a bounded English working layer for internal processing while keeping original-language blocks authoritative.
 - Build the initial artifact-cleaning rule catalog from real fixtures and regression coverage instead of one-off heuristics.
-- Current `7A.2` slice now covers:
+- Current `7A.3` slice now covers:
   - standalone source-normalization service
   - preserved `rawSource` plus `cleaningManifest` in the workspace source model
   - normalized source blocks feeding the existing retrieval path
   - first safe cleaning rules for page markers, opaque PDF artifacts, decoration-only lines, and bullet-marker normalization
   - stronger section classification beyond explicit headings using conservative structural precedence
   - conservative section-aware wrapped-line handling after section classification is known, including same-section wrapped block repair
-- Remaining `7A` scope before release completion:
-  - bounded English working layer for internal processing while keeping original-language blocks authoritative
+  - bounded English working text per normalized CV/JD block for internal processing
+  - preserved original-language normalized text as the authoritative review/evidence layer
+  - stable source refs, section keys, and cleaning metadata across both layers
+  - retrieval and downstream contracts remain unchanged unless a caller explicitly opts into the English working text
   - no schema extraction changes yet
 
 ## Release 7B: Canonical Schema Extraction and Validation

@@ -1442,7 +1442,7 @@ Scope:
 - Original-language source lineage and parser metadata
 - English working layer for bounded downstream processing
 
-Current implemented slice (`7A.2`):
+Current implemented slice (`7A.3`):
 - a standalone source-normalization service now exists between raw extraction and workspace retrieval
 - workspace source documents now preserve `rawSource`, `cleaningManifest`, and normalized retrieval blocks together
 - the first safe cleaning rules are in place for:
@@ -1452,12 +1452,13 @@ Current implemented slice (`7A.2`):
   - bullet-marker normalization
 - section classification now extends beyond explicit headings using conservative structural precedence from real fixture evidence
 - wrapped-line repair now occurs only after section classification is known, including same-section wrapped block repair where the section stays stable
+- bounded English working text now exists per normalized CV/JD block for internal processing
+- original-language normalized text remains authoritative for review and evidence surfaces
+- source refs, section keys, and cleaning metadata remain stable across the original-language and English-working layers
+- retrieval and downstream generation contracts remain unchanged unless a caller explicitly opts into the English working text
 - the existing retrieval contract stays stable while source normalization becomes explicit and testable
 
-Remaining open `7A` scope:
-- add the bounded English working layer for internal processing while keeping original-language evidence authoritative
-- keep the retrieval and downstream generation contract unchanged while the English working layer is introduced
-- defer canonical schema extraction changes to later slices
+Release 7A is complete. Canonical schema extraction changes remain deferred to Release 7B.
 
 Acceptance criteria:
 - The app preserves raw extracted source separately from normalized content.

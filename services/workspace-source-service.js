@@ -82,12 +82,16 @@ function buildDocumentSourceBlocks(documentType, label, text, sourcePath = '') {
     sectionLabel: block.sectionLabel,
     classificationReason: block.classificationReason,
     classificationConfidence: block.classificationConfidence,
+    languageHint: block.languageHint,
     cleaningActions: block.cleaningActions,
     sourceRefs: block.sourceRefs,
     order: block.order,
     text: block.textNormalized,
+    textWorking: block.englishWorkingText || '',
+    textWorkingSource: block.englishWorkingTextSource || '',
     textOriginal: block.textOriginal,
-    tokenCount: uniqueTokens(block.textNormalized).length
+    tokenCount: uniqueTokens(block.textNormalized).length,
+    tokenCountWorking: uniqueTokens(block.englishWorkingText || block.textNormalized).length
   }));
 
   return {
@@ -139,8 +143,16 @@ function buildWorkspaceSourceModel({
   };
 }
 
-function scoreBlock(block, queryTokens, preferredSectionKeys = []) {
-  const blockTokens = uniqueTokens(block.text);
+function resolveBlockText(block, textVariant = 'original') {
+  if (textVariant === 'english-working' && cleanLine(block?.textWorking)) {
+    return cleanLine(block.textWorking);
+  }
+
+  return cleanLine(block?.text);
+}
+
+function scoreBlock(block, queryTokens, preferredSectionKeys = [], { textVariant = 'original' } = {}) {
+  const blockTokens = uniqueTokens(resolveBlockText(block, textVariant));
   const overlapCount = blockTokens.filter((token) => queryTokens.includes(token)).length;
   const overlapScore = overlapCount / Math.max(queryTokens.length, 1);
   const preferredSectionBoost = preferredSectionKeys.includes(block.sectionKey) ? 0.25 : 0;
@@ -153,7 +165,8 @@ function selectDocumentBlocks(document, {
   queryText,
   limit,
   preferredSectionKeys = [],
-  includeLeadBlock = true
+  includeLeadBlock = true,
+  textVariant = 'original'
 }) {
   if (!document || document.blocks.length === 0) {
     return [];
@@ -179,7 +192,7 @@ function selectDocumentBlocks(document, {
     .filter((block) => !selectedIds.has(block.blockId))
     .map((block) => ({
       ...block,
-      score: scoreBlock(block, queryTokens, preferredSectionKeys)
+      score: scoreBlock(block, queryTokens, preferredSectionKeys, { textVariant })
     }))
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -226,7 +239,8 @@ function selectDocumentBlocks(document, {
 function selectWorkspaceSourceBlocks(sourceModel, {
   queryText,
   limits = DEFAULT_LIMITS,
-  preferredSectionKeysByDocumentType = {}
+  preferredSectionKeysByDocumentType = {},
+  textVariantByDocumentType = {}
 }) {
   const documents = Array.isArray(sourceModel?.documents) ? sourceModel.documents : [];
   const selectionByDocumentType = {};
@@ -237,7 +251,8 @@ function selectWorkspaceSourceBlocks(sourceModel, {
       queryText,
       limit: limits[document.documentType] || DEFAULT_LIMITS[document.documentType] || 4,
       preferredSectionKeys: preferredSectionKeysByDocumentType[document.documentType] || [],
-      includeLeadBlock: document.documentType !== 'guidance'
+      includeLeadBlock: document.documentType !== 'guidance',
+      textVariant: textVariantByDocumentType[document.documentType] || 'original'
     });
 
     selectionByDocumentType[document.documentType] = selectedBlocks;
@@ -262,7 +277,7 @@ function selectWorkspaceSourceBlocks(sourceModel, {
   };
 }
 
-function renderSourceBlocksContext(blocks = []) {
+function renderSourceBlocksContext(blocks = [], { textVariant = 'original' } = {}) {
   if (!Array.isArray(blocks) || blocks.length === 0) {
     return '(no source blocks selected)';
   }
@@ -270,7 +285,7 @@ function renderSourceBlocksContext(blocks = []) {
   return blocks
     .map((block) => [
       `[${block.blockId}] ${block.documentLabel} · ${block.sectionLabel}`,
-      block.text
+      resolveBlockText(block, textVariant)
     ].join('\n'))
     .join('\n\n');
 }
@@ -295,5 +310,6 @@ module.exports = {
   buildWorkspaceRetrievalQuery,
   buildWorkspaceSourceModel,
   renderSourceBlocksContext,
+  resolveBlockText,
   selectWorkspaceSourceBlocks
 };

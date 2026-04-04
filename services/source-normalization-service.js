@@ -17,6 +17,44 @@ const RESPONSIBILITY_HINT_PATTERN = /\b(?:responsibilities?|duties)\b|(?:职责|
 const PROJECT_TITLE_HINT_PATTERN = /\b(?:project|marketplace|gamefi|blockchain|relayer|indexer|oracle|livestream|agent|token|wallet|exchange|nft|defi)\b|(?:项目|平台|链|区块链|机器人|交易|钱包|索引)/i;
 const WRAPPED_CONTINUATION_PREFIX_PATTERN = /^(?:[a-z(]|\d+[a-z%)]|\)|%)/;
 const WRAPPED_TRAILING_CONNECTOR_PATTERN = /(?:[-/]|[,;:(]|\b(?:and|or|with|to|of|for|on|in|via)\b)$/i;
+const ENGLISH_WORKING_TEXT_REPLACEMENTS = [
+  ['教育背景', 'Education'],
+  ['教育经历', 'Education'],
+  ['工作经历', 'Experience'],
+  ['工作经验', 'Experience'],
+  ['职业经历', 'Experience'],
+  ['项目经历', 'Projects'],
+  ['技术栈', 'Tech Stack'],
+  ['技能', 'Skills'],
+  ['语言', 'Languages'],
+  ['岗位职责', 'Responsibilities'],
+  ['任职要求', 'Requirements'],
+  ['岗位要求', 'Requirements'],
+  ['职位描述', 'Job Description'],
+  ['岗位描述', 'Job Description'],
+  ['目标职位', 'Target Role'],
+  ['候选人', 'Candidate'],
+  ['区块链', 'blockchain'],
+  ['后端', 'backend'],
+  ['前端', 'frontend'],
+  ['工程师', 'engineer'],
+  ['开发', 'development'],
+  ['设计', 'design'],
+  ['平台', 'platform'],
+  ['系统', 'system'],
+  ['项目', 'project'],
+  ['集成', 'integration'],
+  ['职责', 'responsibilities'],
+  ['要求', 'requirements'],
+  ['经验', 'experience'],
+  ['钱包', 'wallet'],
+  ['硕士', "Master's degree"],
+  ['本科', "Bachelor's degree"],
+  ['学士', "Bachelor's degree"],
+  ['博士', 'Doctorate'],
+  ['研究生', 'Graduate study'],
+  ['负责', 'responsible for']
+];
 
 const SECTION_LABEL_BY_KEY = {
   overview: 'Overview',
@@ -98,6 +136,67 @@ function splitParagraphs(text) {
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
+}
+
+function inferLanguageHint(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return 'unknown';
+  }
+
+  const chineseCount = (normalized.match(/[\u4e00-\u9fff]/g) || []).length;
+  const latinCount = (normalized.match(/[A-Za-z]/g) || []).length;
+
+  if (chineseCount > 0 && latinCount > 0) {
+    return 'mixed';
+  }
+
+  if (chineseCount > 0) {
+    return 'zh';
+  }
+
+  if (latinCount > 0) {
+    return 'en';
+  }
+
+  return 'unknown';
+}
+
+function normalizeWorkingTextPunctuation(value) {
+  return String(value || '')
+    .replace(/（/g, '(')
+    .replace(/）/g, ')')
+    .replace(/，/g, ', ')
+    .replace(/。/g, '. ')
+    .replace(/：/g, ': ')
+    .replace(/；/g, '; ')
+    .replace(/、/g, ', ')
+    .replace(/【/g, '[')
+    .replace(/】/g, ']');
+}
+
+function buildEnglishWorkingText(text, { documentType } = {}) {
+  const normalized = String(text || '').trim();
+
+  if (!normalized || !['cv', 'jd'].includes(documentType)) {
+    return '';
+  }
+
+  const languageHint = inferLanguageHint(normalized);
+  let workingText = normalizeWorkingTextPunctuation(normalized);
+
+  if (languageHint !== 'en') {
+    ENGLISH_WORKING_TEXT_REPLACEMENTS.forEach(([source, replacement]) => {
+      workingText = workingText.split(source).join(` ${replacement} `);
+    });
+  }
+
+  return workingText
+    .split('\n')
+    .map((line) => cleanLine(line))
+    .filter(Boolean)
+    .join('\n');
 }
 
 function isStandalonePageMarker(text) {
@@ -595,7 +694,9 @@ function buildNormalizedSourceDocument({
 
     let workingLinePairs = normalizedLinePairs;
 
-    if (normalizedLines.length > 1 && isHeadingParagraph(normalizedLines[0])) {
+    const embeddedHeadingKey = resolveSectionKey(normalizedLines[0], '');
+
+    if (normalizedLines.length > 1 && embeddedHeadingKey) {
       currentSectionLabel = normalizedLines[0];
       currentSectionKey = resolveSectionKey(currentSectionLabel, currentSectionKey);
       currentClassificationReason = 'explicit_heading';
@@ -650,9 +751,14 @@ function buildNormalizedSourceDocument({
       sectionLabel: blockSectionLabel,
       classificationReason: blockClassificationReason,
       classificationConfidence: blockClassificationConfidence,
+      languageHint: inferLanguageHint(blockNormalized),
       order: normalizedBlocks.length,
       textOriginal: blockOriginal,
       textNormalized: blockNormalized,
+      englishWorkingText: buildEnglishWorkingText(blockNormalized, { documentType }),
+      englishWorkingTextSource: inferLanguageHint(blockNormalized) === 'en'
+        ? 'original'
+        : 'deterministic_translation',
       cleaningActions: [...new Set(workingLinePairs.flatMap((entry) => entry.actions))],
       sourceRefs: [
         {
@@ -709,9 +815,14 @@ function buildNormalizedSourceDocument({
       sectionLabel: 'Overview',
       classificationReason: 'default_overview',
       classificationConfidence: 'low',
+      languageHint: inferLanguageHint(cleanLine(text)),
       order: 0,
       textOriginal: cleanLine(text),
       textNormalized: cleanLine(text),
+      englishWorkingText: buildEnglishWorkingText(cleanLine(text), { documentType }),
+      englishWorkingTextSource: inferLanguageHint(cleanLine(text)) === 'en'
+        ? 'original'
+        : 'deterministic_translation',
       cleaningActions: [],
       sourceRefs: [
         {
@@ -741,6 +852,8 @@ function buildNormalizedSourceDocument({
 module.exports = {
   buildNormalizedSourceDocument,
   cleanLine,
+  buildEnglishWorkingText,
+  inferLanguageHint,
   normalizeHeading,
   splitParagraphs
 };

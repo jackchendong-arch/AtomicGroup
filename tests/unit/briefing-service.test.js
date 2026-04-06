@@ -6,6 +6,7 @@ const {
   buildBriefingGenerationSettings,
   buildBriefingRequest,
   buildBriefingRepairRequest,
+  buildFallbackBriefingArtifact,
   buildTemplateDataFromBriefing,
   composeDeterministicReportBriefing,
   mergeBriefingWithFallback,
@@ -305,6 +306,113 @@ test('composeDeterministicReportBriefing keeps narrative from the briefing but r
   assert.equal(composed.project_experiences[0].project_name, 'High Performance Blockchain Relayer and Indexer');
   assert.equal(composed.candidate.education[0].degree_name, 'Bachelor of Industrial Design');
   assert.deepEqual(composed.candidate.skills, ['Golang', 'Solidity']);
+});
+
+test('buildFallbackBriefingArtifact projects canonical candidate and JD facts into the fallback briefing contract', () => {
+  const artifact = buildFallbackBriefingArtifact({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        'Shanghai, China',
+        '',
+        'Education',
+        'MSc in Computing',
+        'Cardiff University, UK | 2019 – 2020',
+        '',
+        'Work Experience',
+        'Acme Capital — Blockchain Engineer',
+        '2020 – 2023',
+        '- Built backend services',
+        '- Led protocol delivery',
+        '',
+        'Projects',
+        'Liquidity Router (2022 – 2022)',
+        '- Built low-latency routing services',
+        '- Tech Stack: Golang, Solidity'
+      ].join('\n'),
+      file: {
+        name: 'Noah Zhang CV.pdf',
+        path: '/tmp/noah-zhang.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Blockchain Engineer',
+        '',
+        'Requirements',
+        '- Experience building backend services',
+        '- Golang or Solidity experience'
+      ].join('\n'),
+      file: {
+        name: 'JD4.docx',
+        path: '/tmp/jd4.docx'
+      }
+    }
+  });
+  const briefing = artifact.briefing;
+
+  assert.equal(artifact.canonicalValidationSummary.state, 'green');
+  assert.equal(briefing.candidate.name, 'Noah Zhang');
+  assert.equal(briefing.candidate.location, 'Shanghai, China');
+  assert.equal(briefing.candidate.education[0].degree_name, 'MSc in Computing');
+  assert.equal(briefing.employment_history[0].job_title, 'Blockchain Engineer');
+  assert.deepEqual(briefing.employment_history[0].responsibilities, [
+    'Built backend services',
+    'Led protocol delivery'
+  ]);
+  assert.equal(briefing.project_experiences[0].project_name, 'Liquidity Router');
+  assert.equal(briefing.project_experiences[0].linked_job_title, 'Blockchain Engineer');
+  assert.equal(briefing.project_experiences[0].linked_company_name, 'Acme Capital');
+  assert(briefing.project_experiences[0].project_bullets.some((bullet) => /low-latency routing services/i.test(bullet)));
+  assert(briefing.project_experiences[0].project_bullets.some((bullet) => /tech stack:\s*golang,\s*solidity/i.test(bullet)));
+  assert.equal(briefing.match_requirements[0].requirement, 'Experience building backend services');
+  assert.equal(briefing.match_requirements[1].requirement, 'Golang or Solidity experience');
+});
+
+test('buildFallbackBriefingArtifact threads canonical amber validation alongside fallback briefing projection', () => {
+  const artifact = buildFallbackBriefingArtifact({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        'Shanghai, China',
+        '',
+        'Work Experience',
+        'Acme Capital — Blockchain Engineer',
+        '2020 – 2023',
+        '- Built backend services',
+        '',
+        'Beta Labs — Lead Engineer',
+        '2021 – 2024',
+        '- Led protocol delivery',
+        '',
+        'Projects',
+        'Liquidity Router (2022 – 2022)',
+        '- Built low-latency routing services'
+      ].join('\n'),
+      file: {
+        name: 'Noah Zhang CV.pdf',
+        path: '/tmp/noah-zhang-ambiguous.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Blockchain Engineer',
+        '',
+        'Requirements',
+        '- Experience building backend services'
+      ].join('\n'),
+      file: {
+        name: 'JD4.docx',
+        path: '/tmp/jd4-ambiguous.docx'
+      }
+    }
+  });
+
+  assert.equal(artifact.canonicalValidationSummary.state, 'amber');
+  assert(artifact.canonicalValidationSummary.issues.some((issue) => issue.code === 'project_role_ambiguous'));
+  assert.equal(artifact.briefing.project_experiences[0].project_name, 'Liquidity Router');
+  assert.equal(artifact.briefing.project_experiences[0].linked_job_title, '');
+  assert.equal(artifact.briefing.project_experiences[0].linked_company_name, '');
 });
 
 test('buildTemplateDataFromBriefing populates richer report-template loops and aliases', () => {

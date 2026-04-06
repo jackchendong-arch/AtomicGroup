@@ -38,6 +38,48 @@ function cloneJsonValue(value, fallback) {
   }
 }
 
+function normalizeCanonicalValidationSummary(summary) {
+  if (!summary || typeof summary !== 'object') {
+    return null;
+  }
+
+  const cloned = cloneJsonValue(summary, null);
+
+  if (!cloned || typeof cloned !== 'object') {
+    return null;
+  }
+
+  const issues = Array.isArray(cloned.issues)
+    ? cloned.issues
+      .filter((issue) => issue && typeof issue === 'object')
+      .map((issue) => ({
+        code: normalizeString(issue.code),
+        severity: normalizeString(issue.severity),
+        section: normalizeString(issue.section),
+        entryIndex: Number.isFinite(issue.entryIndex) ? Number(issue.entryIndex) : null,
+        message: normalizeString(issue.message),
+        sourceRefs: Array.isArray(issue.sourceRefs)
+          ? issue.sourceRefs
+            .filter((sourceRef) => sourceRef && typeof sourceRef === 'object')
+            .map((sourceRef) => ({
+              documentType: normalizeString(sourceRef.documentType),
+              blockId: normalizeString(sourceRef.blockId),
+              sectionKey: normalizeString(sourceRef.sectionKey),
+              sectionLabel: normalizeString(sourceRef.sectionLabel),
+              sourceName: normalizeString(sourceRef.sourceName),
+              sourcePath: normalizeString(sourceRef.sourcePath),
+              excerpt: normalizeString(sourceRef.excerpt)
+            }))
+          : []
+      }))
+    : [];
+
+  return {
+    state: normalizeString(cloned.state) === 'red' ? 'red' : (normalizeString(cloned.state) === 'amber' ? 'amber' : 'green'),
+    issues
+  };
+}
+
 function normalizeDraftVariantSnapshot(variant) {
   if (!variant || typeof variant !== 'object') {
     return null;
@@ -46,6 +88,7 @@ function normalizeDraftVariantSnapshot(variant) {
   const summary = String(variant.summary || '').trim();
   const briefing = cloneJsonValue(variant.briefing, null);
   const briefingReview = String(variant.briefingReview || '').trim();
+  const canonicalValidationSummary = normalizeCanonicalValidationSummary(variant.canonicalValidationSummary);
   const approvalWarnings = normalizeStringArray(variant.approvalWarnings);
   const draftLifecycle = normalizeString(variant.draftLifecycle) || (summary ? 'generated' : 'empty');
 
@@ -57,6 +100,7 @@ function normalizeDraftVariantSnapshot(variant) {
     summary,
     briefing,
     briefingReview,
+    canonicalValidationSummary,
     approvalWarnings,
     draftLifecycle
   };
@@ -196,6 +240,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     briefing: []
   });
   const draftVariants = normalizeDraftVariants(input.draftVariants);
+  const canonicalValidationSummary = normalizeCanonicalValidationSummary(input.canonicalValidationSummary);
   const workspaceId = buildWorkspaceId({
     sourceFolderPath,
     selectedJdPath,
@@ -221,6 +266,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     briefing,
     draftVariants,
     retrievalEvidence,
+    canonicalValidationSummary,
     briefingReview: String(input.briefingReview || '').trim(),
     approvalWarnings: normalizeStringArray(input.approvalWarnings),
     lastExportPath: normalizeString(input.lastExportPath),

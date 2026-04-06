@@ -23,6 +23,7 @@ const {
   renderSourceBlocksContext,
   selectWorkspaceSourceBlocks
 } = require('./workspace-source-service');
+const { buildCanonicalSchemas } = require('./canonical-schema-service');
 const {
   extractDocumentDerivedProfile,
   parseStructuredSummary
@@ -56,6 +57,35 @@ function splitNonEmptyLines(value) {
 
 function stripBulletPrefix(value) {
   return cleanLine(value).replace(/^[-*•–—]\s*/, '');
+}
+
+function normalizeComparisonKey(value) {
+  return cleanLine(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+}
+
+function looksLikeSafeCandidateLocation(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    /(?:19|20)\d{2}[./-]\d{1,2}/.test(normalized) ||
+    /(?:19|20)\d{2}\s*[–-]\s*(?:19|20)\d{2}/.test(normalized) ||
+    /\b(?:gpa|bachelor|master|msc|bsc|phd|university|college|school|education|experience)\b/i.test(normalized) ||
+    /(?:本科|硕士|博士|大学|学院|教育|工作经历|项目经历)/u.test(normalized)
+  ) {
+    return false;
+  }
+
+  if (/^\d/.test(normalized) || /@/.test(normalized)) {
+    return false;
+  }
+
+  return true;
 }
 
 function getLocalizedBriefingCopy(outputLanguage = 'en') {
@@ -829,71 +859,360 @@ function parseMatchRequirementSection(value) {
     .filter((entry) => entry.requirement || entry.evidence);
 }
 
-function buildFallbackBriefing({ cvDocument, jdDocument, outputLanguage = 'en' }) {
+function buildLegacyEducationEntries(profile = {}) {
+  if ((profile.educationEntries || []).length > 0) {
+    return profile.educationEntries.map((entry) => ({
+      degree_name: entry.degreeName,
+      university: entry.university,
+      start_year: entry.startYear,
+      end_year: entry.endYear
+    }));
+  }
+
+  return [
+    {
+      degree_name: profile.degreeName,
+      university: profile.university,
+      start_year: profile.startYear,
+      end_year: profile.endYear
+    }
+  ];
+}
+
+function buildLegacyEmploymentHistory(profile = {}) {
+  return (profile.employmentHistory || []).map((entry) => ({
+    job_title: entry.jobTitle,
+    company_name: entry.companyName,
+    start_date: entry.startDate,
+    end_date: entry.endDate,
+    responsibilities: entry.responsibilities || [],
+    evidence_refs: []
+  }));
+}
+
+function buildLegacyProjectExperiences(profile = {}) {
+  return (profile.projectExperiences || []).map((entry) => ({
+    project_name: entry.project_name,
+    project_summary: entry.project_summary,
+    project_start_date: entry.project_start_date,
+    project_end_date: entry.project_end_date,
+    project_timeline_basis: entry.project_timeline_basis,
+    linked_job_title: entry.linked_job_title,
+    linked_company_name: entry.linked_company_name,
+    project_bullets: entry.project_bullets || [],
+    project_bullet_originals: entry.project_bullet_originals || [],
+    evidence_refs: []
+  }));
+}
+
+function buildLegacyCandidateSection(profile = {}) {
+  return {
+    name: profile.candidateName,
+    date_of_birth: profile.candidateDateOfBirth,
+    gender: profile.candidateGender,
+    nationality: profile.candidateNationality,
+    location: profile.candidateLocation,
+    preferred_location: profile.candidatePreferredLocation,
+    languages: profile.candidateLanguages || [profile.candidateLanguage1, profile.candidateLanguage2].filter(Boolean),
+    notice_period: profile.noticePeriod,
+    skills: profile.candidateSkills || [],
+    certifications: profile.candidateCertifications || [],
+    education: buildLegacyEducationEntries(profile)
+  };
+}
+
+function buildSourceBlockIndex(sourceModel) {
+  const index = new Map();
+  const documents = Array.isArray(sourceModel?.documents) ? sourceModel.documents : [];
+
+  documents.forEach((document) => {
+    const blocks = Array.isArray(document?.blocks) ? document.blocks : [];
+
+    blocks.forEach((block) => {
+      if (block?.blockId) {
+        index.set(block.blockId, block);
+      }
+    });
+  });
+
+  return index;
+}
+
+function formatCanonicalDegreeName(entry = {}) {
+  const degreeName = cleanLine(entry.degreeName);
+  const fieldOfStudy = cleanLine(entry.fieldOfStudy);
+
+  if (!degreeName) {
+    return fieldOfStudy;
+  }
+
+  if (!fieldOfStudy) {
+    return degreeName;
+  }
+
+  return `${degreeName} in ${fieldOfStudy}`;
+}
+
+function buildCanonicalEducationEntries(candidateSchema = {}, fallbackEntries = []) {
+  const canonicalEntries = Array.isArray(candidateSchema.education)
+    ? candidateSchema.education
+    : [];
+
+  if (canonicalEntries.length === 0) {
+    return fallbackEntries;
+  }
+
+  return canonicalEntries.map((entry) => ({
+    degree_name: formatCanonicalDegreeName(entry),
+    university: cleanLine(entry.institutionName),
+    start_year: cleanLine(entry.startDate),
+    end_year: cleanLine(entry.endDate)
+  }));
+}
+
+function buildCanonicalEmploymentHistory(candidateSchema = {}, fallbackEntries = []) {
+  const canonicalEntries = Array.isArray(candidateSchema.employmentHistory)
+    ? candidateSchema.employmentHistory
+    : [];
+
+  if (canonicalEntries.length === 0) {
+    return fallbackEntries;
+  }
+
+  return canonicalEntries.map((entry) => ({
+    job_title: cleanLine(entry.jobTitle),
+    company_name: cleanLine(entry.companyName),
+    start_date: cleanLine(entry.startDate),
+    end_date: cleanLine(entry.endDate),
+    responsibilities: normalizeStringArray(entry.responsibilityBullets || []),
+    evidence_refs: []
+  }));
+}
+
+function stripProjectHeadingDates(value) {
+  return cleanLine(value).replace(/\s*[（(]\s*[^()（）]*?(?:19|20)\d{2}[^()（）]*[)）]\s*$/u, '');
+}
+
+function buildProjectBulletsFromSourceBlock(block, projectName, technologies = []) {
+  const normalizedProjectName = normalizeComparisonKey(projectName);
+  const lines = String(block?.text || '')
+    .split('\n')
+    .map((line) => stripBulletPrefix(line))
+    .map((line) => cleanLine(line))
+    .filter(Boolean);
+
+  while (lines.length > 0) {
+    const firstLineKey = normalizeComparisonKey(stripProjectHeadingDates(lines[0]));
+
+    if (!firstLineKey) {
+      lines.shift();
+      continue;
+    }
+
+    if (
+      firstLineKey === normalizedProjectName ||
+      firstLineKey === normalizeComparisonKey(block?.sectionLabel)
+    ) {
+      lines.shift();
+      continue;
+    }
+
+    break;
+  }
+
+  const bullets = dedupeByKey(
+    lines,
+    (line) => normalizeComparisonKey(line)
+  );
+  const techStackLine = technologies.length > 0
+    ? `Tech Stack: ${technologies.join(', ')}`
+    : '';
+
+  if (techStackLine && !bullets.some((line) => /^tech stack\s*:/i.test(line))) {
+    bullets.push(techStackLine);
+  }
+
+  return bullets;
+}
+
+function buildCanonicalProjectExperiences(candidateSchema = {}, sourceModel, fallbackEntries = []) {
+  const canonicalProjects = Array.isArray(candidateSchema.projectExperiences)
+    ? candidateSchema.projectExperiences
+    : [];
+  const canonicalEmploymentHistory = Array.isArray(candidateSchema.employmentHistory)
+    ? candidateSchema.employmentHistory
+    : [];
+
+  if (canonicalProjects.length === 0) {
+    return fallbackEntries;
+  }
+
+  const blockIndex = buildSourceBlockIndex(sourceModel);
+
+  return canonicalProjects.map((entry) => {
+    const matchedFallback = fallbackEntries.find((fallbackEntry) => {
+      return normalizeComparisonKey(fallbackEntry?.project_name) === normalizeComparisonKey(entry.projectName);
+    });
+    const linkedEmployment = Number.isInteger(entry.linkedEmploymentIndex) && entry.linkedEmploymentIndex >= 0
+      ? canonicalEmploymentHistory[entry.linkedEmploymentIndex]
+      : null;
+    const sourceBlock = Array.isArray(entry.sourceRefs)
+      ? entry.sourceRefs.map((ref) => blockIndex.get(ref?.blockId)).find(Boolean)
+      : null;
+    const projectBullets = normalizeStringArray(
+      matchedFallback?.project_bullets?.length > 0
+        ? matchedFallback.project_bullets
+        : buildProjectBulletsFromSourceBlock(
+          sourceBlock,
+          entry.projectName,
+          Array.isArray(entry.technologies) ? entry.technologies : []
+        )
+    );
+    const resolvedProjectSummary = cleanLine(entry.projectSummary) || cleanLine(matchedFallback?.project_summary);
+
+    if (resolvedProjectSummary && !projectBullets.some((bullet) => normalizeComparisonKey(bullet) === normalizeComparisonKey(resolvedProjectSummary))) {
+      projectBullets.unshift(resolvedProjectSummary);
+    }
+
+    return {
+      project_name: cleanLine(entry.projectName),
+      project_summary: resolvedProjectSummary,
+      project_start_date: cleanLine(entry.startDate),
+      project_end_date: cleanLine(entry.endDate),
+      project_timeline_basis: cleanLine(entry.startDate || entry.endDate) ? 'canonical' : '',
+      linked_job_title: cleanLine(linkedEmployment?.jobTitle),
+      linked_company_name: cleanLine(linkedEmployment?.companyName),
+      project_bullets: projectBullets,
+      project_bullet_originals: projectBullets.slice(),
+      evidence_refs: []
+    };
+  });
+}
+
+function normalizeRequirementKey(value) {
+  return cleanLine(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .trim();
+}
+
+function requirementsLikelyMatch(left, right) {
+  const leftKey = normalizeRequirementKey(left);
+  const rightKey = normalizeRequirementKey(right);
+
+  if (!leftKey || !rightKey) {
+    return false;
+  }
+
+  return leftKey.includes(rightKey) || rightKey.includes(leftKey);
+}
+
+function buildCanonicalMatchRequirements(jdSchema = {}, fallbackEntries = []) {
+  const canonicalRequirements = Array.isArray(jdSchema.requirements)
+    ? jdSchema.requirements
+    : [];
+  const fallbackMatches = normalizeMatchRequirements(fallbackEntries);
+
+  if (canonicalRequirements.length === 0) {
+    return fallbackMatches;
+  }
+
+  const usedFallbackIndices = new Set();
+
+  return canonicalRequirements.map((entry, index) => {
+    const requirementText = cleanLine(entry.requirementText);
+    let matchedIndex = fallbackMatches.findIndex((fallbackEntry, fallbackIndex) => {
+      return !usedFallbackIndices.has(fallbackIndex) &&
+        normalizeRequirementKey(fallbackEntry.requirement) === normalizeRequirementKey(requirementText);
+    });
+
+    if (matchedIndex < 0) {
+      matchedIndex = fallbackMatches.findIndex((fallbackEntry, fallbackIndex) => {
+        return !usedFallbackIndices.has(fallbackIndex) &&
+          requirementsLikelyMatch(fallbackEntry.requirement, requirementText);
+      });
+    }
+
+    if (matchedIndex < 0 && fallbackMatches.length === canonicalRequirements.length) {
+      matchedIndex = index;
+    }
+
+    const matchedEntry = matchedIndex >= 0 ? fallbackMatches[matchedIndex] : null;
+
+    if (matchedIndex >= 0) {
+      usedFallbackIndices.add(matchedIndex);
+    }
+
+    return {
+      requirement: requirementText,
+      evidence: cleanLine(matchedEntry?.evidence),
+      evidence_refs: normalizeEvidenceRefs(matchedEntry?.evidence_refs || matchedEntry?.evidenceRefs)
+    };
+  }).filter((entry) => entry.requirement || entry.evidence);
+}
+
+function buildFallbackBriefingArtifact({
+  cvDocument,
+  jdDocument,
+  outputLanguage = 'en',
+  sourceModel = null
+}) {
   const profile = extractDocumentDerivedProfile({ cvDocument, jdDocument });
+  const resolvedSourceModel = sourceModel || buildWorkspaceSourceModel({ cvDocument, jdDocument });
+  const canonicalSchemas = buildCanonicalSchemas({
+    cvDocument,
+    jdDocument,
+    sourceModel: resolvedSourceModel
+  });
   const draft = generateSummaryDraft({ cvDocument, jdDocument, outputLanguage });
   const sections = parseStructuredSummary(draft.summary);
+  const legacyCandidate = buildLegacyCandidateSection(profile);
+  const legacyEmploymentHistory = buildLegacyEmploymentHistory(profile);
+  const legacyProjectExperiences = buildLegacyProjectExperiences(profile);
+  const canonicalCandidate = canonicalSchemas.candidateSchema || {};
+  const canonicalRole = canonicalSchemas.jdSchema?.role || {};
+  const summaryMatchRequirements = parseMatchRequirementSection(sections.match_requirements);
 
-  return normalizeBriefing({
+  const briefing = normalizeBriefing({
     candidate: {
-      name: profile.candidateName,
-      date_of_birth: profile.candidateDateOfBirth,
-      gender: profile.candidateGender,
-      nationality: profile.candidateNationality,
-      location: profile.candidateLocation,
-      preferred_location: profile.candidatePreferredLocation,
-      languages: profile.candidateLanguages || [profile.candidateLanguage1, profile.candidateLanguage2].filter(Boolean),
-      notice_period: profile.noticePeriod,
-      skills: profile.candidateSkills || [],
-      certifications: profile.candidateCertifications || [],
-      education: (profile.educationEntries || []).length > 0
-        ? profile.educationEntries.map((entry) => ({
-          degree_name: entry.degreeName,
-          university: entry.university,
-          start_year: entry.startYear,
-          end_year: entry.endYear
-        }))
-        : [
-          {
-            degree_name: profile.degreeName,
-            university: profile.university,
-            start_year: profile.startYear,
-            end_year: profile.endYear
-          }
-        ]
+      ...legacyCandidate,
+      name: cleanLine(canonicalCandidate.identity?.name) || legacyCandidate.name,
+      location:
+        (looksLikeSafeCandidateLocation(canonicalCandidate.identity?.location)
+          ? cleanLine(canonicalCandidate.identity?.location)
+          : '') ||
+        (looksLikeSafeCandidateLocation(legacyCandidate.location) ? legacyCandidate.location : ''),
+      education: buildCanonicalEducationEntries(canonicalCandidate, legacyCandidate.education)
     },
     role: {
-      title: profile.roleTitle,
+      title: cleanLine(canonicalRole.title) || profile.roleTitle,
       company: profile.hiringManager,
       hiring_manager: profile.hiringManager
     },
     fit_summary: sections.fit_summary || '',
     relevant_experience: parseBulletSection(sections.relevant_experience),
-    match_requirements: parseMatchRequirementSection(sections.match_requirements),
+    match_requirements: buildCanonicalMatchRequirements(canonicalSchemas.jdSchema, summaryMatchRequirements),
     potential_concerns: parseBulletSection(sections.potential_concerns),
     recommended_next_step: sections.recommended_next_step || '',
-    employment_history: profile.employmentHistory.map((entry) => ({
-      job_title: entry.jobTitle,
-      company_name: entry.companyName,
-      start_date: entry.startDate,
-      end_date: entry.endDate,
-      responsibilities: entry.responsibilities || [],
-      evidence_refs: []
-    })),
-    project_experiences: (profile.projectExperiences || []).map((entry) => ({
-      project_name: entry.project_name,
-      project_summary: entry.project_summary,
-      project_start_date: entry.project_start_date,
-      project_end_date: entry.project_end_date,
-      project_timeline_basis: entry.project_timeline_basis,
-      linked_job_title: entry.linked_job_title,
-      linked_company_name: entry.linked_company_name,
-      project_bullets: entry.project_bullets || [],
-      project_bullet_originals: entry.project_bullet_originals || [],
-      evidence_refs: []
-    })),
+    employment_history: buildCanonicalEmploymentHistory(canonicalCandidate, legacyEmploymentHistory),
+    project_experiences: buildCanonicalProjectExperiences(canonicalCandidate, resolvedSourceModel, legacyProjectExperiences),
     evidence_refs: []
   });
+
+  return {
+    briefing,
+    canonicalSchemas,
+    canonicalValidationSummary: canonicalSchemas.validationSummary || null
+  };
+}
+
+function buildFallbackBriefing({ cvDocument, jdDocument, outputLanguage = 'en', sourceModel = null }) {
+  return buildFallbackBriefingArtifact({
+    cvDocument,
+    jdDocument,
+    outputLanguage,
+    sourceModel
+  }).briefing;
 }
 
 function fillTemplate(template, replacements) {
@@ -1564,6 +1883,7 @@ module.exports = {
   buildBriefingGenerationSettings,
   buildBriefingRequest,
   buildBriefingRepairRequest,
+  buildFallbackBriefingArtifact,
   buildFallbackBriefing,
   buildTemplateDataFromBriefing,
   composeDeterministicReportBriefing,

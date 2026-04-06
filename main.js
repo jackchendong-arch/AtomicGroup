@@ -22,6 +22,7 @@ const {
   buildBriefingGenerationSettings,
   buildBriefingRequest,
   buildBriefingRepairRequest,
+  buildFallbackBriefingArtifact,
   buildFallbackBriefing,
   composeDeterministicReportBriefing,
   mergeBriefingWithFallback,
@@ -645,11 +646,12 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
   }
 
   const outputLanguage = normalizeOutputLanguage(payload.outputLanguage);
-  const fallbackBriefing = buildFallbackBriefing({
+  const fallbackArtifact = buildFallbackBriefingArtifact({
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
     outputLanguage
   });
+  const fallbackBriefing = fallbackArtifact.briefing;
   const requestedBriefing = payload.briefing
     ? composeDeterministicReportBriefing(payload.briefing, fallbackBriefing)
     : fallbackBriefing;
@@ -880,11 +882,12 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     jdDocument: generationInputs.jdDocument,
     outputLanguage
   }).summary;
-  let validatedBriefing = validateBriefing(buildFallbackBriefing({
+  const fallbackArtifact = buildFallbackBriefingArtifact({
     cvDocument: generationInputs.cvDocument,
     jdDocument: generationInputs.jdDocument,
     outputLanguage
-  })).briefing;
+  });
+  let validatedBriefing = validateBriefing(fallbackArtifact.briefing).briefing;
   let summaryRetrievalManifest = summaryRequest.retrievalManifest;
   let briefingRetrievalManifest = briefingRequest.retrievalManifest;
 
@@ -944,6 +947,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     providerLabel: 'E2E Mock',
     model: 'deterministic-local',
     briefing: validatedBriefing,
+    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     outputMode,
     outputLanguage,
     modeLabel: preparedOutput.modeLabel,
@@ -964,11 +968,12 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     jdDocument: payload.jdDocument,
     outputLanguage: targetLanguage
   }).summary;
-  const translatedBriefing = validateBriefing(buildFallbackBriefing({
+  const fallbackArtifact = buildFallbackBriefingArtifact({
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
     outputLanguage: targetLanguage
-  })).briefing;
+  });
+  const translatedBriefing = validateBriefing(fallbackArtifact.briefing).briefing;
   const preparedOutput = applyDraftOutputMode({
     outputMode: payload.outputMode,
     recruiterSummary,
@@ -1000,6 +1005,7 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
   return {
     summary: recruiterSummary,
     briefing: translatedBriefing,
+    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     hiringManagerBriefingReview: composed.review,
     outputLanguage: targetLanguage,
     approvalWarnings: reviewWarnings,
@@ -1698,11 +1704,12 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     debugTrace.push(`Structured briefing raw response digest: ${getDebugTextDigest(structuredBriefingResult.text)}`);
 
     const fallbackBriefingTimer = startTimer();
-    const fallbackBriefing = buildFallbackBriefing({
+    const fallbackArtifact = buildFallbackBriefingArtifact({
       cvDocument: generationInputs.cvDocument,
       jdDocument: generationInputs.jdDocument,
       outputLanguage
     });
+    const fallbackBriefing = fallbackArtifact.briefing;
     recordTimingPhase(
       debugTrace,
       performancePhases,
@@ -1880,6 +1887,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       providerLabel: settings.providerLabel,
       model: settings.model,
       briefing: validatedBriefing,
+      canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
       outputMode,
       outputLanguage,
       modeLabel: preparedOutput.modeLabel,
@@ -1977,6 +1985,11 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
   const targetLanguage = normalizeOutputLanguage(normalizedPayload.targetLanguage);
 
   if (sourceLanguage === targetLanguage) {
+    const fallbackArtifact = buildFallbackBriefingArtifact({
+      cvDocument: normalizedPayload.cvDocument,
+      jdDocument: normalizedPayload.jdDocument,
+      outputLanguage: targetLanguage
+    });
     const preparedOutput = applyDraftOutputMode({
       outputMode: normalizedPayload.outputMode,
       recruiterSummary: normalizedPayload.summary,
@@ -2024,6 +2037,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     return {
       summary: normalizedPayload.summary,
       briefing: normalizedPayload.briefing,
+      canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
       approvalWarnings: reviewWarnings,
@@ -2031,13 +2045,14 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     };
   }
 
+  const translationFallbackArtifact = buildFallbackBriefingArtifact({
+    cvDocument: normalizedPayload.cvDocument,
+    jdDocument: normalizedPayload.jdDocument,
+    outputLanguage: sourceLanguage
+  });
   const currentBriefing = normalizedPayload.briefing
     ? applySummaryOverridesToBriefing(normalizedPayload.briefing, normalizedPayload.summary)
-    : buildFallbackBriefing({
-      cvDocument: normalizedPayload.cvDocument,
-      jdDocument: normalizedPayload.jdDocument,
-      outputLanguage: sourceLanguage
-    });
+    : translationFallbackArtifact.briefing;
 
   if (isE2EMockLlmEnabled()) {
     const mockResult = await buildE2EMockTranslatedDraftResult({
@@ -2136,6 +2151,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
     return {
       summary: repairedTranslatedSummary,
       briefing: translated.briefing,
+      canonicalValidationSummary: translationFallbackArtifact.canonicalValidationSummary,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
       approvalWarnings: reviewWarnings,
@@ -2176,11 +2192,12 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
 ipcMain.handle('briefing:render-review', async (_event, payload) => {
   const normalizedPayload = validateRenderBriefingPayload(payload);
   const outputLanguage = normalizeOutputLanguage(normalizedPayload.outputLanguage);
-  const fallbackBriefing = buildFallbackBriefing({
+  const fallbackArtifact = buildFallbackBriefingArtifact({
     cvDocument: normalizedPayload.cvDocument,
     jdDocument: normalizedPayload.jdDocument,
     outputLanguage
   });
+  const fallbackBriefing = fallbackArtifact.briefing;
   const requestedBriefing = normalizedPayload.briefing
     ? mergeBriefingWithFallback(normalizedPayload.briefing, fallbackBriefing)
     : fallbackBriefing;
@@ -2207,6 +2224,7 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
 
   return {
     briefing: requestedBriefing,
+    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     hiringManagerBriefingReview: composed.review,
     summary: normalizedPayload.summary,
     modeLabel: preparedOutput.modeLabel,

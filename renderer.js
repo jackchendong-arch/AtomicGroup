@@ -18,6 +18,10 @@ function createEmptyRetrievalEvidence() {
   };
 }
 
+function createEmptyCanonicalValidationSummary() {
+  return null;
+}
+
 function createEmptySourceFolderState() {
   return {
     path: '',
@@ -56,6 +60,7 @@ const state = {
   pendingOutputLanguage: '',
   draftVariants: createEmptyDraftVariants(),
   retrievalEvidence: createEmptyRetrievalEvidence(),
+  canonicalValidationSummary: createEmptyCanonicalValidationSummary(),
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
@@ -473,6 +478,42 @@ function normalizeRetrievalManifest(entries) {
   }));
 }
 
+function normalizeCanonicalValidationSummary(summary) {
+  if (!summary || typeof summary !== 'object') {
+    return null;
+  }
+
+  const issues = Array.isArray(summary.issues)
+    ? summary.issues
+      .filter((issue) => issue && typeof issue === 'object')
+      .map((issue) => ({
+        code: String(issue.code || '').trim(),
+        severity: String(issue.severity || '').trim(),
+        section: String(issue.section || '').trim(),
+        entryIndex: Number.isFinite(issue.entryIndex) ? Number(issue.entryIndex) : null,
+        message: String(issue.message || '').trim(),
+        sourceRefs: Array.isArray(issue.sourceRefs)
+          ? issue.sourceRefs
+            .filter((sourceRef) => sourceRef && typeof sourceRef === 'object')
+            .map((sourceRef) => ({
+              documentType: String(sourceRef.documentType || '').trim(),
+              blockId: String(sourceRef.blockId || '').trim(),
+              sectionKey: String(sourceRef.sectionKey || '').trim(),
+              sectionLabel: String(sourceRef.sectionLabel || '').trim(),
+              sourceName: String(sourceRef.sourceName || '').trim(),
+              sourcePath: String(sourceRef.sourcePath || '').trim(),
+              excerpt: String(sourceRef.excerpt || '').trim()
+            }))
+          : []
+      }))
+    : [];
+
+  return {
+    state: summary.state === 'red' ? 'red' : (summary.state === 'amber' ? 'amber' : 'green'),
+    issues
+  };
+}
+
 function cacheDraftVariant(mode = state.outputMode, language = state.outputLanguage) {
   const normalizedMode = normalizeDraftVariantMode(mode);
   const normalizedLanguage = normalizeDraftVariantLanguage(language);
@@ -486,6 +527,7 @@ function cacheDraftVariant(mode = state.outputMode, language = state.outputLangu
     summary: state.summary,
     briefing: cloneDraftData(state.briefing),
     briefingReview: state.briefingReview,
+    canonicalValidationSummary: cloneDraftData(state.canonicalValidationSummary),
     approvalWarnings: [...state.approvalWarnings],
     draftLifecycle: state.draftLifecycle
   };
@@ -511,6 +553,7 @@ function cloneDraftVariantsSnapshot(input) {
         summary: String(variant.summary || ''),
         briefing: cloneDraftData(variant.briefing),
         briefingReview: String(variant.briefingReview || ''),
+        canonicalValidationSummary: normalizeCanonicalValidationSummary(variant.canonicalValidationSummary),
         approvalWarnings: Array.isArray(variant.approvalWarnings)
           ? variant.approvalWarnings.map((warning) => String(warning || '').trim()).filter(Boolean)
           : [],
@@ -543,6 +586,7 @@ function applyCachedDraftVariant(mode, language, snapshot, message) {
   state.outputMode = normalizeDraftVariantMode(mode);
   state.outputLanguage = normalizeDraftVariantLanguage(language);
   state.pendingOutputLanguage = '';
+  state.canonicalValidationSummary = normalizeCanonicalValidationSummary(snapshot.canonicalValidationSummary);
   state.approvalWarnings = [...(snapshot.approvalWarnings || [])];
   state.lastPerformance = null;
   state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
@@ -2018,6 +2062,7 @@ function invalidateSummary(message) {
   state.pendingOutputLanguage = '';
   clearCachedDraftVariants();
   state.retrievalEvidence = createEmptyRetrievalEvidence();
+  state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
@@ -2228,6 +2273,7 @@ async function setOutputMode(mode) {
   if (!state.summary.trim()) {
     state.outputMode = normalizedMode;
     state.lastExportPath = '';
+    state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
     state.approvalWarnings = [];
     render();
     persistCurrentWorkspaceSnapshot();
@@ -2280,6 +2326,7 @@ async function setOutputMode(mode) {
     state.summary = result.summary || state.summary;
     state.briefing = result.briefing || state.briefing;
     state.briefingReview = result.hiringManagerBriefingReview || '';
+    state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
     state.approvalWarnings = result.approvalWarnings || [];
     state.draftLifecycle = 'generated';
     state.summaryStatus = 'Ready';
@@ -2322,6 +2369,7 @@ function setOutputLanguage(language) {
   if (!state.summary.trim()) {
     state.outputLanguage = normalizedLanguage;
     state.lastExportPath = '';
+    state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
     state.approvalWarnings = [];
     render();
     persistCurrentWorkspaceSnapshot();
@@ -2387,6 +2435,7 @@ async function translateCurrentDraft(targetLanguage) {
     state.briefingReview = result.hiringManagerBriefingReview || state.briefingReview;
     state.outputLanguage = result.outputLanguage || targetLanguage;
     state.pendingOutputLanguage = '';
+    state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
     state.approvalWarnings = result.approvalWarnings || [];
     setLastPerformance('translation', result.performance);
     cacheDraftVariant(state.outputMode, state.outputLanguage);
@@ -2777,6 +2826,7 @@ function buildWorkspaceSnapshotPayload() {
     briefing: state.briefing,
     draftVariants: cloneDraftVariantsSnapshot(state.draftVariants),
     retrievalEvidence: state.retrievalEvidence,
+    canonicalValidationSummary: state.canonicalValidationSummary,
     briefingReview: state.briefingReview,
     approvalWarnings: state.approvalWarnings,
     lastExportPath: state.lastExportPath,
@@ -2900,6 +2950,7 @@ async function openRecentWorkspace(workspaceId) {
       summary: normalizeRetrievalManifest(snapshot.retrievalEvidence?.summary),
       briefing: normalizeRetrievalManifest(snapshot.retrievalEvidence?.briefing)
     };
+    state.canonicalValidationSummary = normalizeCanonicalValidationSummary(snapshot.canonicalValidationSummary);
     state.briefingReview = snapshot.briefingReview || '';
     state.summary = snapshot.summary || '';
     state.lastPerformance = null;
@@ -3427,6 +3478,7 @@ async function syncBriefingReviewFromCurrentSummary() {
   state.briefing = result.briefing || state.briefing;
   state.briefingReview = result.hiringManagerBriefingReview || '';
   state.summary = result.summary || state.summary;
+  state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
   state.approvalWarnings = result.approvalWarnings || [];
   cacheDraftVariant(state.outputMode, state.outputLanguage);
 }
@@ -3492,6 +3544,7 @@ async function generateSummary() {
   state.summaryStatus = 'Generating';
   state.isGenerating = true;
   state.draftLifecycle = 'empty';
+  state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
   state.approvalWarnings = [];
   state.lastExportPath = '';
   state.lastPerformance = null;
@@ -3520,6 +3573,7 @@ async function generateSummary() {
     state.summary = result.summary;
     state.outputMode = result.outputMode || state.outputMode;
     state.outputLanguage = result.outputLanguage || state.outputLanguage;
+    state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
     state.approvalWarnings = result.approvalWarnings || [];
     setLastPerformance('generation', result.performance);
     clearCachedDraftVariants();
@@ -3782,6 +3836,7 @@ function resetWorkspace() {
   state.sourceFolder = createEmptySourceFolderState();
   state.briefing = null;
   state.retrievalEvidence = createEmptyRetrievalEvidence();
+  state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
   state.briefingReview = '';
   state.summary = '';
   state.pendingOutputLanguage = '';

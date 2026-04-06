@@ -28,6 +28,29 @@ function createWorkspacePayload(overrides = {}) {
         title: 'Blockchain Developer'
       }
     },
+    canonicalValidationSummary: {
+      state: 'amber',
+      issues: [
+        {
+          code: 'project_role_ambiguous',
+          severity: 'amber',
+          section: 'projects',
+          entryIndex: 0,
+          message: 'Project entry 1 could not be linked to one role unambiguously.',
+          sourceRefs: [
+            {
+              documentType: 'cv',
+              blockId: 'cv-projects-1',
+              sectionKey: 'projects',
+              sectionLabel: 'Projects',
+              sourceName: 'CV4-1.pdf',
+              sourcePath: '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf',
+              excerpt: 'Liquidity Router (2022 – 2022)'
+            }
+          ]
+        }
+      ]
+    },
     draftVariants: {
       named: {
         en: {
@@ -41,6 +64,19 @@ function createWorkspacePayload(overrides = {}) {
             }
           },
           briefingReview: 'Hiring manager briefing review.',
+          canonicalValidationSummary: {
+            state: 'amber',
+            issues: [
+              {
+                code: 'project_role_ambiguous',
+                severity: 'amber',
+                section: 'projects',
+                entryIndex: 0,
+                message: 'Project entry 1 could not be linked to one role unambiguously.',
+                sourceRefs: []
+              }
+            ]
+          },
           approvalWarnings: [],
           draftLifecycle: 'generated'
         },
@@ -55,6 +91,19 @@ function createWorkspacePayload(overrides = {}) {
             }
           },
           briefingReview: '中文 Hiring Manager Briefing。',
+          canonicalValidationSummary: {
+            state: 'amber',
+            issues: [
+              {
+                code: 'project_role_ambiguous',
+                severity: 'amber',
+                section: 'projects',
+                entryIndex: 0,
+                message: 'Project entry 1 could not be linked to one role unambiguously.',
+                sourceRefs: []
+              }
+            ]
+          },
           approvalWarnings: [],
           draftLifecycle: 'generated'
         }
@@ -226,8 +275,11 @@ test('RoleWorkspaceStore load rehydrates the full saved workspace state needed f
     assert.equal(snapshot.templateLabel, 'Chinese Recruiter Guidance');
     assert.equal(snapshot.briefing.candidate.name, 'Candidate One');
     assert.equal(snapshot.briefing.role.title, 'Blockchain Developer');
+    assert.equal(snapshot.canonicalValidationSummary.state, 'amber');
+    assert.equal(snapshot.canonicalValidationSummary.issues[0].code, 'project_role_ambiguous');
     assert.equal(snapshot.draftVariants.named.en.summary, 'Candidate: Candidate One\nTarget Role: Blockchain Developer\n\nCandidate summary text.');
     assert.equal(snapshot.draftVariants.named.zh.summary, '候选人：Candidate One\n目标职位：区块链开发工程师\n\n中文摘要。');
+    assert.equal(snapshot.draftVariants.named.en.canonicalValidationSummary.state, 'amber');
     assert.equal(snapshot.draftVariants.anonymous.en, null);
     assert.equal(snapshot.retrievalEvidence.summary[0].sourceName, 'CV4-1.pdf');
     assert.equal(snapshot.retrievalEvidence.briefing[0].sourceName, 'JD4.docx');
@@ -251,6 +303,7 @@ test('RoleWorkspaceStore load preserves a source-only workspace before summary g
       draftLifecycle: 'empty',
       summary: '',
       briefing: null,
+      canonicalValidationSummary: null,
       draftVariants: {
         named: {
           en: null,
@@ -280,6 +333,7 @@ test('RoleWorkspaceStore load preserves a source-only workspace before summary g
     assert.equal(snapshot.selectedCvPath, '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf');
     assert.equal(snapshot.summary, '');
     assert.equal(snapshot.briefing, null);
+    assert.equal(snapshot.canonicalValidationSummary, null);
     assert.equal(snapshot.briefingReview, '');
     assert.deepEqual(snapshot.draftVariants, {
       named: {

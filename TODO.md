@@ -347,6 +347,13 @@ Mark a release complete only when the work is:
   - no recruiter correction UI yet
   - no English working layer yet
   - no Word adapter redesign yet
+- Approved `7B.2` slice should cover:
+  - deterministic projection from the canonical candidate and JD schemas into the existing fallback briefing shape
+  - canonical candidate and JD facts replacing `extractDocumentDerivedProfile(...)` as the factual fallback source for briefing and export flows
+  - canonical validation summary threaded alongside the fallback path for later `7C` review handling
+  - no recruiter correction UI yet
+  - no green/amber/red UI surface yet
+  - no Word adapter redesign yet
 
 ## Release 7C: Exception-Based Review and Quality Gates
 - [ ] Release 7C shipped, completed, and tested.

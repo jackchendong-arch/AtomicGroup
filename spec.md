@@ -1493,6 +1493,13 @@ Approved first implementation slice (`7B.1`) boundary:
 - emit a minimal validation summary with normalized issue codes and a provisional `green|amber|red` state
 - defer recruiter correction UI, English working layer usage, narrative-generation redesign, and Word adapter changes
 
+Approved next implementation slice (`7B.2`) boundary:
+- add a deterministic adapter from the canonical candidate and JD schemas into the existing fallback briefing contract
+- make fallback briefing / export preparation consume canonical candidate facts, education, employment history, project experiences, and JD requirements instead of `extractDocumentDerivedProfile(...)`
+- preserve the current recruiter-summary generation flow and structured-briefing merge behavior
+- thread canonical validation summary metadata alongside the fallback path for later `7C` handling without introducing UI or export gating yet
+- defer recruiter correction UI, green/amber/red UI surfacing, narrative-generation redesign, and Word adapter changes
+
 Acceptance criteria:
 - Candidate and JD facts can be represented as explicit canonical JSON artifacts.
 - Section-specific extraction is preferred over one broad CV-to-JSON call for the core factual sections.

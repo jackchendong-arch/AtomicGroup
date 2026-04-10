@@ -1532,6 +1532,8 @@ Acceptance criteria:
 - Validation can detect malformed education, chronology conflicts, section leakage, and unresolved project-role ambiguity before downstream generation.
 - The validated canonical model can be reused across summary, briefing, email, and Word-report flows.
 
+Release 7B is complete. Exception-based review and quality-gate behavior remain deferred to Release 7C.
+
 ### Release 7C: Exception-Based Review And Quality Gates
 Value:
 - STP remains the default while consultant step-in becomes explicit, targeted, and auditable.

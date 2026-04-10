@@ -334,7 +334,7 @@ Mark a release complete only when the work is:
   - no schema extraction changes yet
 
 ## Release 7B: Canonical Schema Extraction and Validation
-- [-] Release 7B in progress.
+- [x] Release 7B shipped, completed, and tested.
 - Introduce explicit canonical candidate and JD schemas as shared factual source-of-truth artifacts.
 - Add section-specific extraction for profile facts, education, employment history, project experiences, and JD requirements.
 - Add deterministic reconciliation and validation for chronology, malformed rows, section leakage, dedupe, and project-role ambiguity.

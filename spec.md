@@ -650,31 +650,33 @@ There are two different template systems in the product and they should remain s
 5. Build section-aware normalized source blocks in the original source language with source references, language hints, and document-position metadata.
 6. Build a normalized English working layer from those bounded source blocks for consistent downstream processing while keeping the original-language blocks authoritative.
 7. Build an ephemeral workspace-level retrieval set over the active CV, JD, and optional Markdown guidance template.
-8. Run section-specific extraction against bounded source blocks to produce:
+8. Run bounded section-specific extraction against normalized source blocks to produce template-independent factual extraction outputs for:
    - canonical candidate profile facts
    - education
    - employment history
    - project experiences
    - canonical JD requirements and responsibilities
+   - the extraction stage may remain deterministic first and later adopt bounded block/section-level LLM extraction, but it must still emit canonical facts rather than template fields
 9. Reconcile and validate the canonical candidate and JD schemas deterministically:
    - dedupe entries
    - validate chronology
    - validate malformed rows
    - link projects to roles only when evidence supports it
    - keep unresolved ambiguity visible
-10. Use the validated canonical model to drive downstream generation:
-   - fit assessment
+10. Generate the fit assessment separately from factual extraction, using the validated canonical candidate and JD schemas plus source evidence as the grounding input.
+11. Use the validated canonical model plus the fit assessment to drive downstream recruiter-facing generation:
    - `Candidate Summary Review`
    - `Hiring Manager Briefing`
    - email draft
-   - Word-report projection
-11. Only when validation escalates beyond the green path, show the recruiter the specific structured rows and evidence that need confirmation or correction rather than asking for full manual CV validation.
-12. Build a deterministic report view model from:
+12. Only when validation escalates beyond the green path, show the recruiter the specific structured rows and evidence that need confirmation or correction rather than asking for full manual CV validation.
+13. Build a deterministic report view model from:
    - the validated canonical candidate and JD schemas
    - the recruiter-reviewed narrative assessment
-13. Only when the consultant explicitly exports or sends the briefing:
+   - any approved recruiter factual overrides
+14. Keep report-payload construction LLM-free. This stage should map canonical facts plus approved assessment into a template-specific adapter payload without re-reading raw CV/JD text or asking the model to infer final template fields.
+15. Only when the consultant explicitly exports or sends the briefing:
    - render the hiring-manager Word document from the report view model through the configured template adapter and layout-only Word template
-14. Keep consultant business approval before sharing, but do not require full factual CV validation unless the app has surfaced a targeted review-required or blocking state.
+16. Keep consultant business approval before sharing, but do not require full factual CV validation unless the app has surfaced a targeted review-required or blocking state.
 
 ### Source Normalization And Working-Language Layers
 The pipeline should distinguish four source-processing layers:
@@ -877,6 +879,15 @@ The Word renderer should not read directly from raw extracted text or the full c
   "selected_project_experience_section": []
 }
 ```
+
+This report view model is an adapter-owned, template-specific projection rather than a generic raw-placeholder bag. It should be built only from:
+- the validated canonical candidate and JD schemas
+- the approved fit assessment / recruiter-reviewed narrative assessment
+- any recruiter-confirmed factual overrides
+
+Bounded CV/JD extraction, including any future block-level LLM extraction, should populate the canonical model first rather than emitting template fields directly.
+
+Deterministic report-payload construction must not call the LLM. If a client later changes the template structure materially, that should be treated as adapter-compatibility or new adapter-version work rather than assuming the old payload can be reused safely.
 
 This keeps:
 - the canonical schema stable
@@ -1499,6 +1510,21 @@ Approved next implementation slice (`7B.2`) boundary:
 - preserve the current recruiter-summary generation flow and structured-briefing merge behavior
 - thread canonical validation summary metadata alongside the fallback path for later `7C` handling without introducing UI or export gating yet
 - defer recruiter correction UI, green/amber/red UI surfacing, narrative-generation redesign, and Word adapter changes
+
+Clarified remaining architecture boundary after `7B.2`:
+- any later bounded block/section-level LLM extraction belongs on the factual extraction side before canonical reconciliation
+- the extraction output should remain template-independent canonical data rather than template fields
+- fit assessment generation should remain separate from factual extraction
+- deterministic report-payload build remains a later pure-adapter step and should not call the LLM
+
+Approved next implementation slice (`7B.3`) boundary:
+- add explicit per-section factual extraction outputs for identity, education, employment history, project experiences, and JD requirements before canonical reconciliation
+- keep the extraction output source-traceable and template-independent, whether the extraction remains deterministic first or later adopts bounded block/section-level LLM help
+- reconcile those section outputs into canonical candidate and JD schemas with deterministic validation and normalized issue codes
+- write latest-run fixture review artifacts under `debug/CV_blocks/<fixture-id>/` for source-model, section-extraction, canonical-schema, validation-summary, and run-metadata inspection
+- ensure ambiguous linkage issues surface the competing candidate rows and date ranges needed for reviewer action, not just a generic amber code
+- add regression coverage over a fixed CV/JD fixture pack with expected canonical outputs and validation states
+- defer fit-assessment pipeline redesign, recruiter correction UI, and Word adapter changes
 
 Acceptance criteria:
 - Candidate and JD facts can be represented as explicit canonical JSON artifacts.

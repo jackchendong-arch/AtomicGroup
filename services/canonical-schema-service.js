@@ -64,6 +64,13 @@ const EDUCATION_HINT_PATTERN =
   /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|college|degree|diploma|doctor|institute|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|mba|phd|school|university)\b|(?:本科|硕士|博士|学士|大学|学院|学校)/i;
 const SUSPICIOUS_PROJECT_PREFIX_PATTERN = /^(?:and|for|from|in|of|on|or|to|with)\b/i;
 const SUSPICIOUS_PROJECT_LABEL_PATTERN = /^(?:english|language|languages|skills?)[:：]/i;
+const EXPLICIT_LOCATION_PREFIX_PATTERN = /^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i;
+const DATE_RANGE_PATTERN =
+  /(?:19|20)\d{2}[./-]\d{1,2}|(?:19|20)\d{2}\s*[–-]\s*(?:19|20)\d{2}|(?:19|20)\d{2}\s*[–-]\s*(?:present|current|now)|(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}/i;
+const KNOWN_LOCATION_PATTERN =
+  /\b(?:beijing|china|dubai|france|germany|hong kong|india|japan|london|new york|paris|san francisco|shanghai|shenzhen|singapore|sydney|tokyo|united arab emirates|united kingdom|united states|usa|uk)\b/i;
+const KNOWN_LOCATION_TEXT_PATTERN =
+  /(?:北京|上海|深圳|广州|杭州|香港|中国|新加坡|伦敦|纽约|东京|苏州|南京|武汉|成都|西安|厦门)/u;
 
 function cleanLine(value) {
   return String(value || '')
@@ -186,6 +193,13 @@ function dedupeBy(values, buildKey) {
   }
 
   return deduped;
+}
+
+function dedupeLooseStrings(values = []) {
+  return dedupeBy(
+    values.map((value) => cleanLine(value)).filter(Boolean),
+    (value) => normalizeKey(value.replace(/^[-*•]\s*/, ''))
+  );
 }
 
 function looksLikeGenericCandidateLabel(value) {
@@ -453,6 +467,29 @@ function chooseEducationEntries(sectionEntries = [], fallbackEntries = []) {
   return fallbackScore.validCount > 0 ? fallbackEntries : [];
 }
 
+function chooseEducationEntriesWithSource(sectionEntries = [], fallbackEntries = []) {
+  const selectedEntries = chooseEducationEntries(sectionEntries, fallbackEntries);
+
+  if (selectedEntries === sectionEntries && sectionEntries.length > 0) {
+    return {
+      selectedEntries,
+      selectionSource: 'section'
+    };
+  }
+
+  if (selectedEntries === fallbackEntries && fallbackEntries.length > 0) {
+    return {
+      selectedEntries,
+      selectionSource: 'fallback'
+    };
+  }
+
+  return {
+    selectedEntries,
+    selectionSource: 'none'
+  };
+}
+
 function scoreProjectEntries(entries = []) {
   return entries.reduce((score, entry) => {
     const projectName = cleanLine(entry.project_name);
@@ -475,9 +512,16 @@ function scoreProjectEntries(entries = []) {
 }
 
 function chooseProjectEntries(sectionEntries = [], fallbackEntries = []) {
+  return chooseProjectEntriesWithSource(sectionEntries, fallbackEntries).selectedEntries;
+}
+
+function chooseProjectEntriesWithSource(sectionEntries = [], fallbackEntries = []) {
   const mergedByName = new Map();
 
-  [...sectionEntries, ...fallbackEntries].forEach((entry) => {
+  [
+    ...sectionEntries.map((entry) => ({ entry, origin: 'section' })),
+    ...fallbackEntries.map((entry) => ({ entry, origin: 'fallback' }))
+  ].forEach(({ entry, origin }) => {
     const key = normalizeKey(entry.project_name);
 
     if (!key) {
@@ -486,16 +530,32 @@ function chooseProjectEntries(sectionEntries = [], fallbackEntries = []) {
 
     const existing = mergedByName.get(key);
 
-    if (!existing || scoreRawProjectEntry(entry) > scoreRawProjectEntry(existing)) {
-      mergedByName.set(key, entry);
+    if (!existing || scoreRawProjectEntry(entry) > scoreRawProjectEntry(existing.entry)) {
+      mergedByName.set(key, { entry, origin });
     }
   });
 
   if (mergedByName.size === 0) {
-    return [];
+    return {
+      selectedEntries: [],
+      selectedOrigins: [],
+      selectionSource: 'none'
+    };
   }
 
-  return [...mergedByName.values()];
+  const selectedWithOrigins = [...mergedByName.values()];
+  const selectedEntries = selectedWithOrigins.map((value) => value.entry);
+  const selectedOrigins = selectedWithOrigins.map((value) => ({
+    projectName: cleanLine(value.entry.project_name),
+    origin: value.origin
+  }));
+  const originSet = new Set(selectedOrigins.map((value) => value.origin));
+
+  return {
+    selectedEntries,
+    selectedOrigins,
+    selectionSource: originSet.size === 1 ? selectedOrigins[0].origin : 'merged'
+  };
 }
 
 function cleanBulletPrefix(value) {
@@ -642,19 +702,28 @@ function looksLikeCandidateLocation(value, candidateName = '') {
   }
 
   if (
+    normalized.length > 60 ||
+    normalized.split(/\s+/).length > 6 ||
+    DATE_RANGE_PATTERN.test(normalized) ||
     /@/.test(normalized) ||
     /\d{5,}/.test(normalized) ||
+    /\|/.test(normalized) ||
+    /[;；]/.test(normalized) ||
     /^[-*•]\s*/.test(normalized) ||
-    /^(?:education|experience|projects|skills|languages|summary|profile)$/i.test(normalized)
+    /^(?:education|experience|projects|skills|languages|summary|profile)$/i.test(normalized) ||
+    EDUCATION_HINT_PATTERN.test(normalized) ||
+    COMPANY_HINT_PATTERN.test(normalized) ||
+    ROLE_HINT_PATTERN.test(normalized) ||
+    /(?:工作经历|项目经历|技能\/优势及其他|教育背景|经验总结)/u.test(normalized)
   ) {
     return false;
   }
 
   return (
-    /^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i.test(normalized) ||
-    /,/.test(normalized) ||
-    /\b(?:beijing|china|dubai|france|germany|hong kong|india|japan|london|new york|paris|san francisco|shanghai|shenzhen|singapore|sydney|tokyo|united arab emirates|united kingdom|united states|usa)\b/i.test(normalized) ||
-    /(?:北京|上海|深圳|广州|杭州|香港|中国|新加坡|伦敦|纽约|东京)/.test(normalized)
+    EXPLICIT_LOCATION_PREFIX_PATTERN.test(normalized) ||
+    (/,/.test(normalized) && normalized.length <= 40) ||
+    (KNOWN_LOCATION_PATTERN.test(normalized) && normalized.length <= 32) ||
+    (KNOWN_LOCATION_TEXT_PATTERN.test(normalized) && normalized.length <= 16)
   );
 }
 
@@ -662,7 +731,7 @@ function extractCandidateLocationFromBlocks(cvBlocks = [], candidateName = '') {
   const overviewLines = collectPreferredSectionLines(cvBlocks, ['overview', 'unknown'], []).slice(0, 12);
 
   for (const line of overviewLines) {
-    if (/^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i.test(line)) {
+    if (EXPLICIT_LOCATION_PREFIX_PATTERN.test(line)) {
       return cleanLine(line.split(/[:：]/).slice(1).join(':'));
     }
 
@@ -674,7 +743,7 @@ function extractCandidateLocationFromBlocks(cvBlocks = [], candidateName = '') {
   return '';
 }
 
-function extractCanonicalProfile({ cvDocument, jdDocument, cvSourceDocument, jdSourceDocument }) {
+function buildRawSectionExtractions({ cvDocument, jdDocument, cvSourceDocument, jdSourceDocument }) {
   const cvBlocks = cvSourceDocument?.blocks || [];
   const jdBlocks = jdSourceDocument?.blocks || [];
   const cvFileName = resolveDocumentFileName(cvDocument, cvSourceDocument, 'candidate');
@@ -709,36 +778,102 @@ function extractCanonicalProfile({ cvDocument, jdDocument, cvSourceDocument, jdS
   const experienceLines = collectSectionLines(cvBlocks, ['experience']);
   const projectBlocks = cvBlocks.filter((block) => block.sectionKey === 'projects');
   const requirementLines = collectPreferredSectionLines(jdBlocks, ['requirements'], ['responsibilities']);
-  const requirementEntries = extractRequirements(joinLines(requirementLines));
+  const requirementEntries = dedupeLooseStrings(extractRequirements(joinLines(requirementLines)));
   const sectionEducationEntries = educationLines.length > 0
     ? extractEducationEntries(educationLines)
+    : [];
+  const sectionEmploymentEntries = experienceLines.length > 0
+    ? extractExperienceHistory(experienceLines)
     : [];
   const sectionProjectEntries = projectBlocks.length > 0
     ? extractCanonicalProjectEntries(projectBlocks)
     : [];
 
   return {
-    candidateName: cleanLine(candidateNameFromBlocks) && !looksLikeGenericCandidateLabel(candidateNameFromBlocks)
-      ? candidateNameFromBlocks
-      : sourceBoundProfile.candidateName,
-    candidateLocation: extractCandidateLocationFromBlocks(cvBlocks, candidateNameFromBlocks) || sourceBoundProfile.candidateLocation,
-    roleTitle: cleanLine(roleTitleFromBlocks) && !looksLikeGenericRoleLabel(roleTitleFromBlocks)
+    cvBlocks,
+    jdBlocks,
+    sourceBoundProfile,
+    identity: {
+      candidateNameFromBlocks,
+      candidateLocationFromBlocks: extractCandidateLocationFromBlocks(cvBlocks, candidateNameFromBlocks),
+      roleTitleFromBlocks
+    },
+    education: {
+      sectionEntries: sectionEducationEntries,
+      fallbackEntries: sourceBoundProfile.educationEntries || []
+    },
+    employmentHistory: {
+      sectionEntries: sectionEmploymentEntries,
+      fallbackEntries: sourceBoundProfile.employmentHistory || [],
+      usedSectionBoundary: experienceLines.length > 0
+    },
+    projectExperiences: {
+      sectionEntries: sectionProjectEntries,
+      fallbackEntries: sourceBoundProfile.projectExperiences || []
+    },
+    jdRequirements: {
+      sectionEntries: requirementEntries,
+      fallbackEntries: dedupeLooseStrings(extractRequirements(jdAllText))
+    }
+  };
+}
+
+function resolveSelectedIdentity(rawIdentity = {}, sourceBoundProfile = {}) {
+  const nameFromBlocks = cleanLine(rawIdentity.candidateNameFromBlocks);
+  const fallbackName = cleanLine(sourceBoundProfile.candidateName);
+  const locationFromBlocks = cleanLine(rawIdentity.candidateLocationFromBlocks);
+  const fallbackLocation = cleanLine(sourceBoundProfile.candidateLocation);
+  const roleTitleFromBlocks = cleanLine(rawIdentity.roleTitleFromBlocks);
+  const fallbackRoleTitle = cleanLine(sourceBoundProfile.roleTitle);
+
+  return {
+    candidateName: nameFromBlocks && !looksLikeGenericCandidateLabel(nameFromBlocks)
+      ? nameFromBlocks
+      : fallbackName,
+    candidateNameSelectionSource: nameFromBlocks && !looksLikeGenericCandidateLabel(nameFromBlocks)
+      ? 'section'
+      : (fallbackName ? 'fallback' : 'none'),
+    candidateLocation: locationFromBlocks || fallbackLocation,
+    candidateLocationSelectionSource: locationFromBlocks
+      ? 'section'
+      : (fallbackLocation ? 'fallback' : 'none'),
+    roleTitle: roleTitleFromBlocks && !looksLikeGenericRoleLabel(roleTitleFromBlocks)
       ? roleTitleFromBlocks
-      : sourceBoundProfile.roleTitle,
-    educationEntries: chooseEducationEntries(
-      sectionEducationEntries,
-      sourceBoundProfile.educationEntries || []
-    ),
-    employmentHistory: experienceLines.length > 0
-      ? extractExperienceHistory(experienceLines)
-      : (sourceBoundProfile.employmentHistory || []),
-    projectExperiences: chooseProjectEntries(
-      sectionProjectEntries,
-      sourceBoundProfile.projectExperiences || []
-    ),
-    requirementEntries: requirementEntries.length > 0
-      ? requirementEntries
-      : extractRequirements(jdAllText)
+      : fallbackRoleTitle,
+    roleTitleSelectionSource: roleTitleFromBlocks && !looksLikeGenericRoleLabel(roleTitleFromBlocks)
+      ? 'section'
+      : (fallbackRoleTitle ? 'fallback' : 'none')
+  };
+}
+
+function selectEmploymentEntriesWithSource(rawEmployment = {}) {
+  const sectionEntries = Array.isArray(rawEmployment.sectionEntries) ? rawEmployment.sectionEntries : [];
+  const fallbackEntries = Array.isArray(rawEmployment.fallbackEntries) ? rawEmployment.fallbackEntries : [];
+  const useSectionBoundary = Boolean(rawEmployment.usedSectionBoundary);
+  const selectedEntries = useSectionBoundary ? sectionEntries : fallbackEntries;
+
+  return {
+    sectionEntries,
+    fallbackEntries,
+    selectedEntries,
+    selectionSource: selectedEntries.length > 0
+      ? (useSectionBoundary ? 'section' : 'fallback')
+      : 'none'
+  };
+}
+
+function selectRequirementEntriesWithSource(rawRequirements = {}) {
+  const sectionEntries = Array.isArray(rawRequirements.sectionEntries) ? rawRequirements.sectionEntries : [];
+  const fallbackEntries = Array.isArray(rawRequirements.fallbackEntries) ? rawRequirements.fallbackEntries : [];
+  const selectedEntries = sectionEntries.length > 0 ? sectionEntries : fallbackEntries;
+
+  return {
+    sectionEntries,
+    fallbackEntries,
+    selectedEntries,
+    selectionSource: selectedEntries.length > 0
+      ? (sectionEntries.length > 0 ? 'section' : 'fallback')
+      : 'none'
   };
 }
 
@@ -861,6 +996,16 @@ function buildProjectSummary(projectBullets = []) {
   return narrativeBullets[0] || '';
 }
 
+function buildEmploymentLinkCandidate(employmentEntry, index) {
+  return {
+    employmentIndex: index,
+    companyName: cleanLine(employmentEntry?.companyName),
+    jobTitle: cleanLine(employmentEntry?.jobTitle),
+    startDate: cleanLine(employmentEntry?.startDate),
+    endDate: cleanLine(employmentEntry?.endDate)
+  };
+}
+
 function findEmploymentLinkIndex(project, employmentHistory) {
   const projectStart = parseDatePoint(project.startDate, 'start');
   const projectEnd = parseDatePoint(project.endDate || project.startDate, 'end');
@@ -868,7 +1013,8 @@ function findEmploymentLinkIndex(project, employmentHistory) {
   if (projectStart === null) {
     return {
       linkedEmploymentIndex: null,
-      ambiguous: false
+      ambiguous: false,
+      candidateMatches: []
     };
   }
 
@@ -891,13 +1037,15 @@ function findEmploymentLinkIndex(project, employmentHistory) {
   if (matches.length === 1) {
     return {
       linkedEmploymentIndex: matches[0].index,
-      ambiguous: false
+      ambiguous: false,
+      candidateMatches: [buildEmploymentLinkCandidate(matches[0].employmentEntry, matches[0].index)]
     };
   }
 
   return {
     linkedEmploymentIndex: null,
-    ambiguous: matches.length > 1
+    ambiguous: matches.length > 1,
+    candidateMatches: matches.map(({ employmentEntry, index }) => buildEmploymentLinkCandidate(employmentEntry, index))
   };
 }
 
@@ -937,6 +1085,7 @@ function normalizeProjectEntries(entries = [], cvBlocks = [], employmentHistory 
         endDate: cleanLine(entry.project_end_date),
         technologies: parseProjectTechnologies(projectBullets),
         linkedEmploymentIndex: linkage.linkedEmploymentIndex,
+        ambiguousEmploymentCandidates: linkage.ambiguous ? linkage.candidateMatches : [],
         confidence: validationFlags.length === 0 ? 'high' : 'medium',
         validationFlags,
         sourceRefs: selectSourceRefs(cvBlocks, {
@@ -1067,6 +1216,12 @@ function buildCanonicalValidationSummary({ candidateSchema, jdSchema }) {
         section: 'projects',
         entryIndex: index,
         message: `Project entry ${index + 1} could not be linked to one role unambiguously.`,
+        projectName: entry.projectName,
+        projectStartDate: entry.startDate,
+        projectEndDate: entry.endDate,
+        ambiguousEmploymentCandidates: Array.isArray(entry.ambiguousEmploymentCandidates)
+          ? entry.ambiguousEmploymentCandidates
+          : [],
         sourceRefs: entry.sourceRefs
       });
     }
@@ -1094,16 +1249,52 @@ function buildCanonicalValidationSummary({ candidateSchema, jdSchema }) {
   };
 }
 
-function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = {}) {
+function buildCanonicalExtractionReview({ cvDocument, jdDocument, sourceModel = null } = {}) {
   const resolvedSourceModel = sourceModel || buildWorkspaceSourceModel({ cvDocument, jdDocument });
   const cvSourceDocument = resolvedSourceModel.documents.find((document) => document.documentType === 'cv');
   const jdSourceDocument = resolvedSourceModel.documents.find((document) => document.documentType === 'jd');
-  const profile = extractCanonicalProfile({
+  const rawSectionExtractions = buildRawSectionExtractions({
     cvDocument,
     jdDocument,
     cvSourceDocument,
     jdSourceDocument
   });
+  const selectedIdentity = resolveSelectedIdentity(
+    rawSectionExtractions.identity,
+    rawSectionExtractions.sourceBoundProfile
+  );
+  const educationSelection = chooseEducationEntriesWithSource(
+    rawSectionExtractions.education.sectionEntries,
+    rawSectionExtractions.education.fallbackEntries
+  );
+  const employmentSelection = selectEmploymentEntriesWithSource(rawSectionExtractions.employmentHistory);
+  const projectSelection = chooseProjectEntriesWithSource(
+    rawSectionExtractions.projectExperiences.sectionEntries,
+    rawSectionExtractions.projectExperiences.fallbackEntries
+  );
+  const requirementSelection = selectRequirementEntriesWithSource(rawSectionExtractions.jdRequirements);
+  const profile = {
+    candidateName: selectedIdentity.candidateName,
+    candidateLocation: selectedIdentity.candidateLocation,
+    roleTitle: selectedIdentity.roleTitle,
+    educationEntries: educationSelection.selectedEntries,
+    employmentHistory: employmentSelection.selectedEntries,
+    projectExperiences: projectSelection.selectedEntries,
+    requirementEntries: requirementSelection.selectedEntries
+  };
+  const candidateIdentityTerms = [
+    selectedIdentity.candidateName,
+    selectedIdentity.candidateLocation,
+    rawSectionExtractions.identity.candidateNameFromBlocks,
+    rawSectionExtractions.identity.candidateLocationFromBlocks,
+    rawSectionExtractions.sourceBoundProfile.candidateName,
+    rawSectionExtractions.sourceBoundProfile.candidateLocation
+  ].filter(Boolean);
+  const roleTerms = [
+    selectedIdentity.roleTitle,
+    rawSectionExtractions.identity.roleTitleFromBlocks,
+    rawSectionExtractions.sourceBoundProfile.roleTitle
+  ].filter(Boolean);
 
   const candidateSchema = {
     identity: {
@@ -1113,7 +1304,7 @@ function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = 
       validationFlags: [],
       sourceRefs: selectSourceRefs(cvSourceDocument?.blocks || [], {
         preferredSectionKeys: ['overview', 'experience', 'unknown'],
-        terms: [profile.candidateName, profile.candidateLocation]
+        terms: candidateIdentityTerms
       })
     },
     education: normalizeEducationEntries(profile.educationEntries || [], cvSourceDocument?.blocks || []),
@@ -1134,7 +1325,7 @@ function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = 
       validationFlags: [],
       sourceRefs: selectSourceRefs(jdSourceDocument?.blocks || [], {
         preferredSectionKeys: ['overview'],
-        terms: [profile.roleTitle]
+        terms: roleTerms
       })
     },
     requirements: normalizeRequirementEntries(
@@ -1144,17 +1335,93 @@ function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = 
     )
   };
 
+  const validationSummary = buildCanonicalValidationSummary({
+    candidateSchema,
+    jdSchema
+  });
+
   return {
     schemaVersion: 1,
+    sourceModel: resolvedSourceModel,
+    sectionExtractions: {
+      identity: {
+        candidateNameFromBlocks: cleanLine(rawSectionExtractions.identity.candidateNameFromBlocks),
+        candidateLocationFromBlocks: cleanLine(rawSectionExtractions.identity.candidateLocationFromBlocks),
+        sourceBoundCandidateName: cleanLine(rawSectionExtractions.sourceBoundProfile.candidateName),
+        sourceBoundCandidateLocation: cleanLine(rawSectionExtractions.sourceBoundProfile.candidateLocation),
+        selectedCandidateName: cleanLine(selectedIdentity.candidateName),
+        selectedCandidateLocation: cleanLine(selectedIdentity.candidateLocation),
+        candidateNameSelectionSource: selectedIdentity.candidateNameSelectionSource,
+        candidateLocationSelectionSource: selectedIdentity.candidateLocationSelectionSource,
+        roleTitleFromBlocks: cleanLine(rawSectionExtractions.identity.roleTitleFromBlocks),
+        sourceBoundRoleTitle: cleanLine(rawSectionExtractions.sourceBoundProfile.roleTitle),
+        selectedRoleTitle: cleanLine(selectedIdentity.roleTitle),
+        roleTitleSelectionSource: selectedIdentity.roleTitleSelectionSource,
+        candidateSourceRefs: selectSourceRefs(cvSourceDocument?.blocks || [], {
+          preferredSectionKeys: ['overview', 'unknown', 'experience'],
+          terms: candidateIdentityTerms
+        }),
+        roleSourceRefs: selectSourceRefs(jdSourceDocument?.blocks || [], {
+          preferredSectionKeys: ['overview'],
+          terms: roleTerms
+        })
+      },
+      education: {
+        sectionEntries: rawSectionExtractions.education.sectionEntries,
+        fallbackEntries: rawSectionExtractions.education.fallbackEntries,
+        selectedEntries: educationSelection.selectedEntries,
+        selectionSource: educationSelection.selectionSource,
+        sourceRefs: selectSourceRefs(cvSourceDocument?.blocks || [], {
+          preferredSectionKeys: ['education']
+        })
+      },
+      employmentHistory: {
+        sectionEntries: employmentSelection.sectionEntries,
+        fallbackEntries: employmentSelection.fallbackEntries,
+        selectedEntries: employmentSelection.selectedEntries,
+        selectionSource: employmentSelection.selectionSource,
+        sourceRefs: selectSourceRefs(cvSourceDocument?.blocks || [], {
+          preferredSectionKeys: ['experience']
+        })
+      },
+      projectExperiences: {
+        sectionEntries: rawSectionExtractions.projectExperiences.sectionEntries,
+        fallbackEntries: rawSectionExtractions.projectExperiences.fallbackEntries,
+        selectedEntries: projectSelection.selectedEntries,
+        selectedOrigins: projectSelection.selectedOrigins,
+        selectionSource: projectSelection.selectionSource,
+        sourceRefs: selectSourceRefs(cvSourceDocument?.blocks || [], {
+          preferredSectionKeys: ['projects']
+        })
+      },
+      jdRequirements: {
+        sectionEntries: requirementSelection.sectionEntries,
+        fallbackEntries: requirementSelection.fallbackEntries,
+        selectedEntries: requirementSelection.selectedEntries,
+        selectionSource: requirementSelection.selectionSource,
+        sourceRefs: selectSourceRefs(jdSourceDocument?.blocks || [], {
+          preferredSectionKeys: ['requirements']
+        })
+      }
+    },
     candidateSchema,
     jdSchema,
-    validationSummary: buildCanonicalValidationSummary({
-      candidateSchema,
-      jdSchema
-    })
+    validationSummary
+  };
+}
+
+function buildCanonicalSchemas({ cvDocument, jdDocument, sourceModel = null } = {}) {
+  const review = buildCanonicalExtractionReview({ cvDocument, jdDocument, sourceModel });
+
+  return {
+    schemaVersion: review.schemaVersion,
+    candidateSchema: review.candidateSchema,
+    jdSchema: review.jdSchema,
+    validationSummary: review.validationSummary
   };
 }
 
 module.exports = {
+  buildCanonicalExtractionReview,
   buildCanonicalSchemas
 };

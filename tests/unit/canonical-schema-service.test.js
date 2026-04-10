@@ -4,7 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { importDocument } = require('../../services/document-service');
-const { buildCanonicalSchemas } = require('../../services/canonical-schema-service');
+const {
+  buildCanonicalExtractionReview,
+  buildCanonicalSchemas
+} = require('../../services/canonical-schema-service');
 const { buildWorkspaceSourceModel } = require('../../services/workspace-source-service');
 
 const ROLE4_ROOT = '/Users/jack/Dev/Test/AtomicGroup/Role4';
@@ -73,6 +76,71 @@ test('buildCanonicalSchemas produces canonical candidate and JD schemas with sou
   assert.equal(result.validationSummary.state, 'green');
   assert(result.candidateSchema.education[0].sourceRefs.length > 0);
   assert(result.jdSchema.requirements[0].sourceRefs.length > 0);
+});
+
+test('buildCanonicalExtractionReview exposes section extraction outputs before reconciliation', () => {
+  const result = buildCanonicalExtractionReview({
+    cvDocument: {
+      text: [
+        'Noah Zhang',
+        'Shanghai, China',
+        '',
+        'Education',
+        'MSc in Computing',
+        'Cardiff University, UK | 2019 – 2020',
+        '',
+        'Work Experience',
+        'Shanghai Xiaohan Technology Co., Ltd. — Blockchain Engineer',
+        'Sep 2021 – Sep 2025',
+        '- Built backend services',
+        '',
+        'Projects',
+        'Rust Copy-Trading Arbitrage Bot & Jupiter-style Aggregator (2025.04 – 2025.08)',
+        '- Tech Stack: Rust, Solana',
+        '- Built a Jupiter-style token swap aggregator on Solana'
+      ].join('\n'),
+      file: {
+        name: 'Noah Zhang CV.pdf',
+        path: '/tmp/noah-zhang.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Blockchain Engineer',
+        '',
+        'Requirements',
+        '- Experience building backend services',
+        '- Solana or blockchain delivery experience'
+      ].join('\n'),
+      file: {
+        name: 'JD4.docx',
+        path: '/tmp/jd4.docx'
+      }
+    }
+  });
+
+  assert.equal(result.schemaVersion, 1);
+  assert.equal(result.sourceModel.documents.length, 2);
+  assert.equal(result.sectionExtractions.identity.selectedCandidateName, 'Noah Zhang');
+  assert.equal(result.sectionExtractions.identity.candidateNameSelectionSource, 'section');
+  assert.equal(result.sectionExtractions.identity.selectedRoleTitle, 'Blockchain Engineer');
+  assert.equal(result.sectionExtractions.identity.roleTitleSelectionSource, 'section');
+  assert.equal(result.sectionExtractions.education.selectionSource, 'section');
+  assert.equal(result.sectionExtractions.education.selectedEntries.length, 1);
+  assert.equal(result.sectionExtractions.employmentHistory.selectionSource, 'section');
+  assert.equal(result.sectionExtractions.employmentHistory.selectedEntries.length, 1);
+  assert.equal(result.sectionExtractions.projectExperiences.selectionSource, 'section');
+  assert.deepEqual(result.sectionExtractions.projectExperiences.selectedOrigins, [
+    {
+      projectName: 'Rust Copy-Trading Arbitrage Bot & Jupiter-style Aggregator',
+      origin: 'section'
+    }
+  ]);
+  assert.equal(result.sectionExtractions.jdRequirements.selectionSource, 'section');
+  assert.equal(result.sectionExtractions.jdRequirements.selectedEntries.length, 2);
+  assert.equal(result.candidateSchema.identity.name, 'Noah Zhang');
+  assert.equal(result.jdSchema.role.title, 'Blockchain Engineer');
+  assert.equal(result.validationSummary.state, 'green');
 });
 
 test('buildCanonicalSchemas uses normalized source blocks as the extraction boundary when sourceModel is supplied', () => {
@@ -194,6 +262,44 @@ test('buildCanonicalSchemas surfaces ambiguous project-role linkage as amber val
   assert.equal(result.validationSummary.state, 'amber');
   assert(result.validationSummary.issues.some((issue) => issue.code === 'project_role_ambiguous'));
   assert.equal(result.candidateSchema.projectExperiences[0].linkedEmploymentIndex, null);
+  assert.deepEqual(
+    result.candidateSchema.projectExperiences[0].ambiguousEmploymentCandidates,
+    [
+      {
+        employmentIndex: 0,
+        companyName: 'Beta Labs',
+        jobTitle: 'Lead Engineer',
+        startDate: '2021',
+        endDate: '2024'
+      },
+      {
+        employmentIndex: 1,
+        companyName: 'Acme Capital',
+        jobTitle: 'Blockchain Engineer',
+        startDate: '2020',
+        endDate: '2023'
+      }
+    ]
+  );
+  assert.deepEqual(
+    result.validationSummary.issues.find((issue) => issue.code === 'project_role_ambiguous')?.ambiguousEmploymentCandidates,
+    [
+      {
+        employmentIndex: 0,
+        companyName: 'Beta Labs',
+        jobTitle: 'Lead Engineer',
+        startDate: '2021',
+        endDate: '2024'
+      },
+      {
+        employmentIndex: 1,
+        companyName: 'Acme Capital',
+        jobTitle: 'Blockchain Engineer',
+        startDate: '2020',
+        endDate: '2023'
+      }
+    ]
+  );
 });
 
 test(
@@ -232,6 +338,8 @@ test(
     const result = await loadRole4Canonical('CV4-2.pdf');
     const projectNames = result.candidateSchema.projectExperiences.map((entry) => entry.projectName);
     const issueCodes = result.validationSummary.issues.map((issue) => issue.code);
+    const ambiguousProject = result.candidateSchema.projectExperiences.find((entry) => entry.projectName === '721Land – OpenSea-like NFT Marketplace');
+    const ambiguousIssue = result.validationSummary.issues.find((issue) => issue.code === 'project_role_ambiguous');
 
     assert.equal(result.validationSummary.state, 'amber');
     assert(issueCodes.includes('project_role_ambiguous'));
@@ -265,6 +373,30 @@ test(
     assert(projectNames.includes('Pongolo Tequila RWA Project'));
     assert(projectNames.includes('Pumpfun Meme Character Livestream & AI Agent'));
     assert(projectNames.includes('Lottery Drawer App (Personal Project)'));
+    assert.deepEqual(ambiguousProject?.ambiguousEmploymentCandidates, [
+      {
+        employmentIndex: 0,
+        companyName: 'Shanghai Xiaohan Technology Co., Ltd.',
+        jobTitle: 'Blockchain Engineer',
+        startDate: '2021',
+        endDate: '2025'
+      },
+      {
+        employmentIndex: 1,
+        companyName: 'Wanxiang Blockchain Inc., Shanghai',
+        jobTitle: 'Blockchain Engineer',
+        startDate: '2021',
+        endDate: '2021'
+      },
+      {
+        employmentIndex: 2,
+        companyName: 'Shanghai Tancheng Data Technology Co., Ltd.',
+        jobTitle: 'Full-Stack Engineer',
+        startDate: '2020',
+        endDate: '2021'
+      }
+    ]);
+    assert.deepEqual(ambiguousIssue?.ambiguousEmploymentCandidates, ambiguousProject?.ambiguousEmploymentCandidates);
     assert.equal(
       projectNames.some((value) => /^(dancing|of \$5M|money, and sniper traders|downloads\*\*|features|smart contracts)$/i.test(value)),
       false

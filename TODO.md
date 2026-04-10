@@ -339,6 +339,8 @@ Mark a release complete only when the work is:
 - Add section-specific extraction for profile facts, education, employment history, project experiences, and JD requirements.
 - Add deterministic reconciliation and validation for chronology, malformed rows, section leakage, dedupe, and project-role ambiguity.
 - Keep the canonical candidate schema plus canonical JD schema as the shared content source of truth for summary, briefing, email, and Word-report generation.
+- Keep bounded factual extraction template-independent; any later block/section-level LLM extraction should populate canonical candidate/JD facts before fit assessment or Word-report payload building.
+- Keep fit assessment generation separate from factual extraction, and keep deterministic report-payload construction as a later LLM-free adapter step.
 - Approved `7B.1` slice should cover:
   - canonical candidate schema and canonical JD schema MVP contracts
   - section-specific extraction for education, employment history, project experiences, and JD requirements only
@@ -353,6 +355,15 @@ Mark a release complete only when the work is:
   - canonical validation summary threaded alongside the fallback path for later `7C` review handling
   - no recruiter correction UI yet
   - no green/amber/red UI surface yet
+  - no Word adapter redesign yet
+- Approved `7B.3` slice should cover:
+  - bounded section/block factual extraction review for identity, education, employment history, project experiences, and JD requirements
+  - deterministic canonical reconciliation and validation over those section outputs
+  - per-fixture latest-run JSON review artifacts written under `debug/CV_blocks/<fixture-id>/`
+  - ambiguous linkage issues in those artifacts must include the competing candidate rows needed for targeted reviewer action
+  - regression coverage over a fixed CV/JD fixture pack with expected canonical outputs and validation issue codes/states
+  - no fit-assessment redesign yet
+  - no recruiter correction UI yet
   - no Word adapter redesign yet
 
 ## Release 7C: Exception-Based Review and Quality Gates
@@ -369,11 +380,13 @@ Mark a release complete only when the work is:
 - [ ] Release 7D shipped, completed, and tested.
 - Implement a dedicated Word-report export path that treats the hiring-manager document as its own product slice rather than a side effect of the generic briefing/export pipeline.
 - Build an explicit versioned template adapter for the active hiring-manager report template so export is driven by a known code-owned contract instead of generic placeholder inference.
+- Keep deterministic report-payload build LLM-free, mapping validated canonical facts plus approved fit assessment into template-specific adapter fields only in code.
 - Move optional-field display composition such as education, role/company, date/location, and project role/company lines into the template adapter so Word templates stay layout-only.
 - Keep the validated canonical candidate and JD schemas plus approved narrative assessment as the content source of truth, but project a template-specific report payload before `.docx` rendering.
 - Separate template-compatibility validation from factual report-quality validation so template issues and extraction issues do not masquerade as each other.
 - Support one clear MVP adapter target first for the active revised hiring-manager report template before generalizing to additional template versions.
 - Add explicit template-version and adapter-version compatibility checks before export.
+- Treat material client template structure changes as compatibility or new-adapter work instead of assuming a generic payload can absorb arbitrary field-layout changes.
 - Expand post-render validation so generated `.docx` files are checked for:
   - unexpanded placeholders
   - missing required sections/headings

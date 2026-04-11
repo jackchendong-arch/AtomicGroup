@@ -1020,6 +1020,56 @@ test('extractCandidateName recognizes uppercase surnames and parenthetical nickn
   assert.equal(spacedLetterOcrName, 'Chenhao Li');
 });
 
+test('extractCandidateName rejects overview headings and role labels, then falls back to cleaner filename-derived names', () => {
+  const chineseOverviewHeadingName = extractCandidateName(
+    [
+      '刘欣',
+      '软件工程 硕士',
+      '联系电话：18500239163',
+      '个人简介',
+      '现就职于花牛科技，做测试开发组长。'
+    ].join('\n'),
+    '刘欣简历.pdf'
+  );
+
+  const roleLabelInsteadOfName = extractCandidateName(
+    [
+      'Open minded, decisive, willing to drive changes and provide solutions.',
+      'Business Analyst',
+      'Guangzhou-Tianhe',
+      'Worked across cross-border payment and transfer projects.'
+    ].join('\n'),
+    '殷昱的简历.pdf'
+  );
+
+  const latinInlineNameWithChineseFileName = extractCandidateName(
+    [
+      'Open minded, decisive, willing to drive changes and provide solutions.',
+      'Farben GZ 2024/04-2025/07',
+      'Business Analyst',
+      'Guangzhou-Tianhe',
+      'Yin Yu',
+      'On job, seeking for new job · 37 · Bachelor · 15 years 2 month experience'
+    ].join('\n'),
+    '殷昱的简历.pdf'
+  );
+
+  const overviewLabelInsteadOfName = extractCandidateName(
+    [
+      'Tel： +86 18142874592',
+      'E-mail：1318835235@qq.com',
+      'Current Residence',
+      'Beiging, China'
+    ].join('\n'),
+    'chenweihao-ENCV.docx'
+  );
+
+  assert.equal(chineseOverviewHeadingName, '刘欣');
+  assert.equal(roleLabelInsteadOfName, '殷昱');
+  assert.equal(latinInlineNameWithChineseFileName, '殷昱');
+  assert.equal(overviewLabelInsteadOfName, 'Chenweihao');
+});
+
 test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {
   const request = buildBriefingRequest({
     cvDocument: {

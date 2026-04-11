@@ -51,6 +51,52 @@ function createWorkspacePayload(overrides = {}) {
         }
       ]
     },
+    reviewState: {
+      state: 'amber',
+      exportPosture: 'review-required',
+      affectedSections: ['projects'],
+      issueCount: 1,
+      blockedIssueCount: 0,
+      reviewRequiredIssueCount: 1,
+      issues: [
+        {
+          source: 'canonical-validation',
+          code: 'project_role_ambiguous',
+          severity: 'amber',
+          section: 'projects',
+          sectionLabel: 'Project Experiences',
+          entryIndex: 0,
+          title: 'Project-role linkage is ambiguous',
+          message: 'Project entry 1 could not be linked to one role unambiguously.',
+          recommendedAction: 'Review the flagged project against the competing employment rows and confirm the correct linkage.',
+          exportPosture: 'review-required',
+          sourceRefs: [
+            {
+              documentType: 'cv',
+              blockId: 'cv-projects-1',
+              sectionKey: 'projects',
+              sectionLabel: 'Projects',
+              sourceName: 'CV4-1.pdf',
+              sourcePath: '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf',
+              excerpt: 'Liquidity Router (2022 – 2022)'
+            }
+          ],
+          evidenceRefs: [],
+          ambiguousEmploymentCandidates: [
+            {
+              employmentIndex: 0,
+              companyName: 'Atomic Group',
+              jobTitle: 'Software Engineer',
+              startDate: '2022',
+              endDate: '2023'
+            }
+          ],
+          projectName: 'Liquidity Router',
+          projectStartDate: '2022',
+          projectEndDate: '2022'
+        }
+      ]
+    },
     draftVariants: {
       named: {
         en: {
@@ -74,6 +120,34 @@ function createWorkspacePayload(overrides = {}) {
                 entryIndex: 0,
                 message: 'Project entry 1 could not be linked to one role unambiguously.',
                 sourceRefs: []
+              }
+            ]
+          },
+          reviewState: {
+            state: 'amber',
+            exportPosture: 'review-required',
+            affectedSections: ['projects'],
+            issueCount: 1,
+            blockedIssueCount: 0,
+            reviewRequiredIssueCount: 1,
+            issues: [
+              {
+                source: 'canonical-validation',
+                code: 'project_role_ambiguous',
+                severity: 'amber',
+                section: 'projects',
+                sectionLabel: 'Project Experiences',
+                entryIndex: 0,
+                title: 'Project-role linkage is ambiguous',
+                message: 'Project entry 1 could not be linked to one role unambiguously.',
+                recommendedAction: 'Review the flagged project against the competing employment rows and confirm the correct linkage.',
+                exportPosture: 'review-required',
+                sourceRefs: [],
+                evidenceRefs: [],
+                ambiguousEmploymentCandidates: [],
+                projectName: 'Liquidity Router',
+                projectStartDate: '2022',
+                projectEndDate: '2022'
               }
             ]
           },
@@ -101,6 +175,34 @@ function createWorkspacePayload(overrides = {}) {
                 entryIndex: 0,
                 message: 'Project entry 1 could not be linked to one role unambiguously.',
                 sourceRefs: []
+              }
+            ]
+          },
+          reviewState: {
+            state: 'amber',
+            exportPosture: 'review-required',
+            affectedSections: ['projects'],
+            issueCount: 1,
+            blockedIssueCount: 0,
+            reviewRequiredIssueCount: 1,
+            issues: [
+              {
+                source: 'canonical-validation',
+                code: 'project_role_ambiguous',
+                severity: 'amber',
+                section: 'projects',
+                sectionLabel: 'Project Experiences',
+                entryIndex: 0,
+                title: 'Project-role linkage is ambiguous',
+                message: 'Project entry 1 could not be linked to one role unambiguously.',
+                recommendedAction: 'Review the flagged project against the competing employment rows and confirm the correct linkage.',
+                exportPosture: 'review-required',
+                sourceRefs: [],
+                evidenceRefs: [],
+                ambiguousEmploymentCandidates: [],
+                projectName: 'Liquidity Router',
+                projectStartDate: '2022',
+                projectEndDate: '2022'
               }
             ]
           },
@@ -277,9 +379,15 @@ test('RoleWorkspaceStore load rehydrates the full saved workspace state needed f
     assert.equal(snapshot.briefing.role.title, 'Blockchain Developer');
     assert.equal(snapshot.canonicalValidationSummary.state, 'amber');
     assert.equal(snapshot.canonicalValidationSummary.issues[0].code, 'project_role_ambiguous');
+    assert.equal(snapshot.reviewState.state, 'amber');
+    assert.equal(snapshot.reviewState.exportPosture, 'review-required');
+    assert.equal(snapshot.reviewState.issues[0].code, 'project_role_ambiguous');
+    assert.equal(snapshot.reviewState.issues[0].ambiguousEmploymentCandidates[0].companyName, 'Atomic Group');
     assert.equal(snapshot.draftVariants.named.en.summary, 'Candidate: Candidate One\nTarget Role: Blockchain Developer\n\nCandidate summary text.');
     assert.equal(snapshot.draftVariants.named.zh.summary, '候选人：Candidate One\n目标职位：区块链开发工程师\n\n中文摘要。');
     assert.equal(snapshot.draftVariants.named.en.canonicalValidationSummary.state, 'amber');
+    assert.equal(snapshot.draftVariants.named.en.reviewState.state, 'amber');
+    assert.equal(snapshot.draftVariants.named.en.reviewState.issues[0].title, 'Project-role linkage is ambiguous');
     assert.equal(snapshot.draftVariants.anonymous.en, null);
     assert.equal(snapshot.retrievalEvidence.summary[0].sourceName, 'CV4-1.pdf');
     assert.equal(snapshot.retrievalEvidence.briefing[0].sourceName, 'JD4.docx');
@@ -304,6 +412,7 @@ test('RoleWorkspaceStore load preserves a source-only workspace before summary g
       summary: '',
       briefing: null,
       canonicalValidationSummary: null,
+      reviewState: null,
       draftVariants: {
         named: {
           en: null,
@@ -334,6 +443,7 @@ test('RoleWorkspaceStore load preserves a source-only workspace before summary g
     assert.equal(snapshot.summary, '');
     assert.equal(snapshot.briefing, null);
     assert.equal(snapshot.canonicalValidationSummary, null);
+    assert.equal(snapshot.reviewState, null);
     assert.equal(snapshot.briefingReview, '');
     assert.deepEqual(snapshot.draftVariants, {
       named: {

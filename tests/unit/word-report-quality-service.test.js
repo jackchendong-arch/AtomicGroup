@@ -51,6 +51,7 @@ test('validateWordReportQuality accepts a clean report view model', () => {
 
   assert.equal(validation.isValid, true);
   assert.deepEqual(validation.blockers, []);
+  assert.deepEqual(validation.issues, []);
 });
 
 test('validateWordReportQuality reports malformed factual sections clearly', () => {
@@ -86,6 +87,14 @@ test('validateWordReportQuality reports malformed factual sections clearly', () 
   assert(validation.blockers.some((message) => /merged separator text/i.test(message)));
   assert(validation.blockers.some((message) => /company name was captured as the role title/i.test(message)));
   assert(validation.blockers.some((message) => /project names appear to be sentence fragments/i.test(message)));
+  assert(validation.issues.some((issue) => issue.code === 'word_report_candidate_name_generic'));
+  assert(validation.issues.some((issue) => issue.code === 'word_report_education_entry_merged_fields'));
+  assert(validation.issues.some((issue) => issue.code === 'word_report_employment_role_looks_like_company'));
+  assert(validation.issues.some((issue) => issue.code === 'word_report_project_experience_unreliable'));
+  assert.equal(
+    validation.issues.find((issue) => issue.code === 'word_report_candidate_name_generic')?.evidenceRefs?.[0]?.value,
+    'Technical Skills'
+  );
 });
 
 const ROLE4_ROOT = '/Users/jack/Dev/Test/AtomicGroup/Role4';

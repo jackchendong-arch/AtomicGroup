@@ -1,12 +1,50 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 
 const DEBUG_CV_BLOCKS_DIR = path.resolve(__dirname, '../../debug/CV_blocks');
 
 function sanitizeFixtureId(fixtureId) {
-  return String(fixtureId || 'unknown-fixture')
+  const normalized = String(fixtureId || 'unknown-fixture')
+    .normalize('NFKC')
     .trim()
-    .replace(/[^A-Za-z0-9._-]+/g, '_');
+    .replace(/[\\/]+/g, '_')
+    .replace(/[\u0000-\u001f]+/g, '')
+    .replace(/\s+/g, ' ');
+  const fallbackSafe = normalized
+    .replace(/[<>:"|?*]+/g, '_')
+    .trim() || 'unknown-fixture';
+  const suffix = createHash('sha1')
+    .update(String(fixtureId || 'unknown-fixture'))
+    .digest('hex')
+    .slice(0, 8);
+
+  return `${fallbackSafe}--${suffix}`;
+}
+
+function sanitizePathSegment(segment) {
+  return String(segment || 'unknown')
+    .normalize('NFKC')
+    .trim()
+    .replace(/[\\/]+/g, '_')
+    .replace(/[\u0000-\u001f]+/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[<>:"|?*]+/g, '_')
+    .trim() || 'unknown';
+}
+
+function buildOutputDirectory({ fixtureId, outputSubdirectory = '' }) {
+  const pathSegments = Array.isArray(outputSubdirectory)
+    ? outputSubdirectory
+    : String(outputSubdirectory || '')
+      .split(/[\\/]/)
+      .filter(Boolean);
+
+  return path.join(
+    DEBUG_CV_BLOCKS_DIR,
+    ...pathSegments.map((segment) => sanitizePathSegment(segment)),
+    sanitizeFixtureId(fixtureId)
+  );
 }
 
 async function writeJson(filePath, value) {
@@ -15,10 +53,11 @@ async function writeJson(filePath, value) {
 
 async function writeCanonicalReviewArtifacts({
   fixtureId,
+  outputSubdirectory = '',
   review,
   metadata = {}
 }) {
-  const outputDirectory = path.join(DEBUG_CV_BLOCKS_DIR, sanitizeFixtureId(fixtureId));
+  const outputDirectory = buildOutputDirectory({ fixtureId, outputSubdirectory });
 
   await fs.mkdir(outputDirectory, { recursive: true });
   await writeJson(path.join(outputDirectory, 'source-model.json'), review.sourceModel || { documents: [] });
@@ -46,5 +85,6 @@ async function writeCanonicalReviewArtifacts({
 
 module.exports = {
   DEBUG_CV_BLOCKS_DIR,
+  buildOutputDirectory,
   writeCanonicalReviewArtifacts
 };

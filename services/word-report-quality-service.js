@@ -61,6 +61,14 @@ function normalizeTemplateData(templateData = {}) {
   return templateData && typeof templateData === 'object' ? templateData : {};
 }
 
+function createEvidenceRef({ fieldPath = '', value = '', entryIndex = null } = {}) {
+  return {
+    fieldPath: cleanLine(fieldPath),
+    value: cleanLine(value),
+    entryIndex: Number.isFinite(entryIndex) ? Number(entryIndex) : null
+  };
+}
+
 function uniqueMessages(values) {
   const seen = new Set();
 
@@ -154,40 +162,110 @@ function looksLikeCompanyInsteadOfRoleTitle(title, companyName) {
   );
 }
 
-function validateEducationEntries(templateData, blockers) {
+function pushIssue(blockers, issues, issue) {
+  if (!issue || typeof issue !== 'object') {
+    return;
+  }
+
+  blockers.push(cleanLine(issue.message));
+  issues.push({
+    code: cleanLine(issue.code),
+    severity: 'red',
+    section: cleanLine(issue.section),
+    entryIndex: Number.isFinite(issue.entryIndex) ? Number(issue.entryIndex) : null,
+    message: cleanLine(issue.message),
+    evidenceRefs: Array.isArray(issue.evidenceRefs)
+      ? issue.evidenceRefs
+        .filter((evidenceRef) => evidenceRef && typeof evidenceRef === 'object')
+        .map((evidenceRef) => createEvidenceRef(evidenceRef))
+      : []
+  });
+}
+
+function validateEducationEntries(templateData, blockers, issues) {
   const educationEntries = Array.isArray(templateData.education_entries) ? templateData.education_entries : [];
 
   if (educationEntries.length > 6) {
-    blockers.push(`Education history extraction looks malformed: ${educationEntries.length} education rows were produced.`);
+    pushIssue(blockers, issues, {
+      code: 'word_report_education_overflow',
+      section: 'education',
+      message: `Education history extraction looks malformed: ${educationEntries.length} education rows were produced.`,
+      evidenceRefs: [
+        createEvidenceRef({
+          fieldPath: 'education_entries',
+          value: `${educationEntries.length} entries`
+        })
+      ]
+    });
   }
 
   educationEntries.forEach((entry, index) => {
     const degreeName = cleanLine(entry.degree_name);
     const institutionName = cleanLine(entry.institution_name || entry.university);
     const label = `Education entry ${index + 1}`;
+    const evidenceRefs = [
+      createEvidenceRef({
+        fieldPath: `education_entries[${index}].degree_name`,
+        value: degreeName,
+        entryIndex: index
+      }),
+      createEvidenceRef({
+        fieldPath: `education_entries[${index}].institution_name`,
+        value: institutionName,
+        entryIndex: index
+      })
+    ];
 
     if (!degreeName && !institutionName) {
-      blockers.push(`${label} is empty or missing both degree and institution details.`);
+      pushIssue(blockers, issues, {
+        code: 'word_report_education_entry_empty',
+        section: 'education',
+        entryIndex: index,
+        message: `${label} is empty or missing both degree and institution details.`,
+        evidenceRefs
+      });
       return;
     }
 
     if ((!degreeName || !institutionName) && /\|/.test(`${degreeName} ${institutionName}`)) {
-      blockers.push(`${label} contains merged separator text instead of clean degree and institution fields.`);
+      pushIssue(blockers, issues, {
+        code: 'word_report_education_entry_merged_fields',
+        section: 'education',
+        entryIndex: index,
+        message: `${label} contains merged separator text instead of clean degree and institution fields.`,
+        evidenceRefs
+      });
     }
 
     if (!institutionName && looksLikeEmploymentOrProjectPollution(degreeName) && !EDUCATION_HINT_PATTERN.test(degreeName)) {
-      blockers.push(`${label} looks like employment or project content rather than education.`);
+      pushIssue(blockers, issues, {
+        code: 'word_report_education_entry_polluted',
+        section: 'education',
+        entryIndex: index,
+        message: `${label} looks like employment or project content rather than education.`,
+        evidenceRefs
+      });
     }
   });
 }
 
-function validateEmploymentEntries(templateData, blockers) {
+function validateEmploymentEntries(templateData, blockers, issues) {
   const employmentEntries = Array.isArray(templateData.employment_experience_entries)
     ? templateData.employment_experience_entries
     : [];
 
   if (employmentEntries.length === 0) {
-    blockers.push('Employment history extraction is missing. The report would not reflect the candidate CV.');
+    pushIssue(blockers, issues, {
+      code: 'word_report_employment_history_missing',
+      section: 'employment',
+      message: 'Employment history extraction is missing. The report would not reflect the candidate CV.',
+      evidenceRefs: [
+        createEvidenceRef({
+          fieldPath: 'employment_experience_entries',
+          value: '0 entries'
+        })
+      ]
+    });
     return;
   }
 
@@ -195,23 +273,53 @@ function validateEmploymentEntries(templateData, blockers) {
     const jobTitle = cleanLine(entry.job_title);
     const companyName = cleanLine(entry.company_name);
     const label = `Employment entry ${index + 1}`;
+    const evidenceRefs = [
+      createEvidenceRef({
+        fieldPath: `employment_experience_entries[${index}].job_title`,
+        value: jobTitle,
+        entryIndex: index
+      }),
+      createEvidenceRef({
+        fieldPath: `employment_experience_entries[${index}].company_name`,
+        value: companyName,
+        entryIndex: index
+      })
+    ];
 
     if (!jobTitle && !companyName) {
-      blockers.push(`${label} is empty.`);
+      pushIssue(blockers, issues, {
+        code: 'word_report_employment_entry_empty',
+        section: 'employment',
+        entryIndex: index,
+        message: `${label} is empty.`,
+        evidenceRefs
+      });
       return;
     }
 
     if (SKILL_HEADING_PATTERN.test(jobTitle)) {
-      blockers.push(`${label} uses a skills or tech-stack heading as the role title.`);
+      pushIssue(blockers, issues, {
+        code: 'word_report_employment_role_skill_heading',
+        section: 'employment',
+        entryIndex: index,
+        message: `${label} uses a skills or tech-stack heading as the role title.`,
+        evidenceRefs
+      });
     }
 
     if (looksLikeCompanyInsteadOfRoleTitle(jobTitle, companyName)) {
-      blockers.push(`${label} looks like a company name was captured as the role title.`);
+      pushIssue(blockers, issues, {
+        code: 'word_report_employment_role_looks_like_company',
+        section: 'employment',
+        entryIndex: index,
+        message: `${label} looks like a company name was captured as the role title.`,
+        evidenceRefs
+      });
     }
   });
 }
 
-function validateProjectEntries(templateData, blockers) {
+function validateProjectEntries(templateData, blockers, issues) {
   const projectEntries = Array.isArray(templateData.project_experience_entries)
     ? templateData.project_experience_entries
     : [];
@@ -224,36 +332,76 @@ function validateProjectEntries(templateData, blockers) {
     projectEntries.length > 12 &&
     suspiciousProjectNames.length >= Math.max(2, Math.ceil(projectEntries.length * 0.2))
   ) {
-    blockers.push(`Project experience extraction looks over-expanded: ${projectEntries.length} project rows were produced.`);
+    pushIssue(blockers, issues, {
+      code: 'word_report_project_experience_over_expanded',
+      section: 'projects',
+      message: `Project experience extraction looks over-expanded: ${projectEntries.length} project rows were produced.`,
+      evidenceRefs: [
+        createEvidenceRef({
+          fieldPath: 'project_experience_entries',
+          value: `${projectEntries.length} entries`
+        })
+      ]
+    });
   }
 
   if (
     suspiciousProjectNames.length >= 3 &&
     suspiciousProjectNames.length >= Math.ceil(projectEntries.length * 0.4)
   ) {
-    blockers.push('Project experience extraction looks unreliable: several project names appear to be sentence fragments or section spillover.');
+    pushIssue(blockers, issues, {
+      code: 'word_report_project_experience_unreliable',
+      section: 'projects',
+      message: 'Project experience extraction looks unreliable: several project names appear to be sentence fragments or section spillover.',
+      evidenceRefs: suspiciousProjectNames.map((projectName) => createEvidenceRef({
+        fieldPath: 'project_experience_entries[].project_name',
+        value: projectName
+      }))
+    });
   }
 }
 
 function validateWordReportQuality(templateData = {}) {
   const normalized = normalizeTemplateData(templateData);
   const blockers = [];
+  const issues = [];
 
   if (looksLikeGenericCandidateLabel(normalized.candidate_name)) {
-    blockers.push('Candidate name looks generic, file-derived, or section-derived.');
+    pushIssue(blockers, issues, {
+      code: 'word_report_candidate_name_generic',
+      section: 'identity',
+      message: 'Candidate name looks generic, file-derived, or section-derived.',
+      evidenceRefs: [
+        createEvidenceRef({
+          fieldPath: 'candidate_name',
+          value: normalized.candidate_name
+        })
+      ]
+    });
   }
 
   if (looksLikeGenericRoleLabel(normalized.role_title)) {
-    blockers.push('Role title looks generic or source-derived.');
+    pushIssue(blockers, issues, {
+      code: 'word_report_role_title_generic',
+      section: 'role',
+      message: 'Role title looks generic or source-derived.',
+      evidenceRefs: [
+        createEvidenceRef({
+          fieldPath: 'role_title',
+          value: normalized.role_title
+        })
+      ]
+    });
   }
 
-  validateEducationEntries(normalized, blockers);
-  validateEmploymentEntries(normalized, blockers);
-  validateProjectEntries(normalized, blockers);
+  validateEducationEntries(normalized, blockers, issues);
+  validateEmploymentEntries(normalized, blockers, issues);
+  validateProjectEntries(normalized, blockers, issues);
 
   return {
     isValid: blockers.length === 0,
-    blockers: uniqueMessages(blockers)
+    blockers: uniqueMessages(blockers),
+    issues
   };
 }
 

@@ -22,6 +22,10 @@ function createEmptyCanonicalValidationSummary() {
   return null;
 }
 
+function createEmptyReviewState() {
+  return null;
+}
+
 function createEmptySourceFolderState() {
   return {
     path: '',
@@ -61,6 +65,7 @@ const state = {
   draftVariants: createEmptyDraftVariants(),
   retrievalEvidence: createEmptyRetrievalEvidence(),
   canonicalValidationSummary: createEmptyCanonicalValidationSummary(),
+  reviewState: createEmptyReviewState(),
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
@@ -99,14 +104,20 @@ const e2eFailureInjection = {
   chooseBriefingOutputFolder: '',
   refreshBriefingReview: ''
 };
-const REPORT_QUALITY_WARNING_PREFIX = 'Word report review required:';
-
 function isE2ETestModeEnabled() {
   return Boolean(window.__atomicgroupTestMode?.enabled);
 }
 
-function hasBlockingReportQualityWarnings(warnings = state.approvalWarnings) {
-  return Array.isArray(warnings) && warnings.some((warning) => String(warning || '').startsWith(REPORT_QUALITY_WARNING_PREFIX));
+function hasBlockedReviewState(reviewState = state.reviewState) {
+  return reviewState?.exportPosture === 'blocked';
+}
+
+function hasReviewRequiredState(reviewState = state.reviewState) {
+  return reviewState?.exportPosture === 'review-required';
+}
+
+function hasReviewStateIssues(reviewState = state.reviewState) {
+  return Boolean(reviewState && Array.isArray(reviewState.issues) && reviewState.issues.length > 0);
 }
 
 const elements = {
@@ -220,7 +231,12 @@ const elements = {
   draftModePill: document.getElementById('draft-mode-pill'),
   draftLifecyclePill: document.getElementById('draft-lifecycle-pill'),
   templateLabel: document.getElementById('template-label'),
+  reviewStatePill: document.getElementById('review-state-pill'),
   draftMeta: document.getElementById('draft-meta'),
+  reviewStatePanel: document.getElementById('review-state-panel'),
+  reviewStateHeading: document.getElementById('review-state-heading'),
+  reviewStateMessage: document.getElementById('review-state-message'),
+  reviewStateList: document.getElementById('review-state-list'),
   approvalWarningPanel: document.getElementById('approval-warning-panel'),
   approvalWarningList: document.getElementById('approval-warning-list'),
   briefingStatus: document.getElementById('briefing-status'),
@@ -514,6 +530,83 @@ function normalizeCanonicalValidationSummary(summary) {
   };
 }
 
+function normalizeReviewState(reviewState) {
+  if (!reviewState || typeof reviewState !== 'object') {
+    return null;
+  }
+
+  const issues = Array.isArray(reviewState.issues)
+    ? reviewState.issues
+      .filter((issue) => issue && typeof issue === 'object')
+      .map((issue) => ({
+        source: String(issue.source || '').trim(),
+        code: String(issue.code || '').trim(),
+        severity: issue.severity === 'amber' ? 'amber' : 'red',
+        section: String(issue.section || '').trim(),
+        sectionLabel: String(issue.sectionLabel || '').trim(),
+        entryIndex: Number.isFinite(issue.entryIndex) ? Number(issue.entryIndex) : null,
+        title: String(issue.title || '').trim(),
+        message: String(issue.message || '').trim(),
+        recommendedAction: String(issue.recommendedAction || '').trim(),
+        exportPosture: issue.exportPosture === 'review-required' ? 'review-required' : 'blocked',
+        sourceRefs: Array.isArray(issue.sourceRefs)
+          ? issue.sourceRefs
+            .filter((sourceRef) => sourceRef && typeof sourceRef === 'object')
+            .map((sourceRef) => ({
+              documentType: String(sourceRef.documentType || '').trim(),
+              blockId: String(sourceRef.blockId || '').trim(),
+              sectionKey: String(sourceRef.sectionKey || '').trim(),
+              sectionLabel: String(sourceRef.sectionLabel || '').trim(),
+              sourceName: String(sourceRef.sourceName || '').trim(),
+              sourcePath: String(sourceRef.sourcePath || '').trim(),
+              excerpt: String(sourceRef.excerpt || '').trim()
+            }))
+          : [],
+        evidenceRefs: Array.isArray(issue.evidenceRefs)
+          ? issue.evidenceRefs
+            .filter((evidenceRef) => evidenceRef && typeof evidenceRef === 'object')
+            .map((evidenceRef) => ({
+              fieldPath: String(evidenceRef.fieldPath || '').trim(),
+              value: String(evidenceRef.value || '').trim(),
+              entryIndex: Number.isFinite(evidenceRef.entryIndex) ? Number(evidenceRef.entryIndex) : null
+            }))
+          : [],
+        ambiguousEmploymentCandidates: Array.isArray(issue.ambiguousEmploymentCandidates)
+          ? issue.ambiguousEmploymentCandidates
+            .filter((candidate) => candidate && typeof candidate === 'object')
+            .map((candidate) => ({
+              employmentIndex: Number.isFinite(candidate.employmentIndex) ? Number(candidate.employmentIndex) : null,
+              companyName: String(candidate.companyName || '').trim(),
+              jobTitle: String(candidate.jobTitle || '').trim(),
+              startDate: String(candidate.startDate || '').trim(),
+              endDate: String(candidate.endDate || '').trim()
+            }))
+          : [],
+        projectName: String(issue.projectName || '').trim(),
+        projectStartDate: String(issue.projectStartDate || '').trim(),
+        projectEndDate: String(issue.projectEndDate || '').trim()
+      }))
+    : [];
+
+  return {
+    state: reviewState.state === 'red' ? 'red' : (reviewState.state === 'amber' ? 'amber' : 'green'),
+    exportPosture: reviewState.exportPosture === 'blocked'
+      ? 'blocked'
+      : (reviewState.exportPosture === 'review-required' ? 'review-required' : 'allowed'),
+    affectedSections: Array.isArray(reviewState.affectedSections)
+      ? reviewState.affectedSections.map((section) => String(section || '').trim()).filter(Boolean)
+      : [],
+    issueCount: Number.isFinite(reviewState.issueCount) ? Number(reviewState.issueCount) : issues.length,
+    blockedIssueCount: Number.isFinite(reviewState.blockedIssueCount)
+      ? Number(reviewState.blockedIssueCount)
+      : issues.filter((issue) => issue.exportPosture === 'blocked').length,
+    reviewRequiredIssueCount: Number.isFinite(reviewState.reviewRequiredIssueCount)
+      ? Number(reviewState.reviewRequiredIssueCount)
+      : issues.filter((issue) => issue.exportPosture === 'review-required').length,
+    issues
+  };
+}
+
 function cacheDraftVariant(mode = state.outputMode, language = state.outputLanguage) {
   const normalizedMode = normalizeDraftVariantMode(mode);
   const normalizedLanguage = normalizeDraftVariantLanguage(language);
@@ -528,6 +621,7 @@ function cacheDraftVariant(mode = state.outputMode, language = state.outputLangu
     briefing: cloneDraftData(state.briefing),
     briefingReview: state.briefingReview,
     canonicalValidationSummary: cloneDraftData(state.canonicalValidationSummary),
+    reviewState: cloneDraftData(state.reviewState),
     approvalWarnings: [...state.approvalWarnings],
     draftLifecycle: state.draftLifecycle
   };
@@ -554,6 +648,7 @@ function cloneDraftVariantsSnapshot(input) {
         briefing: cloneDraftData(variant.briefing),
         briefingReview: String(variant.briefingReview || ''),
         canonicalValidationSummary: normalizeCanonicalValidationSummary(variant.canonicalValidationSummary),
+        reviewState: normalizeReviewState(variant.reviewState),
         approvalWarnings: Array.isArray(variant.approvalWarnings)
           ? variant.approvalWarnings.map((warning) => String(warning || '').trim()).filter(Boolean)
           : [],
@@ -587,6 +682,7 @@ function applyCachedDraftVariant(mode, language, snapshot, message) {
   state.outputLanguage = normalizeDraftVariantLanguage(language);
   state.pendingOutputLanguage = '';
   state.canonicalValidationSummary = normalizeCanonicalValidationSummary(snapshot.canonicalValidationSummary);
+  state.reviewState = normalizeReviewState(snapshot.reviewState);
   state.approvalWarnings = [...(snapshot.approvalWarnings || [])];
   state.lastPerformance = null;
   state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
@@ -1878,6 +1974,7 @@ function renderSummary() {
   elements.generateButton.disabled = !canGenerateSummary();
   elements.debugTrace.textContent = formatDebugTrace();
   elements.templateLabel.textContent = state.templateLabel;
+  renderReviewState();
   renderApprovalWarnings();
   renderRetrievalEvidence();
   const lastPerformanceMeta = getLastPerformanceMetaText();
@@ -1887,9 +1984,17 @@ function renderSummary() {
   }
 
   if (state.draftLifecycle === 'approved') {
-    if (hasBlockingReportQualityWarnings()) {
+    if (hasBlockedReviewState()) {
       elements.draftMeta.textContent = [
-        'Approved draft is ready for internal review, but Word export and email sharing are paused until the report-quality issues in Review Checks are resolved.',
+        'Approved draft is ready for internal review, but Word export and email sharing are paused until the blocking review-state issues are resolved.',
+        lastPerformanceMeta
+      ].filter(Boolean).join(' ');
+      return;
+    }
+
+    if (hasReviewRequiredState()) {
+      elements.draftMeta.textContent = [
+        'Approved draft can be shared, but targeted review is still recommended for the flagged sections.',
         lastPerformanceMeta
       ].filter(Boolean).join(' ');
       return;
@@ -2063,6 +2168,7 @@ function invalidateSummary(message) {
   clearCachedDraftVariants();
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+  state.reviewState = createEmptyReviewState();
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
@@ -2185,6 +2291,176 @@ function getDraftLifecycleLabel() {
   }
 }
 
+function getReviewStateLabel(reviewState = state.reviewState) {
+  if (!reviewState) {
+    return 'Review Pending';
+  }
+
+  switch (reviewState.state) {
+    case 'red':
+      return 'Review: Red';
+    case 'amber':
+      return 'Review: Amber';
+    default:
+      return 'Review: Green';
+  }
+}
+
+function getReviewStateHeading(reviewState = state.reviewState) {
+  if (!reviewState || reviewState.state === 'green') {
+    return 'No blocking exceptions were detected for this draft.';
+  }
+
+  if (reviewState.exportPosture === 'blocked') {
+    return 'Blocking issues were detected for this draft.';
+  }
+
+  return 'Targeted review is required for flagged sections.';
+}
+
+function getReviewStateMessage(reviewState = state.reviewState) {
+  if (!reviewState || reviewState.state === 'green') {
+    return 'Generation completed without canonical-validation or Word-report exceptions.';
+  }
+
+  const affectedSections = Array.isArray(reviewState.affectedSections) && reviewState.affectedSections.length > 0
+    ? reviewState.affectedSections.join(', ')
+    : 'general sections';
+
+  if (reviewState.exportPosture === 'blocked') {
+    return `Resolve the flagged ${affectedSections} issues before Word export or email sharing.`;
+  }
+
+  return `Review the flagged ${affectedSections} issues before approving or sharing the draft.`;
+}
+
+function buildReadyDraftMessage({
+  reviewState = state.reviewState,
+  approvalWarnings = state.approvalWarnings,
+  outputMode = state.outputMode,
+  performanceNote = ''
+} = {}) {
+  if (hasBlockedReviewState(reviewState)) {
+    return [
+      'Candidate summary and hiring-manager briefing are ready, but blocking review-state issues must be resolved before Word export or email sharing.',
+      performanceNote
+    ].filter(Boolean).join(' ');
+  }
+
+  if (hasReviewRequiredState(reviewState)) {
+    return [
+      'Candidate summary and hiring-manager briefing are ready. Review the flagged sections before approval or sharing.',
+      performanceNote
+    ].filter(Boolean).join(' ');
+  }
+
+  if (Array.isArray(approvalWarnings) && approvalWarnings.length > 0) {
+    return [
+      'Candidate summary and hiring-manager briefing are ready. Review the highlighted checks before approval or sharing.',
+      performanceNote
+    ].filter(Boolean).join(' ');
+  }
+
+  return outputMode === 'anonymous'
+    ? ['Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.', performanceNote].filter(Boolean).join(' ')
+    : ['Candidate summary and hiring-manager briefing are ready for review and approval.', performanceNote].filter(Boolean).join(' ');
+}
+
+function buildTranslationReadyMessage(targetLanguage, performanceNote = '', reviewState = state.reviewState) {
+  if (hasBlockedReviewState(reviewState)) {
+    return [
+      'Language update is complete, but blocking review-state issues still prevent Word export or email sharing.',
+      performanceNote
+    ].filter(Boolean).join(' ');
+  }
+
+  if (hasReviewRequiredState(reviewState)) {
+    return [
+      'Language update is complete. Review the flagged sections before approval or sharing.',
+      performanceNote
+    ].filter(Boolean).join(' ');
+  }
+
+  return targetLanguage === 'zh'
+    ? ['当前草稿已翻译为中文。请复核译文后再复制、导出或发送。', performanceNote].filter(Boolean).join(' ')
+    : ['The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.', performanceNote].filter(Boolean).join(' ');
+}
+
+function buildBlockedActionMessage(action) {
+  return action === 'share'
+    ? 'Review-state blockers must be resolved before email sharing.'
+    : 'Review-state blockers must be resolved before Word export.';
+}
+
+function formatReviewIssueEvidence(issue) {
+  if (Array.isArray(issue.ambiguousEmploymentCandidates) && issue.ambiguousEmploymentCandidates.length > 0) {
+    return issue.ambiguousEmploymentCandidates
+      .map((candidate) => [candidate.jobTitle, candidate.companyName, candidate.startDate || candidate.endDate
+        ? `${candidate.startDate || '?'} to ${candidate.endDate || '?'}`
+        : ''].filter(Boolean).join(' | '))
+      .join(' | ');
+  }
+
+  const sourceExcerpt = Array.isArray(issue.sourceRefs)
+    ? issue.sourceRefs.find((sourceRef) => sourceRef.excerpt)?.excerpt
+    : '';
+
+  if (sourceExcerpt) {
+    return sourceExcerpt;
+  }
+
+  const evidenceValue = Array.isArray(issue.evidenceRefs)
+    ? issue.evidenceRefs.find((evidenceRef) => evidenceRef.value)?.value
+    : '';
+
+  return evidenceValue || '';
+}
+
+function renderReviewState() {
+  const reviewState = state.reviewState;
+  const hasReviewState = Boolean(reviewState);
+
+  elements.reviewStatePill.textContent = getReviewStateLabel(reviewState);
+  elements.reviewStatePill.classList.toggle('is-green', reviewState?.state === 'green');
+  elements.reviewStatePill.classList.toggle('is-amber', reviewState?.state === 'amber');
+  elements.reviewStatePill.classList.toggle('is-red', reviewState?.state === 'red');
+  elements.reviewStatePill.classList.toggle('pill-emphasis', reviewState?.state !== 'green');
+  elements.reviewStatePanel.classList.toggle('is-hidden', !hasReviewState || reviewState.state === 'green');
+
+  if (!hasReviewState || reviewState.state === 'green') {
+    elements.reviewStateHeading.textContent = 'No blocking exceptions were detected for this draft.';
+    elements.reviewStateMessage.textContent = 'Generation completed without canonical-validation or Word-report exceptions.';
+    elements.reviewStateList.innerHTML = '';
+    return;
+  }
+
+  elements.reviewStateHeading.textContent = getReviewStateHeading(reviewState);
+  elements.reviewStateMessage.textContent = getReviewStateMessage(reviewState);
+  elements.reviewStateList.innerHTML = reviewState.issues
+    .map((issue) => {
+      const evidence = formatReviewIssueEvidence(issue);
+      const metaParts = [
+        issue.sectionLabel || issue.section,
+        issue.exportPosture === 'blocked' ? 'Export blocked' : 'Review required'
+      ];
+
+      if (Number.isFinite(issue.entryIndex)) {
+        metaParts.push(`Entry ${issue.entryIndex + 1}`);
+      }
+
+      return [
+        '<li class="review-state-item">',
+        `<div class="review-state-item-head"><strong>${escapeHtml(issue.title || issue.code)}</strong><span class="review-state-severity review-state-severity-${escapeHtml(issue.severity)}">${escapeHtml(issue.severity)}</span></div>`,
+        `<p class="review-state-item-meta">${escapeHtml(metaParts.filter(Boolean).join(' · '))}</p>`,
+        `<p class="review-state-item-message">${escapeHtml(issue.message)}</p>`,
+        issue.recommendedAction ? `<p class="review-state-item-action">${escapeHtml(issue.recommendedAction)}</p>` : '',
+        evidence ? `<p class="review-state-item-evidence">${escapeHtml(evidence)}</p>` : '',
+        '</li>'
+      ].join('');
+    })
+    .join('');
+}
+
 function renderApprovalWarnings() {
   const warnings = state.approvalWarnings;
   const hasWarnings = warnings.length > 0;
@@ -2274,6 +2550,7 @@ async function setOutputMode(mode) {
     state.outputMode = normalizedMode;
     state.lastExportPath = '';
     state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+    state.reviewState = createEmptyReviewState();
     state.approvalWarnings = [];
     render();
     persistCurrentWorkspaceSnapshot();
@@ -2327,14 +2604,17 @@ async function setOutputMode(mode) {
     state.briefing = result.briefing || state.briefing;
     state.briefingReview = result.hiringManagerBriefingReview || '';
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
+    state.reviewState = normalizeReviewState(result.reviewState);
     state.approvalWarnings = result.approvalWarnings || [];
     state.draftLifecycle = 'generated';
     state.summaryStatus = 'Ready';
-    state.summaryMessage = hasBlockingReportQualityWarnings(state.approvalWarnings)
-      ? 'Hiring-manager output refreshed, but report review is still required before Word export or email sharing.'
+    state.summaryMessage = hasBlockedReviewState(state.reviewState)
+      ? 'Hiring-manager output refreshed, but blocking review-state issues still prevent Word export or email sharing.'
+      : (hasReviewRequiredState(state.reviewState)
+        ? 'Hiring-manager output refreshed. Review the flagged sections before approval or sharing.'
       : (normalizedMode === 'anonymous'
         ? 'Anonymous hiring-manager output is ready without rerunning candidate assessment. The consultant summary stays named.'
-        : 'Named hiring-manager output restored without rerunning candidate assessment.');
+        : 'Named hiring-manager output restored without rerunning candidate assessment.'));
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
@@ -2370,6 +2650,7 @@ function setOutputLanguage(language) {
     state.outputLanguage = normalizedLanguage;
     state.lastExportPath = '';
     state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+    state.reviewState = createEmptyReviewState();
     state.approvalWarnings = [];
     render();
     persistCurrentWorkspaceSnapshot();
@@ -2436,16 +2717,13 @@ async function translateCurrentDraft(targetLanguage) {
     state.outputLanguage = result.outputLanguage || targetLanguage;
     state.pendingOutputLanguage = '';
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
+    state.reviewState = normalizeReviewState(result.reviewState);
     state.approvalWarnings = result.approvalWarnings || [];
     setLastPerformance('translation', result.performance);
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     state.summaryStatus = 'Ready';
     const translationPerformanceNote = buildPerformanceStatusSuffix(result.performance, ['coreBriefingTranslationMs']);
-    state.summaryMessage = hasBlockingReportQualityWarnings(state.approvalWarnings)
-      ? ['Language update is complete, but report review is still required before Word export or email sharing.', translationPerformanceNote].filter(Boolean).join(' ')
-      : (targetLanguage === 'zh'
-        ? ['当前草稿已翻译为中文。请复核译文后再复制、导出或发送。', translationPerformanceNote].filter(Boolean).join(' ')
-        : ['The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.', translationPerformanceNote].filter(Boolean).join(' '));
+    state.summaryMessage = buildTranslationReadyMessage(targetLanguage, translationPerformanceNote, state.reviewState);
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {
     state.outputLanguage = previousLanguage;
@@ -2827,6 +3105,7 @@ function buildWorkspaceSnapshotPayload() {
     draftVariants: cloneDraftVariantsSnapshot(state.draftVariants),
     retrievalEvidence: state.retrievalEvidence,
     canonicalValidationSummary: state.canonicalValidationSummary,
+    reviewState: state.reviewState,
     briefingReview: state.briefingReview,
     approvalWarnings: state.approvalWarnings,
     lastExportPath: state.lastExportPath,
@@ -2951,6 +3230,7 @@ async function openRecentWorkspace(workspaceId) {
       briefing: normalizeRetrievalManifest(snapshot.retrievalEvidence?.briefing)
     };
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(snapshot.canonicalValidationSummary);
+    state.reviewState = normalizeReviewState(snapshot.reviewState);
     state.briefingReview = snapshot.briefingReview || '';
     state.summary = snapshot.summary || '';
     state.lastPerformance = null;
@@ -3434,7 +3714,7 @@ function canExportWordDraft() {
   return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0 &&
     state.draftLifecycle === 'approved' &&
-    !hasBlockingReportQualityWarnings();
+    !hasBlockedReviewState();
 }
 
 function canCopySummary() {
@@ -3446,7 +3726,7 @@ function canShareByEmail() {
   return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0 &&
     state.draftLifecycle === 'approved' &&
-    !hasBlockingReportQualityWarnings();
+    !hasBlockedReviewState();
 }
 
 function canApproveDraft() {
@@ -3479,6 +3759,7 @@ async function syncBriefingReviewFromCurrentSummary() {
   state.briefingReview = result.hiringManagerBriefingReview || '';
   state.summary = result.summary || state.summary;
   state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
+  state.reviewState = normalizeReviewState(result.reviewState);
   state.approvalWarnings = result.approvalWarnings || [];
   cacheDraftVariant(state.outputMode, state.outputLanguage);
 }
@@ -3545,6 +3826,7 @@ async function generateSummary() {
   state.isGenerating = true;
   state.draftLifecycle = 'empty';
   state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+  state.reviewState = createEmptyReviewState();
   state.approvalWarnings = [];
   state.lastExportPath = '';
   state.lastPerformance = null;
@@ -3574,6 +3856,7 @@ async function generateSummary() {
     state.outputMode = result.outputMode || state.outputMode;
     state.outputLanguage = result.outputLanguage || state.outputLanguage;
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
+    state.reviewState = normalizeReviewState(result.reviewState);
     state.approvalWarnings = result.approvalWarnings || [];
     setLastPerformance('generation', result.performance);
     clearCachedDraftVariants();
@@ -3583,13 +3866,12 @@ async function generateSummary() {
     state.workbenchTab = nextWorkbenchTab;
     state.summaryStatus = 'Ready';
     const generationPerformanceNote = buildPerformanceStatusSuffix(result.performance, ['combinedProviderWaitMs']);
-    state.summaryMessage = hasBlockingReportQualityWarnings(state.approvalWarnings)
-      ? ['Candidate summary and hiring-manager briefing are ready, but report review is required before Word export or email sharing.', generationPerformanceNote].filter(Boolean).join(' ')
-      : (state.approvalWarnings.length > 0
-        ? ['Candidate summary and hiring-manager briefing are ready. Review the highlighted checks before approval or sharing.', generationPerformanceNote].filter(Boolean).join(' ')
-        : (state.outputMode === 'anonymous'
-          ? ['Candidate summary is ready. Hiring-manager briefing, email, and Word export will stay anonymous after approval.', generationPerformanceNote].filter(Boolean).join(' ')
-          : ['Candidate summary and hiring-manager briefing are ready for review and approval.', generationPerformanceNote].filter(Boolean).join(' ')));
+    state.summaryMessage = buildReadyDraftMessage({
+      reviewState: state.reviewState,
+      approvalWarnings: state.approvalWarnings,
+      outputMode: state.outputMode,
+      performanceNote: generationPerformanceNote
+    });
     state.isGenerating = false;
     state.progressLabel = 'Generating summary with the configured model...';
     state.workbenchTab = nextWorkbenchTab;
@@ -3627,8 +3909,8 @@ async function copySummary() {
 async function shareByEmail() {
   if (!canShareByEmail()) {
     state.summaryStatus = 'Not Ready';
-    state.generationError = hasBlockingReportQualityWarnings()
-      ? 'Report review is required before email sharing. Resolve the report-quality issues listed in Review Checks first.'
+    state.generationError = hasBlockedReviewState()
+      ? buildBlockedActionMessage('share')
       : (hasConfiguredWordTemplate()
         ? 'Approve the current draft before opening an email draft.'
         : 'Configure the hiring-manager Word template and approve the current draft before sharing by email.');
@@ -3649,6 +3931,13 @@ async function shareByEmail() {
 
   try {
     await syncBriefingReviewFromCurrentSummary();
+
+    if (hasBlockedReviewState()) {
+      state.summaryStatus = 'Not Ready';
+      state.generationError = buildBlockedActionMessage('share');
+      state.workbenchTab = 'summary';
+      return;
+    }
 
     const result = await window.recruitmentApi.shareDraftByEmail({
       briefing: state.briefing,
@@ -3707,8 +3996,8 @@ async function exportWordDraft() {
   if (!canExportWordDraft()) {
     state.debugTrace = ['Export request blocked before the save dialog opened.'];
     state.summaryStatus = 'Not Ready';
-    state.generationError = hasBlockingReportQualityWarnings()
-      ? 'Report review is required before Word export. Resolve the report-quality issues listed in Review Checks first.'
+    state.generationError = hasBlockedReviewState()
+      ? buildBlockedActionMessage('export')
       : (state.settings?.outputTemplatePath
         ? 'A saved recruiter summary is required before exporting the hiring-manager Word draft.'
         : 'Configure a Word .docx or .dotx template before exporting the hiring-manager draft.');
@@ -3730,6 +4019,13 @@ async function exportWordDraft() {
 
   try {
     await syncBriefingReviewFromCurrentSummary();
+
+    if (hasBlockedReviewState()) {
+      state.summaryStatus = 'Not Ready';
+      state.generationError = buildBlockedActionMessage('export');
+      state.workbenchTab = 'briefing';
+      return;
+    }
 
     const result = await window.recruitmentApi.exportHiringManagerWordDraft({
       briefing: state.briefing,
@@ -3837,6 +4133,7 @@ function resetWorkspace() {
   state.briefing = null;
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+  state.reviewState = createEmptyReviewState();
   state.briefingReview = '';
   state.summary = '';
   state.pendingOutputLanguage = '';

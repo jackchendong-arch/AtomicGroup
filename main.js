@@ -53,6 +53,7 @@ const {
   formatWordReportQualityError,
   validateWordReportQuality
 } = require('./services/word-report-quality-service');
+const { buildReviewState } = require('./services/review-state-service');
 const {
   buildDraftTranslationRepairRequest,
   buildDraftTranslationRequest,
@@ -759,6 +760,7 @@ function buildReviewPresentation({
   recruiterSummary,
   outputLanguage,
   outputMode,
+  canonicalValidationSummary = null,
   cvDocument = null,
   jdDocument = null,
   existingWarnings = [],
@@ -786,13 +788,17 @@ function buildReviewPresentation({
     briefing: reviewBriefing,
     outputMode,
     existingWarnings,
-    reportQualityBlockers: reportQualityValidation.blockers,
     summaryRetrievalManifest,
     briefingRetrievalManifest
+  });
+  const reviewState = buildReviewState({
+    canonicalValidationSummary,
+    reportQualityValidation
   });
 
   return {
     hiringManagerBriefing,
+    reviewState,
     reviewWarnings,
     reportQualityBlockers: reportQualityValidation.blockers
   };
@@ -917,6 +923,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     recruiterSummary: preparedOutput.summary,
     outputLanguage,
     outputMode,
+    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
@@ -948,6 +955,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     model: 'deterministic-local',
     briefing: validatedBriefing,
     canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+    reviewState: reviewPresentation.reviewState,
     outputMode,
     outputLanguage,
     modeLabel: preparedOutput.modeLabel,
@@ -986,6 +994,7 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     recruiterSummary: preparedOutput.summary,
     outputLanguage: targetLanguage,
     outputMode: payload.outputMode,
+    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
@@ -1008,6 +1017,7 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     hiringManagerBriefingReview: composed.review,
     outputLanguage: targetLanguage,
+    reviewState: reviewPresentation.reviewState,
     approvalWarnings: reviewWarnings,
     performance: buildPerformancePayload({
       totalMs: totalDurationMs,
@@ -1822,6 +1832,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       recruiterSummary: preparedOutput.summary,
       outputLanguage,
       outputMode,
+      canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
@@ -1838,6 +1849,11 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
     const reviewWarnings = reviewPresentation.reviewWarnings;
     pushBriefingDebugTrace(debugTrace, 'Prepared output briefing', preparedOutput.briefing);
     const hiringManagerBriefing = reviewPresentation.hiringManagerBriefing;
+    if (reviewPresentation.reviewState.issueCount > 0) {
+      debugTrace.push(
+        `Review state: ${reviewPresentation.reviewState.state} / ${reviewPresentation.reviewState.exportPosture} (${reviewPresentation.reviewState.issues.map((issue) => issue.code).join(', ')})`
+      );
+    }
     if (reviewPresentation.reportQualityBlockers.length > 0) {
       debugTrace.push(`Word report review required: ${reviewPresentation.reportQualityBlockers.join(' | ')}`);
     }
@@ -1888,6 +1904,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       model: settings.model,
       briefing: validatedBriefing,
       canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+      reviewState: reviewPresentation.reviewState,
       outputMode,
       outputLanguage,
       modeLabel: preparedOutput.modeLabel,
@@ -2002,6 +2019,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       recruiterSummary: preparedOutput.summary,
       outputLanguage: targetLanguage,
       outputMode: normalizedPayload.outputMode,
+      canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
@@ -2040,6 +2058,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
+      reviewState: reviewPresentation.reviewState,
       approvalWarnings: reviewWarnings,
       performance
     };
@@ -2116,6 +2135,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       recruiterSummary: preparedOutput.summary,
       outputLanguage: targetLanguage,
       outputMode: normalizedPayload.outputMode,
+      canonicalValidationSummary: translationFallbackArtifact.canonicalValidationSummary,
       cvDocument: normalizedPayload.cvDocument,
       jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
@@ -2154,6 +2174,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       canonicalValidationSummary: translationFallbackArtifact.canonicalValidationSummary,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
+      reviewState: reviewPresentation.reviewState,
       approvalWarnings: reviewWarnings,
       performance
     };
@@ -2213,6 +2234,7 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
     recruiterSummary: preparedOutput.summary,
     outputLanguage,
     outputMode: normalizedPayload.outputMode,
+    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
     cvDocument: normalizedPayload.cvDocument,
     jdDocument: normalizedPayload.jdDocument,
     existingWarnings: preparedOutput.warnings,
@@ -2228,6 +2250,7 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
     hiringManagerBriefingReview: composed.review,
     summary: normalizedPayload.summary,
     modeLabel: preparedOutput.modeLabel,
+    reviewState: reviewPresentation.reviewState,
     approvalWarnings: reviewWarnings
   };
 });

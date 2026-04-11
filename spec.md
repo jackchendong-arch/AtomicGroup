@@ -1550,6 +1550,19 @@ Acceptance criteria:
 - The app can distinguish routine business approval from factual data-correction review.
 - Report-quality blockers, template-compatibility issues, and low-confidence extraction states are represented consistently.
 
+Approved first implementation slice (`7C.1`) boundary:
+- define a deterministic severity matrix that maps canonical validation issues and report-quality blockers into `green`, `amber`, and `red`
+- build one normalized review-state payload with issue code, affected section, evidence refs, recommended action, and export posture (`allowed`, `review-required`, or `blocked`)
+- thread that review-state payload through generation results, renderer state, and recent-work persistence
+- add a read-only recruiter-facing review surface that shows only the flagged sections and reasons for amber/red cases
+- extend the factual stage-2/3 regression pack with a curated `Test10` corpus from `/Users/jack/Dev/Test/AtomicGroup/Test10`
+- split `Test10` coverage into:
+  - exact curated cases with stable expected canonical outputs and validation states
+  - broader smoke cases with lighter assertions focused on import, per-section extraction, canonical reconciliation, and validation explainability
+- write latest-run `Test10` artifacts under `debug/CV_blocks/Test10/<fixture-id>/`
+- exclude obvious non-CV/noise files from tracked regression expectations
+- defer factual correction editing and the full override workflow to later `7C` slices
+
 ### Release 7D: Word Report Adapter MVP
 Value:
 - The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract instead of being a brittle side effect of generic placeholder export.

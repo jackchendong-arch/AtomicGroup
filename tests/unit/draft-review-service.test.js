@@ -128,7 +128,7 @@ test('buildDraftReviewWarnings preserves existing privacy warnings and suppresse
   );
 });
 
-test('buildDraftReviewWarnings appends Word-report review blockers for recruiter visibility', () => {
+test('buildDraftReviewWarnings keeps Word-report blockers out of Review Checks so the dedicated review-state panel can own them', () => {
   const warnings = buildDraftReviewWarnings({
     recruiterSummary: [
       '## Fit Summary',
@@ -149,8 +149,14 @@ test('buildDraftReviewWarnings appends Word-report review blockers for recruiter
     briefingRetrievalManifest: [{ blockId: 'jd-1' }]
   });
 
-  assert(warnings.includes('Word report review required: Education entry 1 contains merged separator text instead of clean degree and institution fields.'));
-  assert(warnings.includes('Word report review required: Project experience extraction looks over-expanded: 12 project rows were produced.'));
+  assert.equal(
+    warnings.includes('Education entry 1 contains merged separator text instead of clean degree and institution fields.'),
+    false
+  );
+  assert.equal(
+    warnings.includes('Project experience extraction looks over-expanded: 12 project rows were produced.'),
+    false
+  );
 });
 
 test('buildDraftReviewWarnings does not falsely flag nested markdown recruiter-summary sections as missing', () => {

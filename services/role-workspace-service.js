@@ -80,6 +80,87 @@ function normalizeCanonicalValidationSummary(summary) {
   };
 }
 
+function normalizeReviewState(reviewState) {
+  if (!reviewState || typeof reviewState !== 'object') {
+    return null;
+  }
+
+  const cloned = cloneJsonValue(reviewState, null);
+
+  if (!cloned || typeof cloned !== 'object') {
+    return null;
+  }
+
+  const issues = Array.isArray(cloned.issues)
+    ? cloned.issues
+      .filter((issue) => issue && typeof issue === 'object')
+      .map((issue) => ({
+        source: normalizeString(issue.source),
+        code: normalizeString(issue.code),
+        severity: normalizeString(issue.severity) === 'amber' ? 'amber' : 'red',
+        section: normalizeString(issue.section),
+        sectionLabel: normalizeString(issue.sectionLabel),
+        entryIndex: Number.isFinite(issue.entryIndex) ? Number(issue.entryIndex) : null,
+        title: normalizeString(issue.title),
+        message: normalizeString(issue.message),
+        recommendedAction: normalizeString(issue.recommendedAction),
+        exportPosture: normalizeString(issue.exportPosture) === 'review-required' ? 'review-required' : 'blocked',
+        sourceRefs: Array.isArray(issue.sourceRefs)
+          ? issue.sourceRefs
+            .filter((sourceRef) => sourceRef && typeof sourceRef === 'object')
+            .map((sourceRef) => ({
+              documentType: normalizeString(sourceRef.documentType),
+              blockId: normalizeString(sourceRef.blockId),
+              sectionKey: normalizeString(sourceRef.sectionKey),
+              sectionLabel: normalizeString(sourceRef.sectionLabel),
+              sourceName: normalizeString(sourceRef.sourceName),
+              sourcePath: normalizeString(sourceRef.sourcePath),
+              excerpt: normalizeString(sourceRef.excerpt)
+            }))
+          : [],
+        evidenceRefs: Array.isArray(issue.evidenceRefs)
+          ? issue.evidenceRefs
+            .filter((evidenceRef) => evidenceRef && typeof evidenceRef === 'object')
+            .map((evidenceRef) => ({
+              fieldPath: normalizeString(evidenceRef.fieldPath),
+              value: normalizeString(evidenceRef.value),
+              entryIndex: Number.isFinite(evidenceRef.entryIndex) ? Number(evidenceRef.entryIndex) : null
+            }))
+          : [],
+        ambiguousEmploymentCandidates: Array.isArray(issue.ambiguousEmploymentCandidates)
+          ? issue.ambiguousEmploymentCandidates
+            .filter((candidate) => candidate && typeof candidate === 'object')
+            .map((candidate) => ({
+              employmentIndex: Number.isFinite(candidate.employmentIndex) ? Number(candidate.employmentIndex) : null,
+              companyName: normalizeString(candidate.companyName),
+              jobTitle: normalizeString(candidate.jobTitle),
+              startDate: normalizeString(candidate.startDate),
+              endDate: normalizeString(candidate.endDate)
+            }))
+          : [],
+        projectName: normalizeString(issue.projectName),
+        projectStartDate: normalizeString(issue.projectStartDate),
+        projectEndDate: normalizeString(issue.projectEndDate)
+      }))
+    : [];
+
+  return {
+    state: normalizeString(cloned.state) === 'red' ? 'red' : (normalizeString(cloned.state) === 'amber' ? 'amber' : 'green'),
+    exportPosture: normalizeString(cloned.exportPosture) === 'blocked'
+      ? 'blocked'
+      : (normalizeString(cloned.exportPosture) === 'review-required' ? 'review-required' : 'allowed'),
+    affectedSections: normalizeStringArray(cloned.affectedSections),
+    issueCount: Number.isFinite(cloned.issueCount) ? Number(cloned.issueCount) : issues.length,
+    blockedIssueCount: Number.isFinite(cloned.blockedIssueCount)
+      ? Number(cloned.blockedIssueCount)
+      : issues.filter((issue) => issue.exportPosture === 'blocked').length,
+    reviewRequiredIssueCount: Number.isFinite(cloned.reviewRequiredIssueCount)
+      ? Number(cloned.reviewRequiredIssueCount)
+      : issues.filter((issue) => issue.exportPosture === 'review-required').length,
+    issues
+  };
+}
+
 function normalizeDraftVariantSnapshot(variant) {
   if (!variant || typeof variant !== 'object') {
     return null;
@@ -89,10 +170,11 @@ function normalizeDraftVariantSnapshot(variant) {
   const briefing = cloneJsonValue(variant.briefing, null);
   const briefingReview = String(variant.briefingReview || '').trim();
   const canonicalValidationSummary = normalizeCanonicalValidationSummary(variant.canonicalValidationSummary);
+  const reviewState = normalizeReviewState(variant.reviewState);
   const approvalWarnings = normalizeStringArray(variant.approvalWarnings);
   const draftLifecycle = normalizeString(variant.draftLifecycle) || (summary ? 'generated' : 'empty');
 
-  if (!summary && !briefing && !briefingReview && approvalWarnings.length === 0) {
+  if (!summary && !briefing && !briefingReview && approvalWarnings.length === 0 && !reviewState) {
     return null;
   }
 
@@ -101,6 +183,7 @@ function normalizeDraftVariantSnapshot(variant) {
     briefing,
     briefingReview,
     canonicalValidationSummary,
+    reviewState,
     approvalWarnings,
     draftLifecycle
   };
@@ -241,6 +324,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
   });
   const draftVariants = normalizeDraftVariants(input.draftVariants);
   const canonicalValidationSummary = normalizeCanonicalValidationSummary(input.canonicalValidationSummary);
+  const reviewState = normalizeReviewState(input.reviewState);
   const workspaceId = buildWorkspaceId({
     sourceFolderPath,
     selectedJdPath,
@@ -267,6 +351,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     draftVariants,
     retrievalEvidence,
     canonicalValidationSummary,
+    reviewState,
     briefingReview: String(input.briefingReview || '').trim(),
     approvalWarnings: normalizeStringArray(input.approvalWarnings),
     lastExportPath: normalizeString(input.lastExportPath),

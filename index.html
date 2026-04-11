@@ -814,6 +814,24 @@
         background: rgba(255, 247, 242, 0.95);
       }
 
+      .pill.is-green {
+        border-color: rgba(42, 112, 73, 0.18);
+        color: #1d6b43;
+        background: rgba(236, 247, 240, 0.96);
+      }
+
+      .pill.is-amber {
+        border-color: rgba(187, 91, 52, 0.24);
+        color: var(--accent-deep);
+        background: rgba(255, 247, 242, 0.95);
+      }
+
+      .pill.is-red {
+        border-color: rgba(181, 63, 69, 0.24);
+        color: #a53943;
+        background: rgba(255, 241, 240, 0.96);
+      }
+
       .field-note {
         word-break: break-word;
         min-height: 0;
@@ -1024,6 +1042,109 @@
 
       .warning-panel li + li {
         margin-top: 4px;
+      }
+
+      .review-state-panel {
+        display: grid;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px solid rgba(23, 32, 51, 0.1);
+        border-radius: 16px;
+        background: rgba(243, 245, 247, 0.95);
+      }
+
+      .review-state-panel.is-hidden {
+        display: none !important;
+      }
+
+      .review-state-head {
+        display: grid;
+        gap: 4px;
+      }
+
+      .review-state-heading {
+        margin: 0;
+        font-size: 0.84rem;
+        color: var(--ink);
+      }
+
+      .review-state-message {
+        margin: 0;
+        font-size: 0.8rem;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+
+      .review-state-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+      }
+
+      .review-state-item {
+        display: grid;
+        gap: 6px;
+        padding: 10px 12px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.84);
+      }
+
+      .review-state-item-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .review-state-item-head strong {
+        font-size: 0.84rem;
+        color: var(--ink);
+      }
+
+      .review-state-severity {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .review-state-severity-red {
+        color: #a53943;
+        background: rgba(255, 241, 240, 0.96);
+      }
+
+      .review-state-severity-amber {
+        color: var(--accent-deep);
+        background: rgba(255, 247, 242, 0.95);
+      }
+
+      .review-state-item-meta,
+      .review-state-item-message,
+      .review-state-item-action,
+      .review-state-item-evidence {
+        margin: 0;
+        font-size: 0.8rem;
+        line-height: 1.45;
+      }
+
+      .review-state-item-meta {
+        color: var(--muted);
+      }
+
+      .review-state-item-action {
+        color: var(--ink);
+      }
+
+      .review-state-item-evidence {
+        color: var(--muted);
+        font-family: "SFMono-Regular", "SFMono-Regular", ui-monospace, monospace;
       }
 
       .operation-failure-panel {
@@ -1842,6 +1963,7 @@
                     <span class="pill" id="draft-mode-pill">Named Draft</span>
                     <span class="pill" id="draft-lifecycle-pill">Draft Pending</span>
                     <span class="pill" id="template-label">Default Recruiter Profile Template</span>
+                    <span class="pill" id="review-state-pill">Review Pending</span>
                   </div>
                   <div class="summary-actions">
                     <button class="btn-primary" id="approve-draft-button" type="button" disabled>Approve Draft</button>
@@ -1853,6 +1975,14 @@
                 </div>
 
                 <p class="summary-message" id="summary-message">Load the CV and JD, then generate the recruiter summary.</p>
+
+                <div class="review-state-panel is-hidden" id="review-state-panel">
+                  <div class="review-state-head">
+                    <strong class="review-state-heading" id="review-state-heading">No blocking exceptions were detected for this draft.</strong>
+                    <p class="review-state-message" id="review-state-message">Generation completed without canonical-validation or Word-report exceptions.</p>
+                  </div>
+                  <ul class="review-state-list" id="review-state-list"></ul>
+                </div>
 
                 <div class="warning-panel is-hidden" id="approval-warning-panel">
                   <strong>Review Checks</strong>

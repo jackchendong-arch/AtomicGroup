@@ -367,7 +367,7 @@ Mark a release complete only when the work is:
   - no Word adapter redesign yet
 
 ## Release 7C: Exception-Based Review and Quality Gates
-- [ ] Release 7C shipped, completed, and tested.
+- [-] Release 7C in progress.
 - Keep factual consultant review exception-based rather than mandatory for every CV; only amber/red cases should require targeted step-in.
 - Define explicit green/amber/red operating states for Word reporting so STP remains the default and consultant step-in has clear triggers.
 - Define consultant review trigger rules and reason codes covering identity conflicts, malformed education, chronology conflicts, project-role ambiguity, required-field gaps, low confidence, and post-render report failures.
@@ -375,6 +375,19 @@ Mark a release complete only when the work is:
 - Define validation severity levels and explicit export-blocking versus override-required behavior for factual extraction issues.
 - Add and maintain an explicit severity matrix in the spec/product logic for `block`, `review-required`, and `informational` issues.
 - Tune the severity matrix over time using fixture evidence and later STP/intervention data so safe cases move toward higher STP without allowing low-trust reports through.
+- Approved `7C.1` slice should cover:
+  - deterministic severity mapping from canonical validation issues and report-quality blockers into `green`, `amber`, and `red`
+  - one normalized review-state payload carrying issue codes, affected sections, evidence refs, recommended actions, and export posture (`allowed`, `review-required`, or `blocked`)
+  - propagation of that review-state payload through generation results and recent-work persistence
+  - a read-only app surface that highlights only the flagged sections and reasons for amber/red cases
+  - extend stage-2/3 factual regression coverage with a curated `Test10` corpus under `/Users/jack/Dev/Test/AtomicGroup/Test10`
+  - treat `Test10` as two layers:
+    - exact curated cases with expected canonical outputs and validation states
+    - broader smoke cases with bounded assertions focused on import, per-section extraction, canonical reconciliation, and validation explainability
+  - write latest-run `Test10` review artifacts under `debug/CV_blocks/Test10/<fixture-id>/`
+  - exclude obvious non-CV/noise files from tracked regression expectations
+  - no factual correction editing yet
+  - no final override workflow yet
 
 ## Release 7D: Word Report Adapter MVP
 - [ ] Release 7D shipped, completed, and tested.

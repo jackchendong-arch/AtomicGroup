@@ -388,6 +388,34 @@ Mark a release complete only when the work is:
   - exclude obvious non-CV/noise files from tracked regression expectations
   - no factual correction editing yet
   - no final override workflow yet
+- Approved `7C.2` slice should cover:
+  - generate a latest-run regression triage summary for fixture packs such as `Test10`, highlighting validation-state counts, dominant issue codes, and highest-signal candidate outliers that need engineering follow-up
+  - add identity-specific issue codes covering banner/header contamination, embedded role labels, inline demographics/metadata leakage, and section-heading or table-header names
+  - harden candidate-name extraction so clean person names survive recruiter banners, CV title wrappers, section headings, and inline metadata suffixes
+  - tighten severity mapping so contaminated identity cannot remain `green`
+  - add explicit regression expectations for known `Test10` identity failures including:
+    - `【Devops数据中心云专家_深圳_30-45K】戴海军_21年.pdf`
+    - `Resume - Pengcheng Zhao.pdf`
+    - `【资深sre工程师（外资行，甲方，稳定）_西安 30-60K】王翔 10年以上.pdf`
+    - `【高级全栈开发工程师_西安 25-50K】赖锦有 10年以上.pdf`
+    - `Atomic CV-SRE总监-胡晓亮.pdf`
+  - no employment/education parser redesign yet
+  - no recruiter correction editing yet
+  - no final override workflow yet
+- Approved `7C.3` slice should cover:
+  - harden deterministic employment-history parsing for compressed, table-like, and date-led CV layouts
+  - reject table headers and profile-summary rows from identity and employment extraction, including patterns like `TIME EMPLOYER ROLE`
+  - add deterministic row parsers for common date/company/title/responsibility layouts without widening section leakage
+  - tighten education extraction so credentials, certifications, languages, and adjacent summary text do not become malformed education rows
+  - promote representative `Test10` cases into stronger curated regression expectations for employment and education cleanup
+  - no recruiter correction editing yet
+  - no final override workflow yet
+- Approved `7C.4` slice should cover:
+  - enforce the existing review-state export posture (`allowed`, `review-required`, `blocked`) on Word export and email handoff
+  - add bounded recruiter actions only for flagged factual rows, such as confirming ambiguity, keeping a project unlinked, or marking an amber issue reviewed
+  - persist those targeted review decisions with the generated draft and recent-work snapshots
+  - keep red cases blocked until the required factual issue is resolved or an explicit allowed action exists
+  - no free-form schema editing yet
 
 ## Release 7D: Word Report Adapter MVP
 - [ ] Release 7D shipped, completed, and tested.

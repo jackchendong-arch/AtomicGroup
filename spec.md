@@ -1563,6 +1563,44 @@ Approved first implementation slice (`7C.1`) boundary:
 - exclude obvious non-CV/noise files from tracked regression expectations
 - defer factual correction editing and the full override workflow to later `7C` slices
 
+Approved next implementation slice (`7C.2`) boundary:
+- treat regression runs as engineering triage input, not just pass/fail output
+- generate a latest-run triage summary for `Test10`-style fixture packs that highlights:
+  - validation-state counts
+  - dominant issue-code families
+  - the specific CVs whose outputs define the next parser or severity fixes
+- add identity-specific review and validation issue codes for:
+  - role or banner text embedded in candidate name
+  - section-heading or table-header names
+  - inline demographic or profile metadata appended to candidate name
+- harden deterministic candidate-name extraction so clean names survive recruiter banners, file-title wrappers, section headings, and inline metadata suffixes
+- tighten severity rules so contaminated identity cannot remain `green`, even if the rest of the canonical structure passes
+- anchor the slice on explicit `Test10` regression cases including:
+  - `【Devops数据中心云专家_深圳_30-45K】戴海军_21年.pdf`
+  - `Resume - Pengcheng Zhao.pdf`
+  - `【资深sre工程师（外资行，甲方，稳定）_西安 30-60K】王翔 10年以上.pdf`
+  - `【高级全栈开发工程师_西安 25-50K】赖锦有 10年以上.pdf`
+  - `Atomic CV-SRE总监-胡晓亮.pdf`
+- defer employment/education parser redesign, recruiter correction UI, and final override workflow
+
+Approved following implementation slice (`7C.3`) boundary:
+- harden deterministic employment-history parsing for compressed, table-like, and date-led CV layouts before introducing reviewer correction actions
+- reject banner rows, profile summaries, and table headers such as `TIME EMPLOYER ROLE` from identity and employment extraction
+- add deterministic row parsers for common date/company/title/responsibility patterns while keeping section leakage conservative
+- tighten education extraction so certifications, credentials, languages, and adjacent summary text do not become malformed education rows
+- promote the highest-signal `Test10` failures into stronger curated regression assertions for employment and education cleanup
+- defer recruiter correction UI and final override workflow
+
+Approved later implementation slice (`7C.4`) boundary:
+- enforce the existing review-state export posture on Word export and email handoff
+- add bounded recruiter actions only on flagged factual rows, such as:
+  - confirming an ambiguity
+  - keeping a project intentionally unlinked
+  - marking an amber issue reviewed and allowed to proceed
+- persist those targeted review decisions with generated drafts and recent-work snapshots
+- keep red cases blocked until the required factual issue is resolved or an explicit allowed action exists
+- defer free-form schema editing
+
 ### Release 7D: Word Report Adapter MVP
 Value:
 - The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract instead of being a brittle side effect of generic placeholder export.

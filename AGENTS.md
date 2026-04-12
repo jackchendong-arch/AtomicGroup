@@ -14,6 +14,7 @@
 - During design review, do not update `spec.md` or `TODO.md` until the user explicitly approves the proposed design change.
 - Treat design discussion as proposal-only until that approval is given.
 - Once the user approves the slice design, update `spec.md` and `TODO.md` before starting implementation.
+- Keep design and backlog changes user-gated for now: proposed `spec.md` / `TODO.md` updates must be reviewed and approved by the user before they are applied.
 
 ## Start Rule
 - Do not begin implementation until the user confirms to start the proposed release.
@@ -45,6 +46,21 @@
 - Prefer Playwright for automated UI and workflow validation as the app evolves.
 - For work that changes navigation, import flows, summary review, or other visible Electron behavior, add or maintain Playwright coverage where practical.
 - Keep the Playwright smoke suite runnable during active development so UI regressions are caught early.
+
+## Regression Review Rule
+- When running regression suites or reviewing generated test artifacts, inspect the outputs directly instead of asking the user to discover problems from raw files.
+- Summarize the concrete findings first: failing or degraded cases, dominant issue families, and whether the result is a true regression, an expected existing gap, or a false positive from new logic.
+- Highlight the highest-signal cases that define the next engineering work and include the recommended fix direction or next slice proposal.
+- Treat generated manifests, debug folders, and triage summaries as supporting evidence for the review, not as a substitute for the review itself.
+- Ask the user to inspect raw regression artifacts only when product intent is ambiguous or a human judgment call is genuinely required.
+
+## Dual-Role Delivery Rule
+- Use a two-pass workflow for regression-driven development:
+  - Pass 1: act as a senior experienced tester and drive automated regression coverage, inspect the outputs, triage the problems, and identify the highest-signal failures.
+  - Pass 2: act as a senior technical lead/developer and propose the fix design, slice boundary, and implementation plan based on that regression review.
+- Do not move straight from raw regression output into code changes without first summarizing the reviewed findings and the recommended fix direction.
+- When the reviewed findings imply design, architecture, scope, or backlog changes, propose the `spec.md` / `TODO.md` updates and wait for user approval before applying them.
+- Once the design impact is approved and reflected in `spec.md` / `TODO.md`, proceed with implementation and re-run regression coverage to confirm the fix.
 
 ## UI Rule
 - Prefer UI choices that are neat, clean, and useful over decorative or repetitive chrome.

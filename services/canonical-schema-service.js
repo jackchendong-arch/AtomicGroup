@@ -71,6 +71,15 @@ const KNOWN_LOCATION_PATTERN =
   /\b(?:beijing|china|dubai|france|germany|hong kong|india|japan|london|new york|paris|san francisco|shanghai|shenzhen|singapore|sydney|tokyo|united arab emirates|united kingdom|united states|usa|uk)\b/i;
 const KNOWN_LOCATION_TEXT_PATTERN =
   /(?:北京|上海|深圳|广州|杭州|香港|中国|新加坡|伦敦|纽约|东京|苏州|南京|武汉|成都|西安|厦门)/u;
+const CANDIDATE_NAME_METADATA_HINT_PATTERN =
+  /\b(?:age|citizenship|email|english|gender|height|location|mobile|nationality|notice period|phone|preferred location|residence|salary|wechat)\b|(?:性别|年龄|身高|出生|电话|手机|邮箱|微信|所在地|现居住地|期望|薪资|国籍|学历|本科|硕士|博士|英语六级|英语八级)/i;
+const CANDIDATE_NAME_HEADING_OR_TABLE_HINT_PATTERN =
+  /\b(?:company|experience|issues?|limited|ltd|inc|problem|profile|professional summary|skills?|summary|technical skills|time employer role|work experience)\b|(?:专业技能|个人优势|个人简介|个人信息|个人简历|公司|基本信息|工作经历|工作经验|技能|教育背景|有限(?:公司)?|经验|至今|自我评价|问题|项目经历)/i;
+const PLAUSIBLE_LATIN_CANDIDATE_NAME_PATTERN =
+  /^[A-Z][A-Za-z'’-]+(?:\s*\([A-Za-z][A-Za-z\s'’-]*\))?(?:\s+[A-Z][A-Za-z'’-]+(?:\s*\([A-Za-z][A-Za-z\s'’-]*\))?){0,4}$/;
+const PLAUSIBLE_CHINESE_CANDIDATE_NAME_PATTERN = /^[\u4e00-\u9fff·]{2,6}$/u;
+const PLAUSIBLE_MIXED_CANDIDATE_NAME_PATTERN =
+  /^(?:[\u4e00-\u9fff·]{2,6}(?:\s+[A-Z][A-Za-z'’-]+(?:\s*\([A-Za-z][A-Za-z\s'’-]*\))?){1,4}|[A-Z][A-Za-z'’-]+(?:\s*\([A-Za-z][A-Za-z\s'’-]*\))?(?:\s+[A-Z][A-Za-z'’-]+(?:\s*\([A-Za-z][A-Za-z\s'’-]*\))?){0,3}\s+[\u4e00-\u9fff·]{1,6})$/u;
 
 function cleanLine(value) {
   return String(value || '')
@@ -213,6 +222,102 @@ function looksLikeGenericCandidateLabel(value) {
 function looksLikeGenericRoleLabel(value) {
   const normalized = normalizeKey(value);
   return Boolean(normalized) && GENERIC_ROLE_LABELS.has(normalized);
+}
+
+function looksLikeCandidateNameEmbeddedMetadata(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    /[:：|/／]/.test(normalized) ||
+    CANDIDATE_NAME_METADATA_HINT_PATTERN.test(normalized)
+  );
+}
+
+function looksLikeCandidateNameHeadingOrTableHeader(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    GENERIC_SECTION_LABELS.has(normalizeKey(normalized)) ||
+    CANDIDATE_NAME_HEADING_OR_TABLE_HINT_PATTERN.test(normalized) ||
+    looksLikeEmploymentOrProjectPollution(normalized)
+  );
+}
+
+function looksLikeCandidateNameEmbeddedRoleOrBanner(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return ROLE_HINT_PATTERN.test(normalized);
+}
+
+function looksLikePlausibleCandidateName(value) {
+  const normalized = cleanLine(value);
+  const hasLatin = /[A-Za-z]/.test(normalized);
+  const hasCjk = /[\u4e00-\u9fff]/u.test(normalized);
+  const tokenCount = normalized.split(/\s+/).filter(Boolean).length;
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    DATE_RANGE_PATTERN.test(normalized) ||
+    /@/.test(normalized) ||
+    /\d/.test(normalized) ||
+    looksLikeCandidateNameEmbeddedMetadata(normalized) ||
+    looksLikeCandidateNameHeadingOrTableHeader(normalized) ||
+    looksLikeCandidateNameEmbeddedRoleOrBanner(normalized)
+  ) {
+    return false;
+  }
+
+  if (hasLatin && hasCjk && tokenCount <= 5) {
+    return true;
+  }
+
+  return (
+    PLAUSIBLE_LATIN_CANDIDATE_NAME_PATTERN.test(normalized) ||
+    PLAUSIBLE_CHINESE_CANDIDATE_NAME_PATTERN.test(normalized) ||
+    PLAUSIBLE_MIXED_CANDIDATE_NAME_PATTERN.test(normalized)
+  );
+}
+
+function collectCandidateIdentityValidationFlags(candidateName) {
+  const normalized = cleanLine(candidateName);
+  const flags = [];
+
+  if (!normalized || looksLikeGenericCandidateLabel(normalized)) {
+    return ['candidate_name_missing_or_generic'];
+  }
+
+  if (looksLikeCandidateNameEmbeddedMetadata(normalized)) {
+    flags.push('candidate_name_embedded_metadata');
+  }
+
+  if (looksLikeCandidateNameHeadingOrTableHeader(normalized)) {
+    flags.push('candidate_name_heading_or_table_header');
+  }
+
+  if (looksLikeCandidateNameEmbeddedRoleOrBanner(normalized)) {
+    flags.push('candidate_name_embedded_role_or_banner');
+  }
+
+  if (!flags.length && !looksLikePlausibleCandidateName(normalized)) {
+    flags.push('candidate_name_missing_or_generic');
+  }
+
+  return [...new Set(flags)];
 }
 
 function looksLikeEmploymentOrProjectPollution(value) {
@@ -1140,12 +1245,25 @@ function normalizeRequirementEntries(requirements = [], jdBlocks = [], roleTitle
 function buildCanonicalValidationSummary({ candidateSchema, jdSchema }) {
   const issues = [];
 
-  if (!cleanLine(candidateSchema.identity.name) || looksLikeGenericCandidateLabel(candidateSchema.identity.name)) {
+  for (const validationFlag of Array.isArray(candidateSchema.identity.validationFlags)
+    ? candidateSchema.identity.validationFlags
+    : collectCandidateIdentityValidationFlags(candidateSchema.identity.name)) {
+    const issueByCode = {
+      candidate_name_missing_or_generic: 'Candidate name is missing, generic, or not person-like.',
+      candidate_name_embedded_metadata: 'Candidate name contains inline metadata or profile details.',
+      candidate_name_heading_or_table_header: 'Candidate name looks like a section heading, table row, or other extracted content.',
+      candidate_name_embedded_role_or_banner: 'Candidate name contains role or recruiter-banner text.'
+    }[validationFlag];
+
+    if (!issueByCode) {
+      continue;
+    }
+
     issues.push({
-      code: 'candidate_name_missing_or_generic',
+      code: validationFlag,
       severity: 'red',
       section: 'identity',
-      message: 'Candidate name is missing or generic.',
+      message: issueByCode,
       sourceRefs: candidateSchema.identity.sourceRefs || []
     });
   }
@@ -1300,8 +1418,8 @@ function buildCanonicalExtractionReview({ cvDocument, jdDocument, sourceModel = 
     identity: {
       name: cleanLine(profile.candidateName),
       location: cleanLine(profile.candidateLocation),
-      confidence: cleanLine(profile.candidateName) ? 'high' : 'low',
-      validationFlags: [],
+      confidence: 'high',
+      validationFlags: collectCandidateIdentityValidationFlags(profile.candidateName),
       sourceRefs: selectSourceRefs(cvSourceDocument?.blocks || [], {
         preferredSectionKeys: ['overview', 'experience', 'unknown'],
         terms: candidateIdentityTerms
@@ -1316,6 +1434,9 @@ function buildCanonicalExtractionReview({ cvDocument, jdDocument, sourceModel = 
     cvSourceDocument?.blocks || [],
     candidateSchema.employmentHistory
   );
+  candidateSchema.identity.confidence = candidateSchema.identity.validationFlags.length === 0
+    ? (cleanLine(profile.candidateName) ? 'high' : 'low')
+    : 'low';
 
   const jdSchema = {
     role: {
@@ -1353,6 +1474,7 @@ function buildCanonicalExtractionReview({ cvDocument, jdDocument, sourceModel = 
         selectedCandidateLocation: cleanLine(selectedIdentity.candidateLocation),
         candidateNameSelectionSource: selectedIdentity.candidateNameSelectionSource,
         candidateLocationSelectionSource: selectedIdentity.candidateLocationSelectionSource,
+        validationFlags: candidateSchema.identity.validationFlags,
         roleTitleFromBlocks: cleanLine(rawSectionExtractions.identity.roleTitleFromBlocks),
         sourceBoundRoleTitle: cleanLine(rawSectionExtractions.sourceBoundProfile.roleTitle),
         selectedRoleTitle: cleanLine(selectedIdentity.roleTitle),

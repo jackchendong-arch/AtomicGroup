@@ -130,10 +130,6 @@ function replacePhoneLikeContent(text) {
 function anonymizeText(text, candidateNamePatterns) {
   let next = String(text || '');
 
-  for (const pattern of candidateNamePatterns) {
-    next = next.replace(pattern, ANONYMOUS_CANDIDATE_LABEL);
-  }
-
   next = next
     .replace(EMAIL_PATTERN, '[email redacted]')
     .replace(LINKEDIN_PATTERN, '[LinkedIn redacted]')
@@ -142,6 +138,10 @@ function anonymizeText(text, candidateNamePatterns) {
       return `${label}: [address redacted]`;
     })
     .replace(STREET_ADDRESS_PATTERN, '[address redacted]');
+
+  for (const pattern of candidateNamePatterns) {
+    next = next.replace(pattern, ANONYMOUS_CANDIDATE_LABEL);
+  }
 
   return replacePhoneLikeContent(next);
 }

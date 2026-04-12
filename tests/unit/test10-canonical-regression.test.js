@@ -38,6 +38,63 @@ const TEST10_JD_PATH = getTest10JdPath();
 const TEST10_AVAILABLE = test10IsPresent() && fs.existsSync(TEST10_JD_PATH);
 const CURATED_TEST10_FILE_NAMES = new Set(TEST10_CURATED_CASES.map((fixtureCase) => fixtureCase.fileName));
 const TEST10_MANIFEST_PATH = path.join(DEBUG_CV_BLOCKS_DIR, 'Test10', 'manifest.json');
+const TEST10_TRIAGE_SUMMARY_PATH = path.join(DEBUG_CV_BLOCKS_DIR, 'Test10', 'triage-summary.json');
+const TEST10_IDENTITY_EXPECTATIONS = {
+  '【Devops数据中心云专家_深圳_30-45K】戴海军_21年.pdf': {
+    expectedCandidateName: '戴海军',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner'
+    ]
+  },
+  'Resume - Pengcheng Zhao.pdf': {
+    expectedCandidateName: 'Pengcheng Zhao',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner'
+    ]
+  },
+  '【资深sre工程师（外资行，甲方，稳定）_西安 30-60K】王翔 10年以上.pdf': {
+    expectedCandidateName: '王翔',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner'
+    ]
+  },
+  '【高级全栈开发工程师_西安 25-50K】赖锦有 10年以上.pdf': {
+    expectedCandidateName: '赖锦有',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner'
+    ]
+  },
+  'Atomic CV-SRE总监-胡晓亮.pdf': {
+    expectedCandidateName: '胡晓亮',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner'
+    ],
+    expectedState: 'green'
+  }
+};
+const TEST10_IDENTITY_OUTLIER_EXPECTATIONS = {
+  '【ios技术专家_西安 30-50K】王虎啸 5年.pdf': {
+    expectedIssueCodes: ['candidate_name_heading_or_table_header']
+  },
+  '【高级android开发工程师（外资+福利多）_西安 30-50K】赵先生 10年以上.pdf': {
+    expectedIssueCodes: ['candidate_name_embedded_metadata']
+  }
+};
 
 function sanitizeIssueCodes(issues) {
   return [...new Set(
@@ -49,6 +106,85 @@ function sanitizeIssueCodes(issues) {
 
 function isValidValidationState(state) {
   return ['green', 'amber', 'red'].includes(state);
+}
+
+function buildValidationStateCounts(entries = []) {
+  return entries.reduce((counts, entry) => {
+    const state = entry.validationState;
+
+    if (!isValidValidationState(state)) {
+      return counts;
+    }
+
+    counts[state] += 1;
+    return counts;
+  }, { green: 0, amber: 0, red: 0 });
+}
+
+function mapIssueCodeToFamily(code) {
+  const normalized = String(code || '').trim();
+
+  if (normalized.startsWith('candidate_name_')) {
+    return 'identity';
+  }
+
+  if (normalized.startsWith('employment_')) {
+    return 'employment';
+  }
+
+  if (normalized.startsWith('education_')) {
+    return 'education';
+  }
+
+  if (normalized.startsWith('project_')) {
+    return 'projects';
+  }
+
+  if (normalized.startsWith('role_')) {
+    return 'role';
+  }
+
+  if (normalized.startsWith('jd_')) {
+    return 'requirements';
+  }
+
+  return 'other';
+}
+
+function buildSortedCountRows(values = []) {
+  const counts = new Map();
+
+  for (const value of values) {
+    const normalized = String(value || '').trim();
+
+    if (!normalized) {
+      continue;
+    }
+
+    counts.set(normalized, (counts.get(normalized) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([code, count]) => ({ code, count }))
+    .sort((left, right) => (
+      right.count - left.count ||
+      left.code.localeCompare(right.code, 'en')
+    ));
+}
+
+function buildHighestSignalOutliers(entries = []) {
+  const candidateNameIssuePrefix = 'candidate_name_';
+
+  return entries
+    .filter((entry) => entry.issueCodes.some((code) => code.startsWith(candidateNameIssuePrefix)))
+    .map((entry) => ({
+      fileName: entry.fileName,
+      selectedCandidateName: entry.selectedCandidateName,
+      validationState: entry.validationState,
+      issueCodes: entry.issueCodes,
+      outputDirectory: entry.outputDirectory
+    }))
+    .sort((left, right) => left.fileName.localeCompare(right.fileName, 'en'));
 }
 
 async function loadTest10Review(fileName) {
@@ -129,6 +265,7 @@ for (const fileName of getSupportedTest10CvCases().filter((candidateFile) => !CU
     { skip: TEST10_AVAILABLE ? false : 'Test10 fixture folder or shared JD is not available on this machine.' },
     async () => {
       const { review, outputDirectory } = await loadTest10Review(fileName);
+      const issueCodes = sanitizeIssueCodes(review.validationSummary.issues);
 
       assert.equal(review.sourceModel.documents.length, 2, `${fileName} should produce a CV+JD source model.`);
       assert.ok(isValidValidationState(review.validationSummary.state), `${fileName} should emit a normalized validation state.`);
@@ -149,6 +286,36 @@ for (const fileName of getSupportedTest10CvCases().filter((candidateFile) => !CU
         assert.equal(review.validationSummary.issues.length, 0, `${fileName} should not carry issues when the state is green.`);
       } else {
         assert.ok(review.validationSummary.issues.length > 0, `${fileName} should explain non-green validation states with explicit issues.`);
+      }
+
+      const targetedIdentityExpectation = TEST10_IDENTITY_EXPECTATIONS[fileName];
+
+      if (targetedIdentityExpectation) {
+        assert.equal(review.candidateSchema.identity.name, targetedIdentityExpectation.expectedCandidateName);
+
+        if (targetedIdentityExpectation.expectedState) {
+          assert.equal(review.validationSummary.state, targetedIdentityExpectation.expectedState);
+        }
+
+        for (const forbiddenIssueCode of targetedIdentityExpectation.forbiddenIssueCodes) {
+          assert.equal(
+            issueCodes.includes(forbiddenIssueCode),
+            false,
+            `${fileName} should no longer carry the identity issue ${forbiddenIssueCode}`
+          );
+        }
+      }
+
+      const identityOutlierExpectation = TEST10_IDENTITY_OUTLIER_EXPECTATIONS[fileName];
+
+      if (identityOutlierExpectation) {
+        for (const expectedIssueCode of identityOutlierExpectation.expectedIssueCodes) {
+          assert.equal(
+            issueCodes.includes(expectedIssueCode),
+            true,
+            `${fileName} should surface ${expectedIssueCode} for identity triage`
+          );
+        }
       }
 
       for (const issue of review.validationSummary.issues) {
@@ -224,11 +391,30 @@ test(
       generatedAt: new Date().toISOString(),
       entries: [...supportedEntries, ...unsupportedEntries]
     };
+    const triageSummary = {
+      fixturePack: 'Test10',
+      sharedJdFileName: TEST10_SHARED_JD_FILE_NAME,
+      generatedAt: new Date().toISOString(),
+      counts: {
+        supported: supportedEntries.length,
+        unsupported: unsupportedEntries.length,
+        validationStates: buildValidationStateCounts(supportedEntries)
+      },
+      dominantIssueCodes: buildSortedCountRows(
+        supportedEntries.flatMap((entry) => entry.issueCodes)
+      ),
+      dominantIssueFamilies: buildSortedCountRows(
+        supportedEntries.flatMap((entry) => entry.issueCodes.map(mapIssueCodeToFamily))
+      ),
+      highestSignalOutliers: buildHighestSignalOutliers(supportedEntries)
+    };
 
     await fsPromises.mkdir(path.dirname(TEST10_MANIFEST_PATH), { recursive: true });
     await fsPromises.writeFile(TEST10_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    await fsPromises.writeFile(TEST10_TRIAGE_SUMMARY_PATH, `${JSON.stringify(triageSummary, null, 2)}\n`, 'utf8');
 
     const reloaded = JSON.parse(await fsPromises.readFile(TEST10_MANIFEST_PATH, 'utf8'));
+    const reloadedTriage = JSON.parse(await fsPromises.readFile(TEST10_TRIAGE_SUMMARY_PATH, 'utf8'));
 
     assert.equal(reloaded.fixturePack, 'Test10');
     assert.equal(reloaded.sharedJdFileName, TEST10_SHARED_JD_FILE_NAME);
@@ -252,6 +438,17 @@ test(
           entry.selectedCandidateName === '殷昱'
       ),
       'The manifest should surface the selected candidate name for 殷昱的简历.pdf'
+    );
+    assert.equal(reloadedTriage.fixturePack, 'Test10');
+    assert.equal(reloadedTriage.counts.supported, getSupportedTest10CvCases().length);
+    assert.equal(reloadedTriage.counts.validationStates.green >= 1, true);
+    assert.equal(
+      reloadedTriage.highestSignalOutliers.some(
+        (entry) =>
+          entry.fileName === '【ios技术专家_西安 30-50K】王虎啸 5年.pdf' &&
+          entry.issueCodes.includes('candidate_name_heading_or_table_header')
+      ),
+      true
     );
   }
 );

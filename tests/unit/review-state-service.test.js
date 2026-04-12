@@ -122,3 +122,35 @@ test('buildReviewState blocks export when a red Word-report issue is present', (
   assert.equal(reviewState.issues[1].title, 'Word candidate name looks generic');
   assert.equal(reviewState.issues[1].evidenceRefs[0].value, 'Technical Skills');
 });
+
+test('buildReviewState presents candidate identity contamination with targeted reviewer guidance', () => {
+  const reviewState = buildReviewState({
+    canonicalValidationSummary: {
+      state: 'red',
+      issues: [
+        {
+          code: 'candidate_name_embedded_metadata',
+          severity: 'red',
+          section: 'identity',
+          message: 'Candidate name contains inline metadata or profile details.',
+          sourceRefs: [
+            {
+              documentType: 'cv',
+              blockId: 'cv-overview-1',
+              sectionKey: 'overview',
+              sectionLabel: 'Overview',
+              sourceName: 'candidate.pdf',
+              sourcePath: '/tmp/candidate.pdf',
+              excerpt: '赵先生 Android开发工程师 | 男 | 英语六级'
+            }
+          ]
+        }
+      ]
+    }
+  });
+
+  assert.equal(reviewState.state, 'red');
+  assert.equal(reviewState.exportPosture, 'blocked');
+  assert.equal(reviewState.issues[0].title, 'Candidate name contains profile metadata');
+  assert.match(reviewState.issues[0].recommendedAction, /remove demographic, contact, or profile details/i);
+});

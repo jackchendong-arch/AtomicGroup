@@ -302,6 +302,73 @@ test('buildCanonicalSchemas surfaces ambiguous project-role linkage as amber val
   );
 });
 
+test('buildCanonicalSchemas emits an identity metadata issue when profile details leak into the candidate name', () => {
+  const result = buildCanonicalSchemas({
+    cvDocument: {
+      text: [
+        'Work Experience',
+        'Acme Capital — Engineering Manager',
+        '2020 – 2024'
+      ].join('\n'),
+      file: {
+        name: '赵先生 英语六级.pdf',
+        path: '/tmp/赵先生 英语六级.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Engineering Manager',
+        '',
+        'Requirements',
+        '- Experience leading engineering delivery'
+      ].join('\n'),
+      file: {
+        name: 'jd.docx',
+        path: '/tmp/jd.docx'
+      }
+    }
+  });
+
+  assert.equal(result.validationSummary.state, 'red');
+  assert(result.validationSummary.issues.some((issue) => issue.code === 'candidate_name_embedded_metadata'));
+  assert(result.candidateSchema.identity.validationFlags.includes('candidate_name_embedded_metadata'));
+});
+
+test('buildCanonicalSchemas emits a heading-or-table identity issue when the extracted name is not person-like', () => {
+  const result = buildCanonicalSchemas({
+    cvDocument: {
+      text: [
+        '经验',
+        '问题',
+        '',
+        'Work Experience',
+        'Acme Capital — Blockchain Engineer',
+        '2021 – 2024'
+      ].join('\n'),
+      file: {
+        name: 'candidate.pdf',
+        path: '/tmp/candidate.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Blockchain Engineer',
+        '',
+        'Requirements',
+        '- Experience building backend services'
+      ].join('\n'),
+      file: {
+        name: 'jd.docx',
+        path: '/tmp/jd.docx'
+      }
+    }
+  });
+
+  assert.equal(result.validationSummary.state, 'red');
+  assert(result.validationSummary.issues.some((issue) => issue.code === 'candidate_name_heading_or_table_header'));
+  assert(result.candidateSchema.identity.validationFlags.includes('candidate_name_heading_or_table_header'));
+});
+
 test(
   'Role4 CV4-1 canonical schema keeps compact Chinese education and project sections clean',
   {

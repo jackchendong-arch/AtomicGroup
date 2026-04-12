@@ -80,6 +80,21 @@ function getIssuePresentation(source, code) {
         title: 'Candidate name needs review',
         recommendedAction: 'Verify the candidate name in the loaded CV before approval or export.'
       };
+    case 'canonical-validation:candidate_name_embedded_metadata':
+      return {
+        title: 'Candidate name contains profile metadata',
+        recommendedAction: 'Review the candidate identity line and remove demographic, contact, or profile details from the name field.'
+      };
+    case 'canonical-validation:candidate_name_heading_or_table_header':
+      return {
+        title: 'Candidate name looks like extracted content',
+        recommendedAction: 'Review the candidate identity line and replace section-heading, table-row, or narrative text with the actual person name.'
+      };
+    case 'canonical-validation:candidate_name_embedded_role_or_banner':
+      return {
+        title: 'Candidate name contains role or banner text',
+        recommendedAction: 'Review the candidate identity line and keep only the person name, not the recruiter banner or role label.'
+      };
     case 'canonical-validation:role_title_missing_or_generic':
       return {
         title: 'Role title needs review',

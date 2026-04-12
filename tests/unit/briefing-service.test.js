@@ -1070,6 +1070,35 @@ test('extractCandidateName rejects overview headings and role labels, then falls
   assert.equal(overviewLabelInsteadOfName, 'Chenweihao');
 });
 
+test('extractCandidateName ignores non-name metadata labels and keeps sparse CV names stable', () => {
+  const sparseLabeledCvName = extractCandidateName(
+    [
+      'John Doe',
+      'Email: john.doe@example.com',
+      'Phone: +65 9123 4567',
+      'LinkedIn: https://www.linkedin.com/in/john-doe',
+      'Address: 12 Market Street Singapore',
+      'Nationality: Singaporean',
+      'Current location: Singapore',
+      'Preferred location: Hong Kong',
+      'Notice period: 1 month'
+    ].join('\n'),
+    'john-doe-cv.pdf'
+  );
+
+  const metadataPairName = extractCandidateName(
+    [
+      'Current location: Shanghai',
+      'Preferred location: Shenzhen',
+      'Notice period: 1 month'
+    ].join('\n'),
+    'alex-wong-resume.pdf'
+  );
+
+  assert.equal(sparseLabeledCvName, 'John Doe');
+  assert.equal(metadataPairName, 'Alex Wong');
+});
+
 test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {
   const request = buildBriefingRequest({
     cvDocument: {

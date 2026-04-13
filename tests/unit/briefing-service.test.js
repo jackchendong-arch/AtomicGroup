@@ -1099,6 +1099,55 @@ test('extractCandidateName ignores non-name metadata labels and keeps sparse CV 
   assert.equal(metadataPairName, 'Alex Wong');
 });
 
+test('extractCandidateName keeps explicit Chinese resume headers authoritative even when recruiter banners and experience rows are noisy', () => {
+  const wangHuxiaoName = extractCandidateName(
+    [
+      '1.熟悉OC，了解swift、Rxswift、C/C++编程.熟悉UIKit，Foundation等常用开发框架， 熟悉常用的数据结构和基本算法',
+      '3.熟练使用Xcode、Git，参与敏捷开发，主导Code Review',
+      '王虎啸',
+      '5年工作经验 | 求职意向：iOS | 期望城市：北京'
+    ].join('\n'),
+    '【ios技术专家_西安 30-50K】王虎啸 5年.pdf'
+  );
+
+  const zhangYingName = extractCandidateName(
+    [
+      '个人简历',
+      '张滢',
+      '女 | 1985 年 | 现居住：西安高新区',
+      '工作经验：13.5 年 | 手机:13720612419 | E-mail:zhangying4633@163.com',
+      '求职岗位：java 工程师 | 工作地区：西安',
+      '专业技能'
+    ].join('\n'),
+    '【JAVA engineer_西安 40-60K】张晶 10年以上.pdf'
+  );
+
+  const zhaoName = extractCandidateName(
+    [
+      '赵先生 Android开发工程师 | 男 | 1987 | 老家：河南南阳 | 英语六级',
+      '学历：硕士 | 本硕为四川大学(全日制、985、保送研究生、国家奖学金)',
+      '手机：15791789351 | 邮箱：15791789351@163.com'
+    ].join('\n'),
+    '【高级android开发工程师（外资+福利多）_西安 30-50K】赵先生 10年以上.pdf'
+  );
+
+  const huangName = extractCandidateName(
+    [
+      '香港币界网有限公司 iOS 2024.07-至今',
+      '深圳麦客存储科技有限公司 iOS 2023.06-2023.09',
+      '矩阵元技术（深圳）有限公司 iOS 2021.03-2023.01',
+      '黄章成',
+      '男 | 年龄：39岁 | 18566653167 | hzcly982015@163.com'
+    ].join('\n'),
+    '【高级IOS开发工程师(Swift)-高福利外企_广州 40-50K】黄章成 10年以上.pdf'
+  );
+
+  assert.equal(wangHuxiaoName, '王虎啸');
+  assert.equal(zhangYingName, '张滢');
+  assert.equal(zhaoName, '赵先生');
+  assert.equal(huangName, '黄章成');
+});
+
 test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {
   const request = buildBriefingRequest({
     cvDocument: {

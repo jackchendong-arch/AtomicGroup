@@ -17,7 +17,7 @@ const TEST10_CURATED_CASES = [
     expectedCandidateName: 'Peng Wang王鹏',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
     expectedState: 'red',
-    expectedIssueCodes: ['education_entry_malformed', 'employment_entry_missing_core_fields'],
+    expectedIssueCodes: ['employment_entry_missing_core_fields'],
     minEmploymentHistory: 6,
     minProjects: 8
   },
@@ -26,17 +26,17 @@ const TEST10_CURATED_CASES = [
     expectedCandidateName: 'Zhaihui ZHANG',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
     expectedState: 'red',
-    expectedIssueCodes: ['education_entry_malformed', 'employment_entry_missing_core_fields'],
-    minEmploymentHistory: 3,
+    expectedIssueCodes: ['education_entry_malformed'],
+    minEmploymentHistory: 2,
     minProjects: 0
   },
   {
     fileName: 'Wu Cong-Senior Project Manager(Payment).docx',
     expectedCandidateName: 'Wu Cong',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
-    expectedState: 'red',
-    expectedIssueCodes: ['education_entry_malformed'],
-    minEmploymentHistory: 9,
+    expectedState: 'green',
+    expectedIssueCodes: [],
+    minEmploymentHistory: 6,
     minProjects: 0
   },
   {
@@ -44,7 +44,7 @@ const TEST10_CURATED_CASES = [
     expectedCandidateName: '苏朗轩',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
     expectedState: 'red',
-    expectedIssueCodes: ['education_entry_malformed', 'employment_entry_missing_core_fields'],
+    expectedIssueCodes: ['employment_entry_missing_core_fields'],
     minEmploymentHistory: 3,
     minProjects: 12
   }

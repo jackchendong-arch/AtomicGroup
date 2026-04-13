@@ -57,11 +57,15 @@ const GENERIC_SECTION_LABELS = new Set([
 ]);
 
 const COMPANY_HINT_PATTERN =
-  /\b(bank|blockchain|capital|college|company|corp|corporation|finance|financial|group|holdings|inc|institute|limited|ltd|llc|school|technologies|technology|university)\b|(?:公司|科技|信息|银行|集团|大学|学院)/i;
+  /\b(bank|blockchain|capital|college|company|corp|corporation|finance|financial|group|holdings|inc|institute|limited|ltd|llc|recruitment|school|search|staffing|technologies|technology|university)\b|(?:公司|科技|信息|银行|集团|大学|学院)/i;
 const ROLE_HINT_PATTERN =
   /\b(analyst|architect|consultant|coordinator|designer|developer|director|engineer|head|lead|manager|officer|owner|partner|president|principal|product|program|project|recruiter|researcher|scientist|specialist|vice president|vp)\b|(?:工程师|开发|架构师|经理|总监|负责人|顾问|分析师|研究员|产品经理|技术负责人)/i;
 const EDUCATION_HINT_PATTERN =
   /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|college|degree|diploma|doctor|institute|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|mba|phd|school|university)\b|(?:本科|硕士|博士|学士|大学|学院|学校)/i;
+const EDUCATION_INSTITUTION_HINT_PATTERN =
+  /\b(college|institute|school|university)\b|(?:大学|学院|学校|研究院|研究所)/i;
+const DEGREE_VALUE_HINT_PATTERN =
+  /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|degree|diploma|doctor|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|mba|phd)\b|(?:本科|硕士|博士|学士)/i;
 const SUSPICIOUS_PROJECT_PREFIX_PATTERN = /^(?:and|for|from|in|of|on|or|to|with)\b/i;
 const SUSPICIOUS_PROJECT_LABEL_PATTERN = /^(?:english|language|languages|skills?)[:：]/i;
 const EXPLICIT_LOCATION_PREFIX_PATTERN = /^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i;
@@ -510,15 +514,30 @@ function isLikelyValidEducationEntry(entry = {}) {
   const institutionName = cleanLine(entry.university);
   const combined = cleanLine([degreeName, institutionName].join(' '));
 
-  if (!combined || !EDUCATION_HINT_PATTERN.test(combined)) {
+  if (
+    !degreeName ||
+    !institutionName ||
+    !combined ||
+    !EDUCATION_HINT_PATTERN.test(combined)
+  ) {
     return false;
   }
 
-  if (degreeName && looksLikeEmploymentOrProjectPollution(degreeName) && !EDUCATION_HINT_PATTERN.test(degreeName)) {
+  if (
+    looksLikeGenericSectionLabel(degreeName) ||
+    looksLikeGenericSectionLabel(institutionName) ||
+    degreeName === institutionName ||
+    EDUCATION_INSTITUTION_HINT_PATTERN.test(degreeName) ||
+    DEGREE_VALUE_HINT_PATTERN.test(institutionName)
+  ) {
     return false;
   }
 
-  if (institutionName && looksLikeEmploymentOrProjectPollution(institutionName) && !EDUCATION_HINT_PATTERN.test(institutionName)) {
+  if (degreeName && looksLikeEmploymentOrProjectPollution(degreeName) && !DEGREE_VALUE_HINT_PATTERN.test(degreeName)) {
+    return false;
+  }
+
+  if (institutionName && looksLikeEmploymentOrProjectPollution(institutionName) && !EDUCATION_INSTITUTION_HINT_PATTERN.test(institutionName)) {
     return false;
   }
 
@@ -556,7 +575,13 @@ function chooseEducationEntries(sectionEntries = [], fallbackEntries = []) {
   const fallbackScore = scoreEducationEntries(fallbackEntries);
 
   if (sectionScore.validCount === 0 && fallbackScore.validCount === 0) {
-    return [];
+    if (sectionScore.malformedCount === 0 && fallbackScore.malformedCount === 0) {
+      return [];
+    }
+
+    return sectionScore.malformedCount >= fallbackScore.malformedCount
+      ? sectionEntries
+      : fallbackEntries;
   }
 
   if (
@@ -593,6 +618,107 @@ function chooseEducationEntriesWithSource(sectionEntries = [], fallbackEntries =
     selectedEntries,
     selectionSource: 'none'
   };
+}
+
+function shouldDropEducationNoiseEntry(entry = {}) {
+  const degreeName = cleanLine(entry.degreeName);
+  const institutionName = cleanLine(entry.university);
+  const hasDates = Boolean(cleanLine(entry.startYear) || cleanLine(entry.endYear));
+
+  if (
+    isLikelyValidEducationEntry(entry) ||
+    hasDates ||
+    (!degreeName && !institutionName)
+  ) {
+    return false;
+  }
+
+  return (
+    /[:：]/.test(degreeName) ||
+    /[:：]/.test(institutionName) ||
+    (
+      EDUCATION_INSTITUTION_HINT_PATTERN.test(degreeName) &&
+      DEGREE_VALUE_HINT_PATTERN.test(institutionName)
+    ) ||
+    (
+      DEGREE_VALUE_HINT_PATTERN.test(degreeName) &&
+      DEGREE_VALUE_HINT_PATTERN.test(institutionName)
+    )
+  );
+}
+
+function scoreEmploymentEntries(entries = []) {
+  return entries.reduce((score, entry) => {
+    const jobTitle = cleanLine(entry.jobTitle);
+    const companyName = cleanLine(entry.companyName);
+    const combined = cleanLine([jobTitle, companyName].join(' '));
+    const responsibilityCount = Array.isArray(entry.responsibilities) ? entry.responsibilities.filter(Boolean).length : 0;
+    const hasDates = Boolean(cleanLine(entry.startDate) || cleanLine(entry.endDate));
+    const hasCoreFields = Boolean(jobTitle && companyName);
+    const valid = isLikelyValidEmploymentEntry(entry);
+
+    if (!combined && !hasDates) {
+      return score;
+    }
+
+    score.totalScore +=
+      (valid ? 30 : 0) +
+      (jobTitle ? 6 : 0) +
+      (companyName ? 6 : 0) +
+      (hasDates ? 4 : 0) +
+      Math.min(responsibilityCount, 3);
+
+    if (hasCoreFields && valid) {
+      score.validCount += 1;
+    } else {
+      score.malformedCount += 1;
+    }
+
+    return score;
+  }, {
+    validCount: 0,
+    malformedCount: 0,
+    totalScore: 0
+  });
+}
+
+function chooseEmploymentEntries(sectionEntries = [], fallbackEntries = [], useSectionBoundary = false) {
+  if (!useSectionBoundary) {
+    return fallbackEntries.length > 0 ? fallbackEntries : [];
+  }
+
+  const sectionScore = scoreEmploymentEntries(sectionEntries);
+  const fallbackScore = scoreEmploymentEntries(fallbackEntries);
+
+  if (sectionScore.validCount === 0 && fallbackScore.validCount === 0) {
+    if (sectionScore.totalScore === 0 && fallbackScore.totalScore > 0) {
+      return fallbackEntries;
+    }
+
+    if (fallbackScore.totalScore === 0 && sectionScore.totalScore > 0) {
+      return sectionEntries;
+    }
+
+    return sectionScore.totalScore >= fallbackScore.totalScore
+      ? sectionEntries
+      : fallbackEntries;
+  }
+
+  if (sectionScore.validCount !== fallbackScore.validCount) {
+    return sectionScore.validCount > fallbackScore.validCount
+      ? sectionEntries
+      : fallbackEntries;
+  }
+
+  if (sectionScore.malformedCount !== fallbackScore.malformedCount) {
+    return sectionScore.malformedCount < fallbackScore.malformedCount
+      ? sectionEntries
+      : fallbackEntries;
+  }
+
+  return sectionScore.totalScore >= fallbackScore.totalScore
+    ? sectionEntries
+    : fallbackEntries;
 }
 
 function scoreProjectEntries(entries = []) {
@@ -955,14 +1081,14 @@ function selectEmploymentEntriesWithSource(rawEmployment = {}) {
   const sectionEntries = Array.isArray(rawEmployment.sectionEntries) ? rawEmployment.sectionEntries : [];
   const fallbackEntries = Array.isArray(rawEmployment.fallbackEntries) ? rawEmployment.fallbackEntries : [];
   const useSectionBoundary = Boolean(rawEmployment.usedSectionBoundary);
-  const selectedEntries = useSectionBoundary ? sectionEntries : fallbackEntries;
+  const selectedEntries = chooseEmploymentEntries(sectionEntries, fallbackEntries, useSectionBoundary);
 
   return {
     sectionEntries,
     fallbackEntries,
     selectedEntries,
     selectionSource: selectedEntries.length > 0
-      ? (useSectionBoundary ? 'section' : 'fallback')
+      ? (selectedEntries === sectionEntries ? 'section' : 'fallback')
       : 'none'
   };
 }
@@ -980,6 +1106,151 @@ function selectRequirementEntriesWithSource(rawRequirements = {}) {
       ? (sectionEntries.length > 0 ? 'section' : 'fallback')
       : 'none'
   };
+}
+
+function looksLikeBareDateToken(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    /^(?:19|20)\d{2}(?:[./-]\d{1,2})?$/.test(normalized) ||
+    /^(?:present|current|now|至今|目前|现在)$/i.test(normalized)
+  );
+}
+
+function looksLikeEmploymentNarrativeText(value) {
+  const normalized = cleanLine(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.length > 120 ||
+    normalized.split(/\s+/).filter(Boolean).length > 18 ||
+    /[。；;!?]$/.test(normalized)
+  );
+}
+
+function looksLikePlausibleEmploymentCompanyName(value) {
+  const normalized = cleanLine(value);
+
+  if (
+    !normalized ||
+    /^[•]/u.test(normalized) ||
+    looksLikeBareDateToken(normalized) ||
+    DATE_RANGE_PATTERN.test(normalized) ||
+    looksLikeGenericSectionLabel(normalized) ||
+    /^curriculum vitae$/i.test(normalized) ||
+    /^title\s*[:：]/i.test(normalized) ||
+    looksLikeEmploymentNarrativeText(normalized) ||
+    SUSPICIOUS_PROJECT_LABEL_PATTERN.test(normalized) ||
+    /^(?:training|qualification|summary)$/i.test(normalized) ||
+    /(?:专业技能|个人优势|项目经历|教育背景|工作经历|工作经验|简历)/u.test(normalized)
+  ) {
+    return false;
+  }
+
+  if (!COMPANY_HINT_PATTERN.test(normalized) && ROLE_HINT_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  if (
+    !COMPANY_HINT_PATTERN.test(normalized) &&
+    !/\s/.test(normalized) &&
+    normalized.length > 18
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeEmploymentJobTitleValue(value) {
+  return cleanLine(value).replace(/^(?:job title|title)\s*[:：]\s*/i, '');
+}
+
+function looksLikePlausibleEmploymentJobTitle(value) {
+  const normalized = normalizeEmploymentJobTitleValue(value);
+
+  if (
+    !normalized ||
+    looksLikeBareDateToken(normalized) ||
+    DATE_RANGE_PATTERN.test(normalized) ||
+    looksLikeGenericSectionLabel(normalized) ||
+    /^curriculum vitae$/i.test(normalized) ||
+    looksLikeEmploymentNarrativeText(normalized)
+  ) {
+    return false;
+  }
+
+  if (COMPANY_HINT_PATTERN.test(normalized) && !ROLE_HINT_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  if (EDUCATION_INSTITUTION_HINT_PATTERN.test(normalized) && !ROLE_HINT_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isLikelyValidEmploymentEntry(entry = {}) {
+  const companyName = cleanLine(entry.companyName);
+  const jobTitle = normalizeEmploymentJobTitleValue(entry.jobTitle);
+
+  if (!companyName || !jobTitle) {
+    return false;
+  }
+
+  return looksLikePlausibleEmploymentCompanyName(companyName) &&
+    looksLikePlausibleEmploymentJobTitle(jobTitle);
+}
+
+function shouldDropEmploymentNoiseEntry(entry = {}) {
+  const companyName = cleanLine(entry.companyName);
+  const jobTitle = normalizeEmploymentJobTitleValue(entry.jobTitle);
+  const jobTitleTokenCount = jobTitle.split(/\s+/).filter(Boolean).length;
+  const companyTokenCount = companyName.split(/\s+/).filter(Boolean).length;
+  const responsibilityWordCount = Array.isArray(entry.responsibilities)
+    ? entry.responsibilities
+      .map((value) => cleanLine(value))
+      .join(' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .length
+    : 0;
+
+  if (
+    isLikelyValidEmploymentEntry({
+      ...entry,
+      companyName,
+      jobTitle
+    }) ||
+    !companyName ||
+    !jobTitle
+  ) {
+    return false;
+  }
+
+  return (
+    companyTokenCount > 18 ||
+    /^project\b/i.test(companyName) ||
+    (
+      (
+        jobTitleTokenCount > 25 ||
+        responsibilityWordCount > 25
+      ) &&
+      (
+        /\|/.test(companyName) ||
+        /(?:project|项目)/i.test(companyName) ||
+        !COMPANY_HINT_PATTERN.test(companyName)
+      )
+    )
+  );
 }
 
 function parseDegreeAndField(degreeName) {
@@ -1006,24 +1277,27 @@ function normalizeEducationEntries(entries = [], cvBlocks = []) {
     entry.startYear,
     entry.endYear
   ].join('|')));
+  const filtered = deduped.filter((entry) => !shouldDropEducationNoiseEntry(entry));
 
-  return deduped
+  return filtered
     .map((entry) => {
       const parsedDegree = parseDegreeAndField(entry.degreeName);
+      const institutionName = cleanLine(entry.university);
       const validationFlags = [];
 
-      if (
-        (!parsedDegree.degreeName || !entry.university) &&
-        looksLikeEmploymentOrProjectPollution(parsedDegree.degreeName || entry.university) &&
-        !EDUCATION_HINT_PATTERN.test(parsedDegree.degreeName || entry.university)
-      ) {
+      if (!isLikelyValidEducationEntry({
+        degreeName: parsedDegree.degreeName || entry.degreeName,
+        university: institutionName,
+        startYear: entry.startYear,
+        endYear: entry.endYear
+      })) {
         validationFlags.push('education_entry_malformed');
       }
 
       return {
         degreeName: parsedDegree.degreeName,
         fieldOfStudy: parsedDegree.fieldOfStudy,
-        institutionName: cleanLine(entry.university),
+        institutionName,
         startDate: cleanLine(entry.startYear),
         endDate: cleanLine(entry.endYear),
         confidence: validationFlags.length === 0 ? 'high' : 'low',
@@ -1044,12 +1318,19 @@ function normalizeEmploymentEntries(entries = [], cvBlocks = []) {
     entry.startDate,
     entry.endDate
   ].join('|')));
+  const filtered = deduped.filter((entry) => !shouldDropEmploymentNoiseEntry(entry));
 
-  return deduped
+  return filtered
     .map((entry) => {
+      const companyName = cleanLine(entry.companyName);
+      const jobTitle = normalizeEmploymentJobTitleValue(entry.jobTitle);
       const validationFlags = [];
 
-      if (!cleanLine(entry.companyName) || !cleanLine(entry.jobTitle)) {
+      if (!isLikelyValidEmploymentEntry({
+        ...entry,
+        companyName,
+        jobTitle
+      })) {
         validationFlags.push('employment_entry_missing_core_fields');
       }
 
@@ -1061,8 +1342,8 @@ function normalizeEmploymentEntries(entries = [], cvBlocks = []) {
       }
 
       return {
-        companyName: cleanLine(entry.companyName),
-        jobTitle: cleanLine(entry.jobTitle),
+        companyName,
+        jobTitle,
         startDate: cleanLine(entry.startDate),
         endDate: cleanLine(entry.endDate),
         responsibilityBullets: Array.isArray(entry.responsibilities)

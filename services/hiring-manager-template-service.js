@@ -206,19 +206,25 @@ const DOCX_MAIN_CONTENT_TYPE =
 const DOTX_MAIN_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml';
 const DEGREE_LINE_PATTERN =
-  /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|ba|ma|degree|diploma)\b|(?:本科|硕士|博士|学士|研究生)/i;
+  /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|ba|ma|degree|diploma)\b|(?:本科|硕士|博士|学士|研究生)/i;
 const YEAR_RANGE_PATTERN =
-  /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–-]\s*(Present|Current|Now|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?)/i;
+  /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(Present|Current|Now|至今|目前|现在|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?)/i;
 const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b|(?:大学|学院|学校|研究院|研究所)/i;
 const COMPANY_HINT_PATTERN =
   /\b(group|company|corp|corporation|inc|inc\.|ltd|limited|llc|plc|pte|partners|solutions|technologies|technology|systems|bank|capital|consulting|advisors|advisory|recruitment|staffing|search|university|college|school)\b/i;
 const ROLE_TITLE_PATTERN =
-  /\b(head|director|manager|lead|principal|engineer|developer|architect|consultant|analyst|specialist|officer|president|vice president|vp|associate|recruiter|coordinator|administrator|designer|product owner|product manager|program manager|project manager)\b|(?:软件|后端|前端|全栈|区块链|测试|运维|数据|算法|研发|系统)?(?:工程师|开发|架构师|经理|总监|负责人|顾问|分析师|研究员|实习生|产品经理|技术负责人)/i;
+  /\b(head|director|manager|lead|principal|engineer|developer|architect|consultant|analyst|specialist|officer|president|vice president|vp|associate|recruiter|coordinator|administrator|designer|product owner|product manager|program manager|project manager|ios|android|java|golang|swift|objective-c|c\+\+|windows)\b|(?:软件|后端|前端|全栈|区块链|测试|运维|数据|算法|研发|系统|iOS|Android|Java)?(?:工程师|开发|架构师|经理|总监|负责人|顾问|分析师|研究员|实习生|产品经理|技术负责人|研发组长)/iu;
 const ORGANIZATION_ACRONYM_PATTERN = /^(?:[A-Z][A-Z0-9&.-]{1,}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})$/;
 const PDF_PAGE_ARTIFACT_PATTERN = /^(?:[-–—=\s]*)?(?:page\s+)?\d+\s+of\s+\d+(?:\s*[-–—=\s]*)?$/i;
 const DECORATION_LINE_PATTERN = /^[-–—=\s]+$/;
 const EXPERIENCE_SUBHEADING_PATTERN =
   /^(?:responsibilities|talent acquisition|team leadership(?:\s*&\s*development)?|system expert\/trainer|campaign(?:\s*&\s*initiatives)?|key achievement|key achievements|core expertise)\s*:?\s*$/i;
+const EXPERIENCE_NOISE_PATTERN =
+  /^(?:个人简历|基本信息|个人优势|优势亮点|专业技能|技能|自我评价|工作内容|工作业绩|业绩|内容|主要课程|项目概况|项目目标|项目职责|技术和职责|工作教育经历|工作经验|教育背景|教育经历|项目经历|项目经验|联系方式|工作地区|职位目标|求职岗位|岗位目标|求职意向|summary|profile|professional summary|executive profile)\s*[:：]?/iu;
+const EDUCATION_NOISE_PATTERN =
+  /(?:项目经历|项目概况|项目目标|项目职责|工作内容|工作业绩|业绩|主要课程|技术和职责|自我评价|专业技能|个人优势|优势亮点|工作经历|工作经验|求职意向|求职岗位|工作地区|奖学金|校赛|蓝桥杯|acm|证书|认证|英语(?:四|五|六|七|八)级|wallet|app\b|platform\b|project\b)/iu;
+const EDUCATION_LABEL_PATTERN =
+  /(?:学校|院校|专业|学历|学位|education|major|degree|university|college|school|institution)/iu;
 const KNOWN_LOCATION_LINE_SET = new Set([
   'australia',
   'beijing',
@@ -360,6 +366,158 @@ function looksLikeRoleTitleLine(value) {
   return ROLE_TITLE_PATTERN.test(normalizeTextBlock(value));
 }
 
+function looksLikeExperienceNoiseLine(value) {
+  const normalized = normalizeTextBlock(value);
+  const candidate = normalized.replace(/:\s*$/, '');
+
+  if (!candidate) {
+    return false;
+  }
+
+  return (
+    EXPERIENCE_NOISE_PATTERN.test(candidate) ||
+    isKnownCvSectionHeading(candidate) ||
+    isContactLine(candidate) ||
+    /^\d{1,2}[.、]/u.test(candidate) ||
+    (/[。；]/u.test(candidate) && /[\u4e00-\u9fff]/u.test(candidate)) ||
+    (/[\u4e00-\u9fff]/u.test(candidate) && candidate.length > 48 && /(?:负责|熟悉|掌握|实现|优化|参与|支持|推动|课程|项目|经验)/u.test(candidate))
+  );
+}
+
+function looksLikeCompactRoleTitleText(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized || !looksLikeRoleTitleLine(normalized)) {
+    return false;
+  }
+
+  if (
+    looksLikeExperienceNoiseLine(normalized) ||
+    looksLikeLocationLine(normalized) ||
+    isContactLine(normalized) ||
+    YEAR_RANGE_PATTERN.test(normalized) ||
+    /^(?:负责|参与|熟悉|掌握|实现|优化|推动|支持|完成)/u.test(normalized)
+  ) {
+    return false;
+  }
+
+  if (
+    !/[。\n]/u.test(normalized) &&
+    !/[，；]/u.test(normalized) &&
+    normalized.split(/\s+/).length <= 24
+  ) {
+    return true;
+  }
+
+  return !/[，。；]/u.test(normalized) && !looksLikeExperienceNoiseLine(normalized);
+}
+
+function looksLikeProjectStyleHeading(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    /(?:项目|App[-—]|钱包|浏览器|社区|Feed|聊天|客户端开发|DEX|聚合器|引擎)/iu.test(normalized) &&
+    !looksLikeOrganizationText(normalized)
+  );
+}
+
+function looksLikeEducationNoiseLine(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (YEAR_RANGE_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  return (
+    EDUCATION_NOISE_PATTERN.test(normalized) ||
+    isKnownCvSectionHeading(normalized) ||
+    isPdfArtifactLine(normalized) ||
+    looksLikeExperienceNoiseLine(normalized)
+  );
+}
+
+function parseEducationDetailLine(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized || looksLikeEducationNoiseLine(normalized)) {
+    return null;
+  }
+
+  const withoutLeadingDate = splitLeadingDateLine(normalized)?.remainder || normalized;
+  const withoutTrailingDate = stripTrailingDateRangeText(withoutLeadingDate);
+  const inlineParts = withoutTrailingDate
+    .split(/\s*[|｜]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const universityFromParts = inlineParts.find((part) =>
+    EDUCATION_ORG_PATTERN.test(part) || /^[A-Z][A-Z0-9&.-]{2,}$/.test(part)
+  ) || '';
+  const degreeParts = inlineParts.filter((part) => DEGREE_LINE_PATTERN.test(part) && part !== universityFromParts);
+
+  const labeledUniversityMatch = withoutTrailingDate.match(/(?:学校|院校|university|college|school|institution)\s*[:：]\s*([^|｜]+)/iu);
+  const labeledDegreeMatch = withoutTrailingDate.match(/(?:学历|学位|degree)\s*[:：]\s*([^|｜]+)/iu);
+  const compactChineseMatch = withoutTrailingDate.match(/^(.*?)(本科|硕士|博士|学士|研究生)(.*)$/u);
+  const compactUniversity = compactChineseMatch?.[1] && EDUCATION_ORG_PATTERN.test(compactChineseMatch[1])
+    ? normalizeTextBlock(compactChineseMatch[1]).replace(/[|｜\s-]+$/u, '')
+    : '';
+  let university = labeledUniversityMatch?.[1]
+    ? normalizeTextBlock(labeledUniversityMatch[1])
+    : (compactUniversity || universityFromParts);
+  const compactDegreeName = compactChineseMatch?.[2]
+    ? [compactChineseMatch[2], normalizeTextBlock(compactChineseMatch[3] || '').replace(/^[:：|｜\s-]+/, '')]
+      .filter(Boolean)
+      .join(' | ')
+    : '';
+  let degreeName = labeledDegreeMatch?.[1]
+    ? normalizeTextBlock(labeledDegreeMatch[1])
+    : (compactDegreeName || degreeParts.join(' | '));
+
+  if (!degreeName || !university) {
+    return null;
+  }
+
+  return {
+    degreeName,
+    university
+  };
+}
+
+function parseEducationCompanionLine(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized || looksLikeEducationNoiseLine(normalized)) {
+    return null;
+  }
+
+  const withoutLeadingDate = splitLeadingDateLine(normalized)?.remainder || normalized;
+  const withoutTrailingDate = stripTrailingDateRangeText(withoutLeadingDate);
+  const inlineParts = withoutTrailingDate
+    .split(/\s*[|｜]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const university = inlineParts.find((part) =>
+    EDUCATION_ORG_PATTERN.test(part) || /^[A-Z][A-Z0-9&.-]{2,}$/.test(part)
+  ) || '';
+
+  if (university) {
+    return {
+      university
+    };
+  }
+
+  return EDUCATION_ORG_PATTERN.test(withoutTrailingDate)
+    ? { university: withoutTrailingDate }
+    : null;
+}
+
 function looksLikeLocationLine(value) {
   const normalized = normalizeTextBlock(value);
 
@@ -382,7 +540,7 @@ function looksLikeLocationLine(value) {
     return normalized
       .split(',')
       .map((part) => part.trim())
-      .every((part) => /^[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*$/.test(part));
+      .every((part) => /^[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*$/.test(part) && !ROLE_TITLE_PATTERN.test(part));
   }
 
   return false;
@@ -901,7 +1059,7 @@ function extractEducationDetails(sectionLines = []) {
 function parseEducationEntry(sectionLines = []) {
   const normalizedLines = sectionLines
     .map(normalizeTextBlock)
-    .filter((line) => line && !isPdfArtifactLine(line) && !isKnownCvSectionHeading(line));
+    .filter((line) => line && !isPdfArtifactLine(line) && !isKnownCvSectionHeading(line) && !looksLikeEducationNoiseLine(line));
 
   if (normalizedLines.length === 0) {
     return null;
@@ -915,18 +1073,33 @@ function parseEducationEntry(sectionLines = []) {
     return inlineEducationEntry;
   }
 
+  const detailEntry = normalizedLines
+    .map((line) => parseEducationDetailLine(line))
+    .find((entry) => entry);
+
+  const hasEducationSignal = normalizedLines.some((line) =>
+    DEGREE_LINE_PATTERN.test(line) ||
+    EDUCATION_ORG_PATTERN.test(line) ||
+    EDUCATION_LABEL_PATTERN.test(line)
+  );
+
+  if (!detailEntry && !hasEducationSignal) {
+    return null;
+  }
+
   const yearLine = normalizedLines.find((line) => YEAR_RANGE_PATTERN.test(line)) || '';
   const yearMatch = yearLine.match(YEAR_RANGE_PATTERN);
   const startYear = yearMatch?.[1] || '';
-  const endYear = yearMatch?.[3] || (yearMatch?.[2] && !/present|current|now/i.test(yearMatch[2]) ? yearMatch[2] : '');
-  const degreeName = normalizedLines.find((line) => DEGREE_LINE_PATTERN.test(line)) ||
-    normalizedLines.find((line) => !YEAR_RANGE_PATTERN.test(line) && !EDUCATION_ORG_PATTERN.test(line)) ||
+  const endYear = yearMatch?.[3] || (yearMatch?.[2] && !/present|current|now|至今|目前|现在/i.test(yearMatch[2]) ? yearMatch[2] : '');
+  const degreeName = detailEntry?.degreeName ||
+    normalizedLines.find((line) => DEGREE_LINE_PATTERN.test(line)) ||
     '';
-  const university = stripTrailingDateRangeText(
-    normalizedLines.find((line) => EDUCATION_ORG_PATTERN.test(line)) || ''
-  );
+  const university = detailEntry?.university ||
+    stripTrailingDateRangeText(
+      normalizedLines.find((line) => EDUCATION_ORG_PATTERN.test(line)) || ''
+    );
 
-  if (!degreeName && !university && !startYear && !endYear) {
+  if (!degreeName || !university) {
     return null;
   }
 
@@ -942,35 +1115,75 @@ function parseCompactEducationLine(value) {
   const normalized = normalizeTextBlock(value);
   const match = normalized.match(YEAR_RANGE_PATTERN);
 
-  if (!normalized || !match || typeof match.index !== 'number' || match.index !== 0) {
+  if (!normalized || looksLikeEducationNoiseLine(normalized)) {
     return null;
   }
 
-  const startYear = match[1] || '';
-  const endYear = match[3] || (match[2] && !/present|current|now/i.test(match[2]) ? match[2] : '');
-  const remainder = normalized
-    .slice(match[0].length)
-    .replace(/^[|,/-]\s*/, '')
-    .trim();
+  if (match && typeof match.index === 'number' && match.index === 0) {
+    const startYear = match[1] || '';
+    const endYear = match[3] || (match[2] && !/present|current|now|至今|目前|现在/i.test(match[2]) ? match[2] : '');
+    const remainder = normalized
+      .slice(match[0].length)
+      .replace(/^[|,/-]\s*/, '')
+      .trim();
+    const compactDegreeTailMatch = remainder.match(/^(.*?)(?:\s*[|｜]\s*|\s+)(硕士|本科|博士|学士|研究生)\s*$/u);
+    const detailEntry = parseEducationDetailLine(remainder) || (
+      compactDegreeTailMatch?.[1] && EDUCATION_ORG_PATTERN.test(compactDegreeTailMatch[1])
+        ? {
+          degreeName: compactDegreeTailMatch[2],
+          university: normalizeTextBlock(compactDegreeTailMatch[1]).replace(/[|｜\s-]+$/u, '')
+        }
+        : null
+    );
 
-  if (!remainder) {
-    return null;
+    if (!detailEntry) {
+      return null;
+    }
+
+    return {
+      degreeName: detailEntry.degreeName,
+      university: detailEntry.university,
+      startYear,
+      endYear
+    };
   }
 
-  const parts = remainder
-    .split(/\s*[|｜]\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const degreeName = parts.find((part) => DEGREE_LINE_PATTERN.test(part)) || '';
-  const university = degreeName
-    ? parts.filter((part) => part !== degreeName).join(' | ')
-    : (parts[0] || '');
+  const trailingDateLine = splitTrailingDateLine(normalized);
+
+  if (trailingDateLine?.remainder) {
+    const compactDegreeTailMatch = trailingDateLine.remainder.match(/^(.*?)(?:\s*[|｜]\s*|\s+)(硕士|本科|博士|学士|研究生)\s*$/u);
+    const detailEntry = parseEducationDetailLine(trailingDateLine.remainder) || (
+      compactDegreeTailMatch?.[1] && EDUCATION_ORG_PATTERN.test(compactDegreeTailMatch[1])
+        ? {
+          degreeName: compactDegreeTailMatch[2],
+          university: normalizeTextBlock(compactDegreeTailMatch[1]).replace(/[|｜\s-]+$/u, '')
+        }
+        : null
+    );
+
+    if (!detailEntry) {
+      return null;
+    }
+
+    return {
+      degreeName: detailEntry.degreeName,
+      university: detailEntry.university,
+      startYear: trailingDateLine.startDate,
+      endYear: trailingDateLine.endDate
+    };
+  }
+
+  const detailEntry = parseEducationDetailLine(normalized);
+
+  if (!detailEntry) {
+    return null;
+  }
 
   return {
-    degreeName,
-    university,
-    startYear,
-    endYear
+    degreeName: detailEntry.degreeName,
+    university: detailEntry.university,
+    startYear: '',
+    endYear: ''
   };
 }
 
@@ -988,40 +1201,79 @@ function stripTrailingDateRangeText(value) {
 function extractEducationEntries(sectionLines = []) {
   const lines = sectionLines
     .map(normalizeTextBlock)
-    .filter((line) => line && !isPdfArtifactLine(line));
+    .filter((line) => line && !isPdfArtifactLine(line) && !looksLikeEducationNoiseLine(line));
 
   if (lines.length === 0) {
     return [];
   }
 
-  const yearLineIndices = lines
-    .map((line, index) => (YEAR_RANGE_PATTERN.test(line) ? index : -1))
-    .filter((index) => index >= 0);
-
-  if (yearLineIndices.length === 0) {
-    const singleEntry = parseEducationEntry(lines);
-    return singleEntry ? [singleEntry] : [];
-  }
-
   const entries = [];
-  let cursor = 0;
 
-  for (const yearLineIndex of yearLineIndices) {
-    const entry = parseEducationEntry(lines.slice(cursor, yearLineIndex + 1));
+  for (let index = 0; index < lines.length; index += 1) {
+    const entry = parseCompactEducationLine(lines[index]);
+
     if (entry) {
       entries.push(entry);
+      continue;
     }
-    cursor = yearLineIndex + 1;
+
+    if (DEGREE_LINE_PATTERN.test(lines[index]) && !YEAR_RANGE_PATTERN.test(lines[index])) {
+      const companionEntry = parseEducationCompanionLine(lines[index + 1] || '');
+      const trailingDate = splitTrailingDateLine(lines[index + 1] || '');
+      const leadingDate = splitLeadingDateLine(lines[index + 1] || '');
+      const deferredTrailingDate = splitTrailingDateLine(lines[index + 2] || '');
+      const deferredLeadingDate = splitLeadingDateLine(lines[index + 2] || '');
+      const startYear = trailingDate?.startDate ||
+        leadingDate?.startDate ||
+        deferredTrailingDate?.startDate ||
+        deferredLeadingDate?.startDate ||
+        '';
+      const endYear = trailingDate?.endDate ||
+        leadingDate?.endDate ||
+        deferredTrailingDate?.endDate ||
+        deferredLeadingDate?.endDate ||
+        '';
+
+      if (companionEntry) {
+        const companionLineCarriesDate = Boolean(
+          trailingDate?.startDate ||
+          trailingDate?.endDate ||
+          leadingDate?.startDate ||
+          leadingDate?.endDate
+        );
+        entries.push({
+          degreeName: normalizeTextBlock(lines[index]),
+          university: companionEntry.university,
+          startYear,
+          endYear
+        });
+        // Consume the companion line, and only consume a third line when the date
+        // was deferred beyond the university line.
+        index += companionLineCarriesDate ? 1 : (startYear || endYear ? 2 : 1);
+        continue;
+      }
+    }
+
+    const datedLine = splitLeadingDateLine(lines[index]);
+    const nextDetail = parseEducationDetailLine(lines[index + 1] || '');
+
+    if (datedLine && !datedLine.remainder && nextDetail) {
+      entries.push({
+        degreeName: nextDetail.degreeName,
+        university: nextDetail.university,
+        startYear: datedLine.startDate,
+        endYear: datedLine.endDate
+      });
+      index += 1;
+    }
   }
 
-  if (cursor < lines.length && entries.length > 0) {
-    const trailingEntry = parseEducationEntry(lines.slice(cursor));
-    if (trailingEntry) {
-      entries.push(trailingEntry);
-    }
+  if (entries.length > 0) {
+    return entries;
   }
 
-  return entries;
+  const singleEntry = parseEducationEntry(lines);
+  return singleEntry ? [singleEntry] : [];
 }
 
 function extractDateRange(value) {
@@ -1059,14 +1311,14 @@ function splitRoleCompanyLine(value) {
       const left = parts[0];
       const right = parts[1];
 
-      if (looksLikeOrganizationText(left) && looksLikeRoleTitleLine(right)) {
+      if (looksLikeOrganizationText(left) && looksLikeCompactRoleTitleText(right)) {
         return {
           jobTitle: right,
           companyName: left
         };
       }
 
-      if (looksLikeRoleTitleLine(left) && looksLikeOrganizationText(right)) {
+      if (looksLikeCompactRoleTitleText(left) && looksLikeOrganizationText(right)) {
         return {
           jobTitle: left,
           companyName: looksLikeLocationLine(right) ? '' : right
@@ -1099,6 +1351,11 @@ function looksLikeOrganizationText(value) {
     /[（(].+[)）]/.test(normalized) ||
     /\b(?:team|department|lab|studio)\b/i.test(normalized) ||
     /(?:公司|集团|大学|学院|研究所|科技|信息|银行|证券|招聘|工作室|部门|研发部)/.test(normalized) ||
+    (
+      /^[\u4e00-\u9fffA-Za-z0-9()（）&._·-]{2,30}$/u.test(normalized) &&
+      !looksLikeCompactRoleTitleText(normalized) &&
+      !looksLikeLocationLine(normalized)
+    ) ||
     /^[A-Za-z][A-Za-z0-9&._-]*(?:\s+[A-Za-z0-9&._-]+)*$/.test(normalized);
 }
 
@@ -1134,7 +1391,7 @@ function splitInlineCompanyRoleRemainder(value) {
     const companyName = tokens.slice(0, index).join(' ').trim();
     const jobTitle = tokens.slice(index).join(' ').trim();
 
-    if (looksLikeOrganizationText(companyName) && looksLikeRoleTitleLine(jobTitle) && !looksLikeCompanyLine(jobTitle)) {
+    if (looksLikeOrganizationText(companyName) && looksLikeCompactRoleTitleText(jobTitle) && !looksLikeCompanyLine(jobTitle)) {
       return {
         companyName,
         jobTitle
@@ -1176,6 +1433,7 @@ function looksLikeExperienceEntryLine(value) {
   return (
     !isPdfArtifactLine(normalized) &&
     !isKnownCvSectionHeading(normalized) &&
+    !looksLikeExperienceNoiseLine(normalized) &&
     !isResponsibilityBulletLine(normalized) &&
     !YEAR_RANGE_PATTERN.test(normalized) &&
     !DEGREE_LINE_PATTERN.test(normalized)
@@ -1270,17 +1528,17 @@ function splitInlineExperienceHeading(value) {
     const left = parts[0];
     const right = parts.slice(1).join(' | ');
 
-    if (looksLikeOrganizationText(left) && looksLikeRoleTitleLine(right)) {
-      return {
-        companyName: left,
-        jobTitle: right
-      };
-    }
+      if (looksLikeOrganizationText(left) && looksLikeCompactRoleTitleText(right)) {
+        return {
+          companyName: left,
+          jobTitle: right
+        };
+      }
 
-    if (looksLikeRoleTitleLine(left) && looksLikeOrganizationText(right)) {
-      return {
-        companyName: right,
-        jobTitle: left
+      if (looksLikeCompactRoleTitleText(left) && looksLikeOrganizationText(right)) {
+        return {
+          companyName: right,
+          jobTitle: left
       };
     }
   }
@@ -1294,14 +1552,14 @@ function splitInlineExperienceHeading(value) {
     const left = dashParts[0];
     const right = dashParts[1];
 
-    if (looksLikeOrganizationText(left) && looksLikeRoleTitleLine(right)) {
+    if (looksLikeOrganizationText(left) && looksLikeCompactRoleTitleText(right)) {
       return {
         companyName: left,
         jobTitle: right
       };
     }
 
-    if (looksLikeRoleTitleLine(left) && looksLikeOrganizationText(right)) {
+    if (looksLikeCompactRoleTitleText(left) && looksLikeOrganizationText(right)) {
       return {
         companyName: right,
         jobTitle: left
@@ -1319,7 +1577,7 @@ function resolveExperienceHeading(primaryLine, secondaryLine = '') {
   if (
     looksLikeCompanyLine(primaryLine) &&
     normalizedSecondaryLine &&
-    looksLikeRoleTitleLine(normalizedSecondaryLine)
+    looksLikeCompactRoleTitleText(normalizedSecondaryLine)
   ) {
     jobTitle = normalizedSecondaryLine;
     companyName = primaryLine;
@@ -1354,8 +1612,13 @@ function detectExperienceEntry(lines, index) {
   const line = lines[index];
   const nextLine = lines[index + 1] || '';
   const nextNextLine = lines[index + 2] || '';
+  const dateLineInlineEntry = detectDateLineThenInlineExperienceEntry(lines, index);
   const trailingDatedInlineEntry = detectTrailingInlineExperienceEntry(line);
   const datedInlineEntry = detectDatedInlineExperienceEntry(line);
+
+  if (dateLineInlineEntry) {
+    return dateLineInlineEntry;
+  }
 
   if (trailingDatedInlineEntry) {
     return {
@@ -1371,7 +1634,7 @@ function detectExperienceEntry(lines, index) {
     };
   }
 
-  if (!looksLikeExperienceEntryLine(line) || !looksLikeRoleTitleLine(line)) {
+  if (!looksLikeExperienceEntryLine(line) || !looksLikeCompactRoleTitleText(line)) {
     return null;
   }
 
@@ -1437,7 +1700,7 @@ function detectExperienceEntry(lines, index) {
 function detectDatedRoleLine(value) {
   const datedLine = splitLeadingDateLine(value);
 
-  if (!datedLine || !datedLine.remainder || !looksLikeRoleTitleLine(datedLine.remainder)) {
+  if (!datedLine || !datedLine.remainder || !looksLikeCompactRoleTitleText(datedLine.remainder)) {
     return null;
   }
 
@@ -1451,9 +1714,13 @@ function detectDatedInlineExperienceEntry(value) {
     return null;
   }
 
-  const splitHeading = splitInlineCompanyRoleRemainder(datedLine.remainder);
+  const splitHeading = splitInlineExperienceHeading(datedLine.remainder);
 
-  if (!splitHeading.jobTitle || !looksLikeRoleTitleLine(splitHeading.jobTitle)) {
+  if (
+    !splitHeading.jobTitle ||
+    !looksLikeCompactRoleTitleText(splitHeading.jobTitle) ||
+    (!splitHeading.companyName && looksLikeProjectStyleHeading(datedLine.remainder))
+  ) {
     return null;
   }
 
@@ -1474,7 +1741,11 @@ function detectTrailingInlineExperienceEntry(value) {
 
   const splitHeading = splitInlineExperienceHeading(trailingLine.remainder);
 
-  if (!splitHeading.jobTitle || !looksLikeRoleTitleLine(splitHeading.jobTitle)) {
+  if (
+    !splitHeading.jobTitle ||
+    !looksLikeCompactRoleTitleText(splitHeading.jobTitle) ||
+    (!splitHeading.companyName && looksLikeProjectStyleHeading(trailingLine.remainder))
+  ) {
     return null;
   }
 
@@ -1483,6 +1754,30 @@ function detectTrailingInlineExperienceEntry(value) {
     companyName: splitHeading.companyName,
     startDate: trailingLine.startDate,
     endDate: trailingLine.endDate
+  };
+}
+
+function detectDateLineThenInlineExperienceEntry(lines, index) {
+  const currentLine = normalizeTextBlock(lines[index]);
+  const nextLine = normalizeTextBlock(lines[index + 1] || '');
+  const datedLine = splitLeadingDateLine(currentLine);
+
+  if (!datedLine || datedLine.remainder || !nextLine || looksLikeExperienceNoiseLine(nextLine)) {
+    return null;
+  }
+
+  const splitHeading = splitInlineExperienceHeading(nextLine);
+
+  if (!splitHeading.jobTitle || !looksLikeCompactRoleTitleText(splitHeading.jobTitle)) {
+    return null;
+  }
+
+  return {
+    jobTitle: splitHeading.jobTitle,
+    companyName: splitHeading.companyName,
+    startDate: datedLine.startDate,
+    endDate: datedLine.endDate,
+    cursor: index + 2
   };
 }
 
@@ -1514,11 +1809,26 @@ function collectExperienceResponsibilities(lines, startIndex) {
       break;
     }
 
+    if (/^(?:summary|profile|professional summary|executive profile)$/i.test(currentLine)) {
+      break;
+    }
+
     if (
       detectDatedCompanyRoleGroupStart(lines, cursor) ||
       detectExperienceEntry(lines, cursor) ||
       detectDatedRoleLine(lines[cursor])
     ) {
+      break;
+    }
+
+    if (
+      YEAR_RANGE_PATTERN.test(currentLine) &&
+      parseEducationDetailLine(lines[cursor + 1] || '')
+    ) {
+      break;
+    }
+
+    if (parseEducationDetailLine(currentLine)) {
       break;
     }
 

@@ -5,6 +5,8 @@ const {
   WORD_TEMPLATE_CONTRACT,
   buildTemplateData,
   extractDocumentDerivedProfile,
+  extractEducationEntries,
+  extractExperienceHistory,
   parseStructuredSummary,
   validateWordTemplateContract
 } = require('../../services/hiring-manager-template-service');
@@ -559,6 +561,77 @@ test('Chinese date-leading work history does not leak education lines into locat
       '负责关系型数据库（MySQL/PostgreSQL）表结构设计、复杂 SQL 优化和事务控制，配合分布式锁机制确保订单与库存 一致性，并参与日志追踪、监控与 CI/CD 部署流程建设，提高系统可观测性与运维效率。'
     ]
   });
+});
+
+test('extractExperienceHistory parses Chinese date-only rows followed by company and role lines', () => {
+  const employmentHistory = extractExperienceHistory([
+    '工作教育经历',
+    '2016/06 --至今',
+    '西安软通动力技术服务有限公司 | JAVA 高级工程师',
+    '2012/05 --2016/05',
+    '西安华为技术研究所 | JAVA 工程师',
+    '2009/09 --2012/03',
+    '西北大学| 硕士 | 计算机技术'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'JAVA 高级工程师',
+      companyName: '西安软通动力技术服务有限公司',
+      startDate: '2016',
+      endDate: '至今',
+      responsibilities: []
+    },
+    {
+      jobTitle: 'JAVA 工程师',
+      companyName: '西安华为技术研究所',
+      startDate: '2012',
+      endDate: '2016',
+      responsibilities: []
+    }
+  ]);
+});
+
+test('extractEducationEntries keeps compact Chinese degree rows and ignores scholarship or project noise', () => {
+  const educationEntries = extractEducationEntries([
+    '西安邮电大学 本科 计算机科学与技术 2016-2020',
+    '2017年-2019年 连续三年获得二等奖学金',
+    '2017年 acm校赛铜奖 2017年 蓝桥杯陕西赛区二等奖 2019年 acm校赛银奖',
+    '游信-精品游戏推荐 iOS客户端开发 2020.08-2021.10'
+  ]);
+
+  assert.deepEqual(educationEntries, [
+    {
+      degreeName: '本科 | 计算机科学与技术',
+      university: '西安邮电大学',
+      startYear: '2016',
+      endYear: '2020'
+    }
+  ]);
+});
+
+test('extractEducationEntries keeps consecutive delayed English degree rows without skipping the second entry', () => {
+  const educationEntries = extractEducationEntries([
+    'MSc in Computing',
+    'Cardiff University, UK | 2019 – 2020',
+    'Bachelor of Business Administration (BBA)',
+    'Jincheng College, Nanjing University of Aeronautics and Astronautics | 2012 – 2016'
+  ]);
+
+  assert.deepEqual(educationEntries, [
+    {
+      degreeName: 'MSc in Computing',
+      university: 'Cardiff University, UK',
+      startYear: '2019',
+      endYear: '2020'
+    },
+    {
+      degreeName: 'Bachelor of Business Administration (BBA)',
+      university: 'Jincheng College, Nanjing University of Aeronautics and Astronautics',
+      startYear: '2012',
+      endYear: '2016'
+    }
+  ]);
 });
 
 test('buildTemplateData parses Simplified Chinese summary headings for Word-template fields', () => {

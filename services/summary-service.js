@@ -114,8 +114,13 @@ const CANDIDATE_METADATA_LABELS_SOURCE = [
   'ethnicity',
   'salary',
   'objective',
+  'preferred salary',
+  'current title',
+  'target role',
+  'desired role',
   '联系方式',
   '姓名',
+  '姓\\s*名',
   '性别',
   '年龄',
   '身高',
@@ -130,6 +135,13 @@ const CANDIDATE_METADATA_LABELS_SOURCE = [
   '现居住地',
   '所在地',
   '期望城市',
+  '期望薪资',
+  '工作地区',
+  '职位目标',
+  '求职岗位',
+  '岗位目标',
+  '老家',
+  '英语(?:四|五|六|七|八)级',
   '目前职位',
   '当前职位',
   '求职意向'
@@ -164,6 +176,10 @@ const NON_NAME_CANDIDATE_METADATA_LABELS_SOURCE = [
   'ethnicity',
   'salary',
   'objective',
+  'preferred salary',
+  'current title',
+  'target role',
+  'desired role',
   '联系方式',
   '性别',
   '年龄',
@@ -181,6 +197,13 @@ const NON_NAME_CANDIDATE_METADATA_LABELS_SOURCE = [
   '期望城市',
   '期望地点',
   '意向地点',
+  '期望薪资',
+  '工作地区',
+  '职位目标',
+  '求职岗位',
+  '岗位目标',
+  '老家',
+  '英语(?:四|五|六|七|八)级',
   '目前职位',
   '当前职位',
   '求职意向',
@@ -192,9 +215,13 @@ const NON_NAME_CANDIDATE_METADATA_PREFIX_PATTERN = new RegExp(
   'i'
 );
 const CANDIDATE_LEADING_LABEL_PATTERN =
-  /^(?:(?:个人信息|基本信息|个人简历|resume)\s*)*(?:name|candidate name|姓名)\s*[:：]?\s*/i;
+  /^(?:(?:个人信息|基本信息|个人简历|resume)\s*)*(?:name|candidate name|姓\s*名|姓名)\s*[:：]?\s*/i;
 const CANDIDATE_TABLE_HEADER_PATTERN =
   /^(?:time|date|period|from|to)\s+(?:employer|company)\s+(?:role|title)\b/i;
+const CANDIDATE_NOISE_LABEL_PATTERN =
+  /^(?:个人简历|基本信息|个人优势|优势亮点|专业技能|技能|工作内容|工作业绩|业绩|内容|主要课程|项目概况|项目职责|项目目标|技术和职责|工作教育经历|工作经历|工作经验|教育背景|教育经历|项目经历|项目经验|自我评价|工作地区|职位目标|求职岗位|岗位目标|求职意向|期望薪资|期望城市|老家)\s*[:：]?/u;
+const INLINE_DATE_RANGE_PATTERN =
+  /(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(?:至今|目前|现在|present|current|now|(?:19|20)\d{2}(?:[./-]\d{1,2})?)/i;
 
 const GENERIC_ROLE_HEADINGS = new Set([
   'about the job',
@@ -499,6 +526,26 @@ function looksLikeCandidateTableHeader(value) {
   return CANDIDATE_TABLE_HEADER_PATTERN.test(cleanLine(String(value || '')));
 }
 
+function looksLikeCandidateHeaderNoiseLine(value) {
+  const normalized = cleanLine(String(value || ''));
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    isGenericCandidateHeading(normalized) ||
+    looksLikeCandidateTableHeader(normalized) ||
+    looksLikeNonNameCandidateMetadataLine(normalized) ||
+    CANDIDATE_NOISE_LABEL_PATTERN.test(normalized) ||
+    /^\d+[.、]/u.test(normalized) ||
+    /@|https?:\/\//i.test(normalized) ||
+    INLINE_DATE_RANGE_PATTERN.test(normalized) ||
+    /(?:公司|有限公司|研究所|大学|学院|集团|科技|网络|信息|银行).*(?:19|20)\d{2}/u.test(normalized) ||
+    (/[，。；;]/u.test(normalized) && normalized.length > 16)
+  );
+}
+
 function looksLikeChineseNarrativeInsteadOfName(value) {
   const normalized = cleanLine(String(value || ''));
 
@@ -529,20 +576,56 @@ function cleanCandidateNameCandidate(value) {
   const withoutPrefix = stripCandidateLinePrefix(value);
   const withoutMetadataTail = stripCandidateMetadataTail(withoutPrefix);
   const withoutTrailingToken = stripTrailingSingleLetterLatinToken(withoutMetadataTail);
-  const preferredChineseName = extractPreferredChineseNameFragment(withoutTrailingToken);
-
-  if (preferredChineseName && looksLikeRoleTitleInsteadOfName(withoutTrailingToken)) {
-    return preferredChineseName;
-  }
 
   return normalizeUppercaseLatinCandidateName(withoutTrailingToken);
+}
+
+function hasStrongCandidateHeaderContext(lines, index) {
+  const previousLine = cleanLine(lines[index - 1] || '');
+  const nextLine = cleanLine(lines[index + 1] || '');
+
+  return (
+    isGenericCandidateHeading(previousLine) ||
+    looksLikeNonNameCandidateMetadataLine(nextLine) ||
+    /@/.test(nextLine) ||
+    /\d{5,}/.test(nextLine) ||
+    /(?:男|女|籍贯|老家|现居住|工作经验|电话|手机|邮箱|期望|求职|出生年月|年龄|身高)/u.test(nextLine)
+  );
+}
+
+function extractLeadingChineseHeaderName(value) {
+  const normalized = cleanCandidateNameCandidate(value);
+  const match = normalized.match(/^([\u4e00-\u9fff·]{2,6})(?:\s+(.+))?$/u);
+
+  if (!match?.[1]) {
+    return '';
+  }
+
+  const candidateName = cleanLine(match[1]);
+  const remainder = cleanLine(match[2] || '');
+
+  if (!remainder) {
+    return candidateName;
+  }
+
+  if (
+    looksLikeCandidateHeaderNoiseLine(remainder) ||
+    looksLikeNonNameCandidateMetadataLine(remainder) ||
+    /[|/／:：@]|\d{4}|\d{5,}/.test(remainder) ||
+    /(?:男|女|籍贯|老家|现居住|工作经验|求职|期望|英语(?:四|五|六|七|八)级)/u.test(remainder) ||
+    looksLikeRoleTitleInsteadOfName(remainder)
+  ) {
+    return candidateName;
+  }
+
+  return '';
 }
 
 function extractCandidateName(cvText, fileName) {
   const lines = splitLines(cvText);
 
   for (const line of lines.slice(0, 20)) {
-    const labeledMatch = line.match(/^(?:name|candidate name|姓名|候选人姓名)\s*[:：]\s*(.+)$/i);
+    const labeledMatch = line.match(/^(?:name|candidate name|姓\s*名|姓名|候选人姓名)\s*[:：]\s*(.+)$/i);
     const candidateValue = normalizeCandidateNameInlineValue(labeledMatch?.[1] || '');
 
     if (
@@ -550,18 +633,44 @@ function extractCandidateName(cvText, fileName) {
       !candidateValue.includes('@') &&
       !/\d{5,}/.test(candidateValue) &&
       !isGenericCandidateHeading(candidateValue) &&
+      !looksLikeCandidateHeaderNoiseLine(candidateValue) &&
       !looksLikeRoleTitleInsteadOfName(candidateValue) &&
       !looksLikeEducationLabelInsteadOfName(candidateValue) &&
-      !looksLikeUntrustedShortCjkCandidateName(candidateValue, fileName)
+      (
+        !looksLikeUntrustedShortCjkCandidateName(candidateValue, fileName) ||
+        /^[\u4e00-\u9fff·]{2,6}$/u.test(candidateValue)
+      )
     ) {
       return resolveCandidateNameWithFileName(candidateValue, fileName);
     }
   }
 
+  for (let index = 0; index < Math.min(lines.length, 20); index += 1) {
+    const line = lines[index];
+
+    if (looksLikeCandidateHeaderNoiseLine(line)) {
+      continue;
+    }
+
+    const leadingChineseName = extractLeadingChineseHeaderName(line);
+
+    if (
+      leadingChineseName &&
+      !looksLikeRoleTitleInsteadOfName(leadingChineseName) &&
+      !looksLikeEducationLabelInsteadOfName(leadingChineseName) &&
+      (
+        !looksLikeUntrustedShortCjkCandidateName(leadingChineseName, fileName) ||
+        hasStrongCandidateHeaderContext(lines, index)
+      )
+    ) {
+      return resolveCandidateNameWithFileName(leadingChineseName, fileName);
+    }
+  }
+
   for (let index = 0; index < Math.min(lines.length - 1, 8); index += 1) {
     if (
-      looksLikeNonNameCandidateMetadataLine(lines[index]) ||
-      looksLikeNonNameCandidateMetadataLine(lines[index + 1])
+      looksLikeCandidateHeaderNoiseLine(lines[index]) ||
+      looksLikeCandidateHeaderNoiseLine(lines[index + 1])
     ) {
       continue;
     }
@@ -574,8 +683,10 @@ function extractCandidateName(cvText, fileName) {
     }
   }
 
-  for (const line of lines.slice(0, 20)) {
-    if (looksLikeNonNameCandidateMetadataLine(line)) {
+  for (let index = 0; index < Math.min(lines.length, 20); index += 1) {
+    const line = lines[index];
+
+    if (looksLikeCandidateHeaderNoiseLine(line)) {
       continue;
     }
 
@@ -595,7 +706,7 @@ function extractCandidateName(cvText, fileName) {
   }
 
   for (const line of lines.slice(0, 20)) {
-    if (looksLikeNonNameCandidateMetadataLine(line)) {
+    if (looksLikeCandidateHeaderNoiseLine(line)) {
       continue;
     }
 
@@ -616,7 +727,7 @@ function extractCandidateName(cvText, fileName) {
   }
 
   for (const line of lines.slice(0, 20)) {
-    if (looksLikeNonNameCandidateMetadataLine(line)) {
+    if (looksLikeCandidateHeaderNoiseLine(line)) {
       continue;
     }
 
@@ -642,7 +753,7 @@ function extractCandidateName(cvText, fileName) {
   }
 
   for (const line of lines.slice(0, 20)) {
-    if (looksLikeNonNameCandidateMetadataLine(line)) {
+    if (looksLikeCandidateHeaderNoiseLine(line)) {
       continue;
     }
 
@@ -657,7 +768,10 @@ function extractCandidateName(cvText, fileName) {
       !looksLikeChineseNarrativeInsteadOfName(normalizedLine) &&
       !looksLikeRoleTitleInsteadOfName(normalizedLine) &&
       !looksLikeEducationLabelInsteadOfName(normalizedLine) &&
-      !looksLikeUntrustedShortCjkCandidateName(normalizedLine, fileName)
+      (
+        !looksLikeUntrustedShortCjkCandidateName(normalizedLine, fileName) ||
+        hasStrongCandidateHeaderContext(lines, index)
+      )
     ) {
       return resolveCandidateNameWithFileName(normalizedLine, fileName);
     }

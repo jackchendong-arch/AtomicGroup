@@ -87,12 +87,62 @@ const TEST10_IDENTITY_EXPECTATIONS = {
     expectedState: 'green'
   }
 };
-const TEST10_IDENTITY_OUTLIER_EXPECTATIONS = {
+const TEST10_PARSER_HARDENING_EXPECTATIONS = {
   '【ios技术专家_西安 30-50K】王虎啸 5年.pdf': {
-    expectedIssueCodes: ['candidate_name_heading_or_table_header']
+    expectedCandidateName: '王虎啸',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner',
+      'education_entry_malformed'
+    ],
+    expectedEmploymentCompanies: ['多益网络', '格步科技（北京）有限公司', '北京度友信息技术有限公司']
+  },
+  '【JAVA engineer_西安 40-60K】张晶 10年以上.pdf': {
+    expectedCandidateName: '张滢',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner',
+      'education_entry_malformed'
+    ],
+    expectedEmploymentCompanies: ['西安软通动力技术服务有限公司', '西安华为技术研究所'],
+    expectedEducationInstitutions: ['西北大学']
+  },
+  '【Senior iOS Engineer-外企_广州_30-50K】刘武明_8年.pdf': {
+    expectedCandidateName: '刘武明',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner',
+      'education_entry_malformed'
+    ],
+    expectedEmploymentCompanies: ['深圳市创客工场科技有限公司', '富途网络科技有限公司']
   },
   '【高级android开发工程师（外资+福利多）_西安 30-50K】赵先生 10年以上.pdf': {
-    expectedIssueCodes: ['candidate_name_embedded_metadata']
+    expectedCandidateName: '赵先生',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner',
+      'education_entry_malformed'
+    ],
+    expectedIssueCodes: ['employment_entry_missing_core_fields']
+  },
+  '【高级IOS开发工程师(Swift)-高福利外企_广州 40-50K】黄章成 10年以上.pdf': {
+    expectedCandidateName: '黄章成',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner',
+      'education_entry_malformed'
+    ],
+    expectedEmploymentCompanies: ['香港币界网有限公司', '深圳麦客存储科技有限公司', '矩阵元技术（深圳）有限公司']
   }
 };
 
@@ -306,14 +356,40 @@ for (const fileName of getSupportedTest10CvCases().filter((candidateFile) => !CU
         }
       }
 
-      const identityOutlierExpectation = TEST10_IDENTITY_OUTLIER_EXPECTATIONS[fileName];
+      const parserHardeningExpectation = TEST10_PARSER_HARDENING_EXPECTATIONS[fileName];
 
-      if (identityOutlierExpectation) {
-        for (const expectedIssueCode of identityOutlierExpectation.expectedIssueCodes) {
+      if (parserHardeningExpectation) {
+        assert.equal(review.candidateSchema.identity.name, parserHardeningExpectation.expectedCandidateName);
+
+        for (const forbiddenIssueCode of parserHardeningExpectation.forbiddenIssueCodes || []) {
+          assert.equal(
+            issueCodes.includes(forbiddenIssueCode),
+            false,
+            `${fileName} should no longer carry the parser issue ${forbiddenIssueCode}`
+          );
+        }
+
+        for (const expectedIssueCode of parserHardeningExpectation.expectedIssueCodes || []) {
           assert.equal(
             issueCodes.includes(expectedIssueCode),
             true,
-            `${fileName} should surface ${expectedIssueCode} for identity triage`
+            `${fileName} should surface ${expectedIssueCode} after parser hardening`
+          );
+        }
+
+        for (const expectedEmploymentCompany of parserHardeningExpectation.expectedEmploymentCompanies || []) {
+          assert.equal(
+            review.candidateSchema.employmentHistory.some((entry) => entry.companyName === expectedEmploymentCompany),
+            true,
+            `${fileName} should keep employment company ${expectedEmploymentCompany}`
+          );
+        }
+
+        for (const expectedEducationInstitution of parserHardeningExpectation.expectedEducationInstitutions || []) {
+          assert.equal(
+            review.candidateSchema.education.some((entry) => entry.institutionName === expectedEducationInstitution),
+            true,
+            `${fileName} should keep education institution ${expectedEducationInstitution}`
           );
         }
       }
@@ -448,7 +524,7 @@ test(
           entry.fileName === '【ios技术专家_西安 30-50K】王虎啸 5年.pdf' &&
           entry.issueCodes.includes('candidate_name_heading_or_table_header')
       ),
-      true
+      false
     );
   }
 );

@@ -36,7 +36,7 @@ const EXPECTED_CANONICAL_REGRESSION = {
   },
   Test5: {
     state: 'red',
-    uniqueIssueCodes: ['education_entry_malformed'],
+    uniqueIssueCodes: ['education_entry_malformed', 'employment_entry_missing_core_fields'],
     minProjects: 1,
     selectedCandidateLocation: ''
   },

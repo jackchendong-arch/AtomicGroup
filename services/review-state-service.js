@@ -1,3 +1,10 @@
+const {
+  buildAvailableReviewActions,
+  buildReviewIssueKey,
+  filterReviewDecisionsForIssues,
+  getAppliedReviewDecision
+} = require('./review-decision-service');
+
 function cleanLine(value) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -194,8 +201,7 @@ function buildReviewIssue({
 }) {
   const presentation = getIssuePresentation(source, code);
   const normalizedSeverity = cleanLine(severity) === 'amber' ? 'amber' : 'red';
-
-  return {
+  const issue = {
     source,
     code: cleanLine(code),
     severity: normalizedSeverity,
@@ -212,6 +218,13 @@ function buildReviewIssue({
     projectName: cleanLine(projectName),
     projectStartDate: cleanLine(projectStartDate),
     projectEndDate: cleanLine(projectEndDate)
+  };
+
+  return {
+    ...issue,
+    issueKey: buildReviewIssueKey(issue),
+    availableActions: buildAvailableReviewActions(issue),
+    appliedDecision: null
   };
 }
 
@@ -275,30 +288,49 @@ function uniqueSections(issues) {
 
 function buildReviewState({
   canonicalValidationSummary = null,
-  reportQualityValidation = null
+  reportQualityValidation = null,
+  reviewDecisions = []
 } = {}) {
   const canonicalIssues = buildCanonicalReviewIssues(canonicalValidationSummary);
   const reportIssues = buildReportQualityReviewIssues(reportQualityValidation);
   const issues = [...canonicalIssues, ...reportIssues];
-  const state = issues.some((issue) => issue.severity === 'red')
+  const applicableDecisions = filterReviewDecisionsForIssues(reviewDecisions, issues);
+  const resolvedIssues = issues.map((issue) => {
+    const appliedDecision = getAppliedReviewDecision(issue, applicableDecisions);
+
+    if (!appliedDecision) {
+      return issue;
+    }
+
+    return {
+      ...issue,
+      exportPosture: 'allowed',
+      appliedDecision
+    };
+  });
+  const state = resolvedIssues.some((issue) => issue.severity === 'red')
     ? 'red'
-    : issues.some((issue) => issue.severity === 'amber')
+    : resolvedIssues.some((issue) => issue.severity === 'amber')
       ? 'amber'
       : 'green';
-  const exportPosture = state === 'red'
+  const blockedIssueCount = resolvedIssues.filter((issue) => issue.exportPosture === 'blocked').length;
+  const reviewRequiredIssueCount = resolvedIssues.filter((issue) => issue.exportPosture === 'review-required').length;
+  const allowedIssueCount = resolvedIssues.filter((issue) => issue.exportPosture === 'allowed').length;
+  const exportPosture = blockedIssueCount > 0
     ? 'blocked'
-    : state === 'amber'
+    : reviewRequiredIssueCount > 0
       ? 'review-required'
       : 'allowed';
 
   return {
     state,
     exportPosture,
-    affectedSections: uniqueSections(issues),
-    issueCount: issues.length,
-    blockedIssueCount: issues.filter((issue) => issue.exportPosture === 'blocked').length,
-    reviewRequiredIssueCount: issues.filter((issue) => issue.exportPosture === 'review-required').length,
-    issues
+    affectedSections: uniqueSections(resolvedIssues),
+    issueCount: resolvedIssues.length,
+    blockedIssueCount,
+    reviewRequiredIssueCount,
+    allowedIssueCount,
+    issues: resolvedIssues
   };
 }
 

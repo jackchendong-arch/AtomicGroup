@@ -1,6 +1,7 @@
 const path = require('node:path');
 
 const { normalizeOutputLanguage } = require('./output-language-service');
+const { normalizeReviewDecisions } = require('./review-decision-service');
 
 const WORKSPACE_ID_PATTERN = /^[a-f0-9]{16}$/i;
 const MAX_CLIPBOARD_TEXT_LENGTH = 200000;
@@ -123,7 +124,8 @@ function validateDraftPayload(payload, { requireSummary = false } = {}) {
     outputMode: normalizeOutputMode(normalizedPayload.outputMode),
     outputLanguage: normalizeOutputLanguage(normalizedPayload.outputLanguage),
     summaryRetrievalManifest: validateRetrievalManifest(normalizedPayload.summaryRetrievalManifest, 'Summary retrieval manifest'),
-    briefingRetrievalManifest: validateRetrievalManifest(normalizedPayload.briefingRetrievalManifest, 'Briefing retrieval manifest')
+    briefingRetrievalManifest: validateRetrievalManifest(normalizedPayload.briefingRetrievalManifest, 'Briefing retrieval manifest'),
+    reviewDecisions: normalizeReviewDecisions(normalizedPayload.reviewDecisions)
   };
 }
 

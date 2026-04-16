@@ -65,7 +65,9 @@ const state = {
   draftVariants: createEmptyDraftVariants(),
   retrievalEvidence: createEmptyRetrievalEvidence(),
   canonicalValidationSummary: createEmptyCanonicalValidationSummary(),
+  rawReviewState: createEmptyReviewState(),
   reviewState: createEmptyReviewState(),
+  reviewDecisions: [],
   draftLifecycle: 'empty',
   approvalWarnings: [],
   lastExportPath: '',
@@ -75,6 +77,7 @@ const state = {
   isGenerating: false,
   isTranslating: false,
   isSwitchingMode: false,
+  isApplyingReviewDecision: false,
   isSavingWordDraft: false,
   isSharingEmail: false,
   progressLabel: 'Generating summary with the configured model...',
@@ -539,6 +542,7 @@ function normalizeReviewState(reviewState) {
     ? reviewState.issues
       .filter((issue) => issue && typeof issue === 'object')
       .map((issue) => ({
+        issueKey: String(issue.issueKey || '').trim(),
         source: String(issue.source || '').trim(),
         code: String(issue.code || '').trim(),
         severity: issue.severity === 'amber' ? 'amber' : 'red',
@@ -584,7 +588,31 @@ function normalizeReviewState(reviewState) {
           : [],
         projectName: String(issue.projectName || '').trim(),
         projectStartDate: String(issue.projectStartDate || '').trim(),
-        projectEndDate: String(issue.projectEndDate || '').trim()
+        projectEndDate: String(issue.projectEndDate || '').trim(),
+        availableActions: Array.isArray(issue.availableActions)
+          ? issue.availableActions
+            .filter((action) => action && typeof action === 'object')
+            .map((action) => ({
+              decisionType: String(action.decisionType || '').trim(),
+              label: String(action.label || '').trim(),
+              description: String(action.description || '').trim()
+            }))
+            .filter((action) => action.decisionType && action.label)
+          : [],
+        appliedDecision: issue.appliedDecision && typeof issue.appliedDecision === 'object'
+          ? {
+            issueKey: String(issue.appliedDecision.issueKey || '').trim(),
+            decisionType: String(issue.appliedDecision.decisionType || '').trim(),
+            decidedAt: String(issue.appliedDecision.decidedAt || '').trim(),
+            source: String(issue.appliedDecision.source || '').trim(),
+            code: String(issue.appliedDecision.code || '').trim(),
+            section: String(issue.appliedDecision.section || '').trim(),
+            entryIndex: Number.isFinite(issue.appliedDecision.entryIndex) ? Number(issue.appliedDecision.entryIndex) : null,
+            projectName: String(issue.appliedDecision.projectName || '').trim(),
+            projectStartDate: String(issue.appliedDecision.projectStartDate || '').trim(),
+            projectEndDate: String(issue.appliedDecision.projectEndDate || '').trim()
+          }
+          : null
       }))
     : [];
 
@@ -603,8 +631,119 @@ function normalizeReviewState(reviewState) {
     reviewRequiredIssueCount: Number.isFinite(reviewState.reviewRequiredIssueCount)
       ? Number(reviewState.reviewRequiredIssueCount)
       : issues.filter((issue) => issue.exportPosture === 'review-required').length,
+    allowedIssueCount: Number.isFinite(reviewState.allowedIssueCount)
+      ? Number(reviewState.allowedIssueCount)
+      : issues.filter((issue) => issue.exportPosture === 'allowed').length,
     issues
   };
+}
+
+function normalizeReviewDecisions(reviewDecisions) {
+  if (!Array.isArray(reviewDecisions)) {
+    return [];
+  }
+
+  const seenKeys = new Set();
+  const normalized = [];
+
+  reviewDecisions.forEach((decision) => {
+    if (!decision || typeof decision !== 'object') {
+      return;
+    }
+
+    const issueKey = String(decision.issueKey || '').trim();
+    const decisionType = String(decision.decisionType || '').trim();
+
+    if (!issueKey || !['mark-reviewed', 'keep-project-unlinked'].includes(decisionType) || seenKeys.has(issueKey)) {
+      return;
+    }
+
+    seenKeys.add(issueKey);
+    normalized.push({
+      issueKey,
+      decisionType,
+      decidedAt: String(decision.decidedAt || '').trim(),
+      source: String(decision.source || '').trim(),
+      code: String(decision.code || '').trim(),
+      section: String(decision.section || '').trim(),
+      entryIndex: Number.isFinite(decision.entryIndex) ? Number(decision.entryIndex) : null,
+      projectName: String(decision.projectName || '').trim(),
+      projectStartDate: String(decision.projectStartDate || '').trim(),
+      projectEndDate: String(decision.projectEndDate || '').trim()
+    });
+  });
+
+  return normalized;
+}
+
+function pruneReviewDecisions(reviewDecisions, rawReviewState) {
+  const normalizedDecisions = normalizeReviewDecisions(reviewDecisions);
+
+  if (!rawReviewState || normalizedDecisions.length === 0) {
+    return [];
+  }
+
+  const issueMap = new Map(
+    (Array.isArray(rawReviewState.issues) ? rawReviewState.issues : [])
+      .filter((issue) => issue && issue.issueKey)
+      .map((issue) => [issue.issueKey, issue])
+  );
+
+  return normalizedDecisions.filter((decision) => {
+    const issue = issueMap.get(decision.issueKey);
+
+    if (!issue || !Array.isArray(issue.availableActions) || issue.availableActions.length === 0) {
+      return false;
+    }
+
+    return issue.availableActions.some((action) => action.decisionType === decision.decisionType);
+  });
+}
+
+function applyReviewDecisionsToReviewState(rawReviewState, reviewDecisions) {
+  const baseState = normalizeReviewState(rawReviewState);
+
+  if (!baseState) {
+    return null;
+  }
+
+  const normalizedDecisions = pruneReviewDecisions(reviewDecisions, baseState);
+  const issues = baseState.issues.map((issue) => {
+    const appliedDecision = normalizedDecisions.find((decision) => decision.issueKey === issue.issueKey) || null;
+
+    if (!appliedDecision) {
+      return {
+        ...issue,
+        appliedDecision: null
+      };
+    }
+
+    return {
+      ...issue,
+      exportPosture: 'allowed',
+      appliedDecision
+    };
+  });
+  const blockedIssueCount = issues.filter((issue) => issue.exportPosture === 'blocked').length;
+  const reviewRequiredIssueCount = issues.filter((issue) => issue.exportPosture === 'review-required').length;
+  const allowedIssueCount = issues.filter((issue) => issue.exportPosture === 'allowed').length;
+
+  return {
+    ...baseState,
+    blockedIssueCount,
+    reviewRequiredIssueCount,
+    allowedIssueCount,
+    exportPosture: blockedIssueCount > 0
+      ? 'blocked'
+      : (reviewRequiredIssueCount > 0 ? 'review-required' : 'allowed'),
+    issues
+  };
+}
+
+function applyIncomingReviewArtifacts(rawReviewState, reviewDecisions = state.reviewDecisions) {
+  state.rawReviewState = normalizeReviewState(rawReviewState);
+  state.reviewDecisions = pruneReviewDecisions(reviewDecisions, state.rawReviewState);
+  state.reviewState = applyReviewDecisionsToReviewState(state.rawReviewState, state.reviewDecisions);
 }
 
 function cacheDraftVariant(mode = state.outputMode, language = state.outputLanguage) {
@@ -621,7 +760,7 @@ function cacheDraftVariant(mode = state.outputMode, language = state.outputLangu
     briefing: cloneDraftData(state.briefing),
     briefingReview: state.briefingReview,
     canonicalValidationSummary: cloneDraftData(state.canonicalValidationSummary),
-    reviewState: cloneDraftData(state.reviewState),
+    reviewState: cloneDraftData(state.rawReviewState),
     approvalWarnings: [...state.approvalWarnings],
     draftLifecycle: state.draftLifecycle
   };
@@ -682,7 +821,7 @@ function applyCachedDraftVariant(mode, language, snapshot, message) {
   state.outputLanguage = normalizeDraftVariantLanguage(language);
   state.pendingOutputLanguage = '';
   state.canonicalValidationSummary = normalizeCanonicalValidationSummary(snapshot.canonicalValidationSummary);
-  state.reviewState = normalizeReviewState(snapshot.reviewState);
+  applyIncomingReviewArtifacts(snapshot.reviewState, state.reviewDecisions);
   state.approvalWarnings = [...(snapshot.approvalWarnings || [])];
   state.lastPerformance = null;
   state.draftLifecycle = snapshot.draftLifecycle || (state.summary ? 'generated' : 'empty');
@@ -1994,7 +2133,7 @@ function renderSummary() {
 
     if (hasReviewRequiredState()) {
       elements.draftMeta.textContent = [
-        'Approved draft can be shared, but targeted review is still recommended for the flagged sections.',
+        'Approved draft is still paused for Word export and email sharing until the targeted review actions are completed.',
         lastPerformanceMeta
       ].filter(Boolean).join(' ');
       return;
@@ -2004,6 +2143,22 @@ function renderSummary() {
       hasConfiguredWordTemplate()
         ? 'Approved draft is ready for Word export or email handoff.'
         : 'Approved draft is ready. Add a Word template in Settings when you need to export or share it.',
+      lastPerformanceMeta
+    ].filter(Boolean).join(' ');
+    return;
+  }
+
+  if (hasReviewRequiredState()) {
+    elements.draftMeta.textContent = [
+      'Complete the targeted review actions for the flagged sections, then approve the draft before export or email handoff.',
+      lastPerformanceMeta
+    ].filter(Boolean).join(' ');
+    return;
+  }
+
+  if (hasBlockedReviewState()) {
+    elements.draftMeta.textContent = [
+      'Resolve the blocking review-state issues before approving the draft for export or email handoff.',
       lastPerformanceMeta
     ].filter(Boolean).join(' ');
     return;
@@ -2168,13 +2323,16 @@ function invalidateSummary(message) {
   clearCachedDraftVariants();
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+  state.rawReviewState = createEmptyReviewState();
   state.reviewState = createEmptyReviewState();
+  state.reviewDecisions = [];
   state.draftLifecycle = 'empty';
   state.approvalWarnings = [];
   state.lastExportPath = '';
   state.lastPerformance = null;
   state.debugTrace = [];
   state.isSwitchingMode = false;
+  state.isApplyingReviewDecision = false;
   state.isTranslating = false;
   state.isSavingWordDraft = false;
   state.isSharingEmail = false;
@@ -2315,6 +2473,10 @@ function getReviewStateHeading(reviewState = state.reviewState) {
     return 'Blocking issues were detected for this draft.';
   }
 
+  if (reviewState.exportPosture === 'allowed') {
+    return 'Flagged amber issues were reviewed and allowed to proceed.';
+  }
+
   return 'Targeted review is required for flagged sections.';
 }
 
@@ -2329,6 +2491,10 @@ function getReviewStateMessage(reviewState = state.reviewState) {
 
   if (reviewState.exportPosture === 'blocked') {
     return `Resolve the flagged ${affectedSections} issues before Word export or email sharing.`;
+  }
+
+  if (reviewState.exportPosture === 'allowed') {
+    return `Reviewed amber issues remain recorded for ${affectedSections}, but Word export and email sharing are now allowed.`;
   }
 
   return `Review the flagged ${affectedSections} issues before approving or sharing the draft.`;
@@ -2386,7 +2552,13 @@ function buildTranslationReadyMessage(targetLanguage, performanceNote = '', revi
     : ['The current draft has been translated to English. Review the translated wording before copying, export, or email handoff.', performanceNote].filter(Boolean).join(' ');
 }
 
-function buildBlockedActionMessage(action) {
+function buildReviewStateActionMessage(action, reviewState = state.reviewState) {
+  if (reviewState?.exportPosture === 'review-required') {
+    return action === 'share'
+      ? 'Targeted review actions must be completed before email sharing.'
+      : 'Targeted review actions must be completed before Word export.';
+  }
+
   return action === 'share'
     ? 'Review-state blockers must be resolved before email sharing.'
     : 'Review-state blockers must be resolved before Word export.';
@@ -2416,6 +2588,43 @@ function formatReviewIssueEvidence(issue) {
   return evidenceValue || '';
 }
 
+function getReviewDecisionLabel(decisionType) {
+  return decisionType === 'keep-project-unlinked'
+    ? 'Project kept unlinked'
+    : 'Issue reviewed';
+}
+
+function getReviewIssuePostureLabel(issue) {
+  if (issue.exportPosture === 'allowed') {
+    return 'Export allowed';
+  }
+
+  return issue.exportPosture === 'blocked' ? 'Export blocked' : 'Review required';
+}
+
+function renderReviewIssueActions(issue) {
+  if (issue.appliedDecision) {
+    return [
+      `<p class="review-state-item-resolution">${escapeHtml(getReviewDecisionLabel(issue.appliedDecision.decisionType))}</p>`,
+      '<div class="review-state-item-controls">',
+      `<button class="btn-ghost review-state-action-button" type="button" data-review-clear-issue-key="${escapeHtml(issue.issueKey)}">Clear Review</button>`,
+      '</div>'
+    ].join('');
+  }
+
+  if (!Array.isArray(issue.availableActions) || issue.availableActions.length === 0) {
+    return '';
+  }
+
+  return [
+    '<div class="review-state-item-controls">',
+    ...issue.availableActions.map((action) => (
+      `<button class="btn-secondary review-state-action-button" type="button" data-review-issue-key="${escapeHtml(issue.issueKey)}" data-review-decision-type="${escapeHtml(action.decisionType)}">${escapeHtml(action.label)}</button>`
+    )),
+    '</div>'
+  ].join('');
+}
+
 function renderReviewState() {
   const reviewState = state.reviewState;
   const hasReviewState = Boolean(reviewState);
@@ -2441,7 +2650,7 @@ function renderReviewState() {
       const evidence = formatReviewIssueEvidence(issue);
       const metaParts = [
         issue.sectionLabel || issue.section,
-        issue.exportPosture === 'blocked' ? 'Export blocked' : 'Review required'
+        getReviewIssuePostureLabel(issue)
       ];
 
       if (Number.isFinite(issue.entryIndex)) {
@@ -2454,6 +2663,7 @@ function renderReviewState() {
         `<p class="review-state-item-meta">${escapeHtml(metaParts.filter(Boolean).join(' · '))}</p>`,
         `<p class="review-state-item-message">${escapeHtml(issue.message)}</p>`,
         issue.recommendedAction ? `<p class="review-state-item-action">${escapeHtml(issue.recommendedAction)}</p>` : '',
+        renderReviewIssueActions(issue),
         evidence ? `<p class="review-state-item-evidence">${escapeHtml(evidence)}</p>` : '',
         '</li>'
       ].join('');
@@ -2550,7 +2760,9 @@ async function setOutputMode(mode) {
     state.outputMode = normalizedMode;
     state.lastExportPath = '';
     state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+    state.rawReviewState = createEmptyReviewState();
     state.reviewState = createEmptyReviewState();
+    state.reviewDecisions = [];
     state.approvalWarnings = [];
     render();
     persistCurrentWorkspaceSnapshot();
@@ -2595,6 +2807,7 @@ async function setOutputMode(mode) {
       outputLanguage: state.outputLanguage,
       summaryRetrievalManifest: state.retrievalEvidence.summary,
       briefingRetrievalManifest: state.retrievalEvidence.briefing,
+      reviewDecisions: state.reviewDecisions,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -2604,7 +2817,7 @@ async function setOutputMode(mode) {
     state.briefing = result.briefing || state.briefing;
     state.briefingReview = result.hiringManagerBriefingReview || '';
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
-    state.reviewState = normalizeReviewState(result.reviewState);
+    applyIncomingReviewArtifacts(result.rawReviewState || result.reviewState, state.reviewDecisions);
     state.approvalWarnings = result.approvalWarnings || [];
     state.draftLifecycle = 'generated';
     state.summaryStatus = 'Ready';
@@ -2650,7 +2863,9 @@ function setOutputLanguage(language) {
     state.outputLanguage = normalizedLanguage;
     state.lastExportPath = '';
     state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+    state.rawReviewState = createEmptyReviewState();
     state.reviewState = createEmptyReviewState();
+    state.reviewDecisions = [];
     state.approvalWarnings = [];
     render();
     persistCurrentWorkspaceSnapshot();
@@ -2708,6 +2923,7 @@ async function translateCurrentDraft(targetLanguage) {
       jdDocument: state.documents.jd,
       summaryRetrievalManifest: state.retrievalEvidence.summary,
       briefingRetrievalManifest: state.retrievalEvidence.briefing,
+      reviewDecisions: state.reviewDecisions,
       approvalWarnings: state.approvalWarnings
     });
 
@@ -2717,7 +2933,7 @@ async function translateCurrentDraft(targetLanguage) {
     state.outputLanguage = result.outputLanguage || targetLanguage;
     state.pendingOutputLanguage = '';
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
-    state.reviewState = normalizeReviewState(result.reviewState);
+    applyIncomingReviewArtifacts(result.rawReviewState || result.reviewState, state.reviewDecisions);
     state.approvalWarnings = result.approvalWarnings || [];
     setLastPerformance('translation', result.performance);
     cacheDraftVariant(state.outputMode, state.outputLanguage);
@@ -2758,6 +2974,116 @@ function approveDraft() {
   clearOperationFailure();
   renderSummary();
   persistCurrentWorkspaceSnapshot();
+}
+
+function buildReviewDecisionSavedMessage(reviewState = state.reviewState) {
+  if (reviewState?.exportPosture === 'blocked') {
+    return 'Review decision saved, but blocking issues still prevent approval, Word export, and email sharing.';
+  }
+
+  if (reviewState?.exportPosture === 'review-required') {
+    return 'Review decision saved. Remaining flagged sections still need targeted review before approval or sharing.';
+  }
+
+  return state.draftLifecycle === 'approved'
+    ? 'Review decision saved. Word export and email handoff are now enabled for this approved draft.'
+    : 'Review decision saved. Approve the draft to enable Word export and email handoff.';
+}
+
+async function applyReviewDecision(issueKey, decisionType) {
+  if (!issueKey || !decisionType || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  const issue = Array.isArray(state.rawReviewState?.issues)
+    ? state.rawReviewState.issues.find((candidate) => candidate.issueKey === issueKey)
+    : null;
+
+  if (!issue || !Array.isArray(issue.availableActions) || !issue.availableActions.some((action) => action.decisionType === decisionType)) {
+    return;
+  }
+
+  state.isApplyingReviewDecision = true;
+  clearOperationFailure();
+
+  try {
+    const nextDecision = {
+      issueKey,
+      decisionType,
+      decidedAt: new Date().toISOString(),
+      source: issue.source,
+      code: issue.code,
+      section: issue.section,
+      entryIndex: issue.entryIndex,
+      projectName: issue.projectName,
+      projectStartDate: issue.projectStartDate,
+      projectEndDate: issue.projectEndDate
+    };
+
+    state.reviewDecisions = normalizeReviewDecisions([
+      nextDecision,
+      ...state.reviewDecisions.filter((decision) => decision.issueKey !== issueKey)
+    ]);
+    state.reviewState = applyReviewDecisionsToReviewState(state.rawReviewState, state.reviewDecisions);
+    state.summaryStatus = 'Ready';
+    state.generationError = '';
+    state.summaryMessage = buildReviewDecisionSavedMessage(state.reviewState);
+    cacheDraftVariant(state.outputMode, state.outputLanguage);
+    render();
+    await persistCurrentWorkspaceSnapshot();
+  } finally {
+    state.isApplyingReviewDecision = false;
+    render();
+  }
+}
+
+async function clearReviewDecision(issueKey) {
+  if (!issueKey || isGenerationWorkflowBusy()) {
+    return;
+  }
+
+  state.isApplyingReviewDecision = true;
+  clearOperationFailure();
+
+  try {
+    state.reviewDecisions = normalizeReviewDecisions(
+      state.reviewDecisions.filter((decision) => decision.issueKey !== issueKey)
+    );
+    state.reviewState = applyReviewDecisionsToReviewState(state.rawReviewState, state.reviewDecisions);
+    state.summaryStatus = 'Ready';
+    state.generationError = '';
+    state.summaryMessage = hasReviewRequiredState(state.reviewState)
+      ? 'Saved review decision cleared. Complete the targeted review actions before approval or sharing.'
+      : (hasBlockedReviewState(state.reviewState)
+        ? 'Saved review decision cleared, but blocking issues still prevent approval or sharing.'
+        : 'Saved review decision cleared.');
+    cacheDraftVariant(state.outputMode, state.outputLanguage);
+    render();
+    await persistCurrentWorkspaceSnapshot();
+  } finally {
+    state.isApplyingReviewDecision = false;
+    render();
+  }
+}
+
+async function handleReviewStateActionClick(event) {
+  const clearButton = event.target.closest('[data-review-clear-issue-key]');
+
+  if (clearButton) {
+    await clearReviewDecision(clearButton.dataset.reviewClearIssueKey || '');
+    return;
+  }
+
+  const actionButton = event.target.closest('[data-review-issue-key][data-review-decision-type]');
+
+  if (!actionButton) {
+    return;
+  }
+
+  await applyReviewDecision(
+    actionButton.dataset.reviewIssueKey || '',
+    actionButton.dataset.reviewDecisionType || ''
+  );
 }
 
 function buildSettingsPayloadFromForm() {
@@ -3105,7 +3431,8 @@ function buildWorkspaceSnapshotPayload() {
     draftVariants: cloneDraftVariantsSnapshot(state.draftVariants),
     retrievalEvidence: state.retrievalEvidence,
     canonicalValidationSummary: state.canonicalValidationSummary,
-    reviewState: state.reviewState,
+    reviewState: state.rawReviewState,
+    reviewDecisions: state.reviewDecisions,
     briefingReview: state.briefingReview,
     approvalWarnings: state.approvalWarnings,
     lastExportPath: state.lastExportPath,
@@ -3230,7 +3557,8 @@ async function openRecentWorkspace(workspaceId) {
       briefing: normalizeRetrievalManifest(snapshot.retrievalEvidence?.briefing)
     };
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(snapshot.canonicalValidationSummary);
-    state.reviewState = normalizeReviewState(snapshot.reviewState);
+    state.reviewDecisions = normalizeReviewDecisions(snapshot.reviewDecisions);
+    applyIncomingReviewArtifacts(snapshot.reviewState, state.reviewDecisions);
     state.briefingReview = snapshot.briefingReview || '';
     state.summary = snapshot.summary || '';
     state.lastPerformance = null;
@@ -3714,7 +4042,8 @@ function canExportWordDraft() {
   return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0 &&
     state.draftLifecycle === 'approved' &&
-    !hasBlockedReviewState();
+    !hasBlockedReviewState() &&
+    !hasReviewRequiredState();
 }
 
 function canCopySummary() {
@@ -3726,12 +4055,15 @@ function canShareByEmail() {
   return hasConfiguredWordTemplate() &&
     state.summary.trim().length > 0 &&
     state.draftLifecycle === 'approved' &&
-    !hasBlockedReviewState();
+    !hasBlockedReviewState() &&
+    !hasReviewRequiredState();
 }
 
 function canApproveDraft() {
   return state.summary.trim().length > 0 &&
-    state.draftLifecycle !== 'approved';
+    state.draftLifecycle !== 'approved' &&
+    !hasBlockedReviewState() &&
+    !hasReviewRequiredState();
 }
 
 function hasConfiguredWordTemplate() {
@@ -3751,6 +4083,7 @@ async function syncBriefingReviewFromCurrentSummary() {
     outputLanguage: state.outputLanguage,
     summaryRetrievalManifest: state.retrievalEvidence.summary,
     briefingRetrievalManifest: state.retrievalEvidence.briefing,
+    reviewDecisions: state.reviewDecisions,
     cvDocument: state.documents.cv,
     jdDocument: state.documents.jd
   });
@@ -3759,7 +4092,7 @@ async function syncBriefingReviewFromCurrentSummary() {
   state.briefingReview = result.hiringManagerBriefingReview || '';
   state.summary = result.summary || state.summary;
   state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
-  state.reviewState = normalizeReviewState(result.reviewState);
+  applyIncomingReviewArtifacts(result.rawReviewState || result.reviewState, state.reviewDecisions);
   state.approvalWarnings = result.approvalWarnings || [];
   cacheDraftVariant(state.outputMode, state.outputLanguage);
 }
@@ -3800,7 +4133,7 @@ async function refreshBriefingReview() {
 }
 
 function isGenerationWorkflowBusy() {
-  return state.isLoadingWorkspace || state.isGenerating || state.isTranslating || state.isSwitchingMode || state.isSavingWordDraft || state.isSharingEmail;
+  return state.isLoadingWorkspace || state.isGenerating || state.isTranslating || state.isSwitchingMode || state.isApplyingReviewDecision || state.isSavingWordDraft || state.isSharingEmail;
 }
 
 async function generateSummary() {
@@ -3826,6 +4159,7 @@ async function generateSummary() {
   state.isGenerating = true;
   state.draftLifecycle = 'empty';
   state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+  state.rawReviewState = createEmptyReviewState();
   state.reviewState = createEmptyReviewState();
   state.approvalWarnings = [];
   state.lastExportPath = '';
@@ -3843,7 +4177,8 @@ async function generateSummary() {
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd,
       outputMode: state.outputMode,
-      outputLanguage: state.outputLanguage
+      outputLanguage: state.outputLanguage,
+      reviewDecisions: state.reviewDecisions
     });
 
     state.briefing = result.briefing || null;
@@ -3856,7 +4191,7 @@ async function generateSummary() {
     state.outputMode = result.outputMode || state.outputMode;
     state.outputLanguage = result.outputLanguage || state.outputLanguage;
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
-    state.reviewState = normalizeReviewState(result.reviewState);
+    applyIncomingReviewArtifacts(result.rawReviewState || result.reviewState, state.reviewDecisions);
     state.approvalWarnings = result.approvalWarnings || [];
     setLastPerformance('generation', result.performance);
     clearCachedDraftVariants();
@@ -3909,8 +4244,8 @@ async function copySummary() {
 async function shareByEmail() {
   if (!canShareByEmail()) {
     state.summaryStatus = 'Not Ready';
-    state.generationError = hasBlockedReviewState()
-      ? buildBlockedActionMessage('share')
+    state.generationError = (hasBlockedReviewState() || hasReviewRequiredState())
+      ? buildReviewStateActionMessage('share')
       : (hasConfiguredWordTemplate()
         ? 'Approve the current draft before opening an email draft.'
         : 'Configure the hiring-manager Word template and approve the current draft before sharing by email.');
@@ -3932,9 +4267,9 @@ async function shareByEmail() {
   try {
     await syncBriefingReviewFromCurrentSummary();
 
-    if (hasBlockedReviewState()) {
+    if (hasBlockedReviewState() || hasReviewRequiredState()) {
       state.summaryStatus = 'Not Ready';
-      state.generationError = buildBlockedActionMessage('share');
+      state.generationError = buildReviewStateActionMessage('share');
       state.workbenchTab = 'summary';
       return;
     }
@@ -3944,6 +4279,7 @@ async function shareByEmail() {
       summary: state.summary,
       outputMode: state.outputMode,
       outputLanguage: state.outputLanguage,
+      reviewDecisions: state.reviewDecisions,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -3996,8 +4332,8 @@ async function exportWordDraft() {
   if (!canExportWordDraft()) {
     state.debugTrace = ['Export request blocked before the save dialog opened.'];
     state.summaryStatus = 'Not Ready';
-    state.generationError = hasBlockedReviewState()
-      ? buildBlockedActionMessage('export')
+    state.generationError = (hasBlockedReviewState() || hasReviewRequiredState())
+      ? buildReviewStateActionMessage('export')
       : (state.settings?.outputTemplatePath
         ? 'A saved recruiter summary is required before exporting the hiring-manager Word draft.'
         : 'Configure a Word .docx or .dotx template before exporting the hiring-manager draft.');
@@ -4020,9 +4356,9 @@ async function exportWordDraft() {
   try {
     await syncBriefingReviewFromCurrentSummary();
 
-    if (hasBlockedReviewState()) {
+    if (hasBlockedReviewState() || hasReviewRequiredState()) {
       state.summaryStatus = 'Not Ready';
-      state.generationError = buildBlockedActionMessage('export');
+      state.generationError = buildReviewStateActionMessage('export');
       state.workbenchTab = 'briefing';
       return;
     }
@@ -4032,6 +4368,7 @@ async function exportWordDraft() {
       summary: state.summary,
       outputMode: state.outputMode,
       outputLanguage: state.outputLanguage,
+      reviewDecisions: state.reviewDecisions,
       cvDocument: state.documents.cv,
       jdDocument: state.documents.jd
     });
@@ -4133,7 +4470,9 @@ function resetWorkspace() {
   state.briefing = null;
   state.retrievalEvidence = createEmptyRetrievalEvidence();
   state.canonicalValidationSummary = createEmptyCanonicalValidationSummary();
+  state.rawReviewState = createEmptyReviewState();
   state.reviewState = createEmptyReviewState();
+  state.reviewDecisions = [];
   state.briefingReview = '';
   state.summary = '';
   state.pendingOutputLanguage = '';
@@ -4144,6 +4483,7 @@ function resetWorkspace() {
   state.debugTrace = [];
   state.isGenerating = false;
   state.isTranslating = false;
+  state.isApplyingReviewDecision = false;
   state.isSavingWordDraft = false;
   state.isSharingEmail = false;
   state.progressLabel = 'Generating summary with the configured model...';
@@ -4396,6 +4736,9 @@ elements.shareByEmailButton.addEventListener('click', shareByEmail);
 elements.exportWordDraftButton.addEventListener('click', exportWordDraft);
 elements.revealWordDraftButton.addEventListener('click', revealWordDraft);
 elements.openWordDraftButton.addEventListener('click', openWordDraft);
+elements.reviewStateList.addEventListener('click', (event) => {
+  handleReviewStateActionClick(event);
+});
 elements.retryFailureActionButton.addEventListener('click', retryLastFailureAction);
 elements.dismissFailureActionButton.addEventListener('click', () => {
   clearOperationFailure();

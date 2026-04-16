@@ -97,6 +97,20 @@ function createWorkspacePayload(overrides = {}) {
         }
       ]
     },
+    reviewDecisions: [
+      {
+        issueKey: 'canonical-validation::project_role_ambiguous::projects::0::Liquidity Router::2022::2022::/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf::cv-projects-1::::',
+        decisionType: 'keep-project-unlinked',
+        decidedAt: '2026-04-14T10:00:00.000Z',
+        source: 'canonical-validation',
+        code: 'project_role_ambiguous',
+        section: 'projects',
+        entryIndex: 0,
+        projectName: 'Liquidity Router',
+        projectStartDate: '2022',
+        projectEndDate: '2022'
+      }
+    ],
     draftVariants: {
       named: {
         en: {
@@ -383,6 +397,8 @@ test('RoleWorkspaceStore load rehydrates the full saved workspace state needed f
     assert.equal(snapshot.reviewState.exportPosture, 'review-required');
     assert.equal(snapshot.reviewState.issues[0].code, 'project_role_ambiguous');
     assert.equal(snapshot.reviewState.issues[0].ambiguousEmploymentCandidates[0].companyName, 'Atomic Group');
+    assert.equal(snapshot.reviewDecisions[0].decisionType, 'keep-project-unlinked');
+    assert.equal(snapshot.reviewDecisions[0].projectName, 'Liquidity Router');
     assert.equal(snapshot.draftVariants.named.en.summary, 'Candidate: Candidate One\nTarget Role: Blockchain Developer\n\nCandidate summary text.');
     assert.equal(snapshot.draftVariants.named.zh.summary, '候选人：Candidate One\n目标职位：区块链开发工程师\n\n中文摘要。');
     assert.equal(snapshot.draftVariants.named.en.canonicalValidationSummary.state, 'amber');

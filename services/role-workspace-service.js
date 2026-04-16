@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { normalizeReviewDecisions } = require('./review-decision-service');
 
 const STORE_VERSION = 1;
 const DEFAULT_MAX_RECENT_WORKSPACES = 12;
@@ -95,6 +96,7 @@ function normalizeReviewState(reviewState) {
     ? cloned.issues
       .filter((issue) => issue && typeof issue === 'object')
       .map((issue) => ({
+        issueKey: normalizeString(issue.issueKey),
         source: normalizeString(issue.source),
         code: normalizeString(issue.code),
         severity: normalizeString(issue.severity) === 'amber' ? 'amber' : 'red',
@@ -140,7 +142,31 @@ function normalizeReviewState(reviewState) {
           : [],
         projectName: normalizeString(issue.projectName),
         projectStartDate: normalizeString(issue.projectStartDate),
-        projectEndDate: normalizeString(issue.projectEndDate)
+        projectEndDate: normalizeString(issue.projectEndDate),
+        availableActions: Array.isArray(issue.availableActions)
+          ? issue.availableActions
+            .filter((action) => action && typeof action === 'object')
+            .map((action) => ({
+              decisionType: normalizeString(action.decisionType),
+              label: normalizeString(action.label),
+              description: normalizeString(action.description)
+            }))
+            .filter((action) => action.decisionType && action.label)
+          : [],
+        appliedDecision: issue.appliedDecision && typeof issue.appliedDecision === 'object'
+          ? {
+            issueKey: normalizeString(issue.appliedDecision.issueKey),
+            decisionType: normalizeString(issue.appliedDecision.decisionType),
+            decidedAt: normalizeString(issue.appliedDecision.decidedAt),
+            source: normalizeString(issue.appliedDecision.source),
+            code: normalizeString(issue.appliedDecision.code),
+            section: normalizeString(issue.appliedDecision.section),
+            entryIndex: Number.isFinite(issue.appliedDecision.entryIndex) ? Number(issue.appliedDecision.entryIndex) : null,
+            projectName: normalizeString(issue.appliedDecision.projectName),
+            projectStartDate: normalizeString(issue.appliedDecision.projectStartDate),
+            projectEndDate: normalizeString(issue.appliedDecision.projectEndDate)
+          }
+          : null
       }))
     : [];
 
@@ -157,6 +183,9 @@ function normalizeReviewState(reviewState) {
     reviewRequiredIssueCount: Number.isFinite(cloned.reviewRequiredIssueCount)
       ? Number(cloned.reviewRequiredIssueCount)
       : issues.filter((issue) => issue.exportPosture === 'review-required').length,
+    allowedIssueCount: Number.isFinite(cloned.allowedIssueCount)
+      ? Number(cloned.allowedIssueCount)
+      : issues.filter((issue) => issue.exportPosture === 'allowed').length,
     issues
   };
 }
@@ -325,6 +354,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
   const draftVariants = normalizeDraftVariants(input.draftVariants);
   const canonicalValidationSummary = normalizeCanonicalValidationSummary(input.canonicalValidationSummary);
   const reviewState = normalizeReviewState(input.reviewState);
+  const reviewDecisions = normalizeReviewDecisions(input.reviewDecisions);
   const workspaceId = buildWorkspaceId({
     sourceFolderPath,
     selectedJdPath,
@@ -352,6 +382,7 @@ function normalizeWorkspaceSnapshot(input = {}) {
     retrievalEvidence,
     canonicalValidationSummary,
     reviewState,
+    reviewDecisions,
     briefingReview: String(input.briefingReview || '').trim(),
     approvalWarnings: normalizeStringArray(input.approvalWarnings),
     lastExportPath: normalizeString(input.lastExportPath),

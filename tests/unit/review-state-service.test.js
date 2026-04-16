@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { buildReviewState } = require('../../services/review-state-service');
+const { buildReviewIssueKey } = require('../../services/review-decision-service');
 
 test('buildReviewState returns green and allowed when no issues are present', () => {
   const reviewState = buildReviewState({
@@ -77,6 +78,56 @@ test('buildReviewState maps canonical amber ambiguity into a review-required iss
   assert.equal(reviewState.issues[0].recommendedAction, 'Review the flagged project against the competing employment rows and confirm the correct linkage.');
   assert.equal(reviewState.issues[0].ambiguousEmploymentCandidates.length, 2);
   assert.equal(reviewState.issues[0].projectName, '721Land – OpenSea-like NFT Marketplace');
+  assert.equal(reviewState.issues[0].availableActions.length, 2);
+  assert.equal(reviewState.issues[0].issueKey.length > 0, true);
+});
+
+test('buildReviewState allows export after an amber issue is explicitly reviewed', () => {
+  const ambiguousIssue = {
+    code: 'project_role_ambiguous',
+    severity: 'amber',
+    section: 'projects',
+    entryIndex: 0,
+    message: 'Project entry 1 could not be linked to one role unambiguously.',
+    projectName: '721Land – OpenSea-like NFT Marketplace',
+    projectStartDate: '2021',
+    projectEndDate: '2021',
+    sourceRefs: [
+      {
+        documentType: 'cv',
+        blockId: 'cv-projects-2',
+        sectionKey: 'projects',
+        sectionLabel: 'Projects',
+        sourceName: 'CV4-2.pdf',
+        sourcePath: '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-2.pdf',
+        excerpt: '721Land – OpenSea-like NFT Marketplace (2021)'
+      }
+    ]
+  };
+  const reviewState = buildReviewState({
+    canonicalValidationSummary: {
+      state: 'amber',
+      issues: [ambiguousIssue]
+    },
+    reviewDecisions: [
+      {
+        issueKey: buildReviewIssueKey({
+          source: 'canonical-validation',
+          ...ambiguousIssue
+        }),
+        decisionType: 'keep-project-unlinked',
+        decidedAt: '2026-04-14T10:00:00.000Z'
+      }
+    ]
+  });
+
+  assert.equal(reviewState.state, 'amber');
+  assert.equal(reviewState.exportPosture, 'allowed');
+  assert.equal(reviewState.blockedIssueCount, 0);
+  assert.equal(reviewState.reviewRequiredIssueCount, 0);
+  assert.equal(reviewState.allowedIssueCount, 1);
+  assert.equal(reviewState.issues[0].exportPosture, 'allowed');
+  assert.equal(reviewState.issues[0].appliedDecision?.decisionType, 'keep-project-unlinked');
 });
 
 test('buildReviewState blocks export when a red Word-report issue is present', () => {
@@ -153,4 +204,60 @@ test('buildReviewState presents candidate identity contamination with targeted r
   assert.equal(reviewState.exportPosture, 'blocked');
   assert.equal(reviewState.issues[0].title, 'Candidate name contains profile metadata');
   assert.match(reviewState.issues[0].recommendedAction, /remove demographic, contact, or profile details/i);
+});
+
+test('buildReviewState keeps red issues blocked even when unrelated amber issues were reviewed', () => {
+  const ambiguousIssue = {
+    code: 'project_role_ambiguous',
+    severity: 'amber',
+    section: 'projects',
+    entryIndex: 0,
+    message: 'Project entry 1 could not be linked to one role unambiguously.',
+    projectName: 'Liquidity Router',
+    projectStartDate: '2022',
+    projectEndDate: '2022',
+    sourceRefs: [
+      {
+        documentType: 'cv',
+        blockId: 'cv-projects-1',
+        sectionKey: 'projects',
+        sectionLabel: 'Projects',
+        sourceName: 'CV4-1.pdf',
+        sourcePath: '/Users/jack/Dev/Test/AtomicGroup/Role4/CV4-1.pdf',
+        excerpt: 'Liquidity Router (2022 – 2022)'
+      }
+    ]
+  };
+  const reviewState = buildReviewState({
+    canonicalValidationSummary: {
+      state: 'red',
+      issues: [
+        ambiguousIssue,
+        {
+          code: 'candidate_name_embedded_metadata',
+          severity: 'red',
+          section: 'identity',
+          message: 'Candidate name contains inline metadata or profile details.',
+          sourceRefs: []
+        }
+      ]
+    },
+    reviewDecisions: [
+      {
+        issueKey: buildReviewIssueKey({
+          source: 'canonical-validation',
+          ...ambiguousIssue
+        }),
+        decisionType: 'mark-reviewed',
+        decidedAt: '2026-04-14T11:00:00.000Z'
+      }
+    ]
+  });
+
+  assert.equal(reviewState.state, 'red');
+  assert.equal(reviewState.exportPosture, 'blocked');
+  assert.equal(reviewState.blockedIssueCount, 1);
+  assert.equal(reviewState.allowedIssueCount, 1);
+  assert.equal(reviewState.issues[0].exportPosture, 'allowed');
+  assert.equal(reviewState.issues[1].exportPosture, 'blocked');
 });

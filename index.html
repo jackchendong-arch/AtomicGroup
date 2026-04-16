@@ -1128,7 +1128,8 @@
       .review-state-item-meta,
       .review-state-item-message,
       .review-state-item-action,
-      .review-state-item-evidence {
+      .review-state-item-evidence,
+      .review-state-item-resolution {
         margin: 0;
         font-size: 0.8rem;
         line-height: 1.45;
@@ -1145,6 +1146,23 @@
       .review-state-item-evidence {
         color: var(--muted);
         font-family: "SFMono-Regular", "SFMono-Regular", ui-monospace, monospace;
+      }
+
+      .review-state-item-resolution {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .review-state-item-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .review-state-action-button {
+        min-height: 32px;
+        padding: 7px 12px;
+        font-size: 0.76rem;
       }
 
       .operation-failure-panel {

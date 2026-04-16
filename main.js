@@ -765,7 +765,8 @@ function buildReviewPresentation({
   jdDocument = null,
   existingWarnings = [],
   summaryRetrievalManifest = [],
-  briefingRetrievalManifest = []
+  briefingRetrievalManifest = [],
+  reviewDecisions = []
 }) {
   const reviewBriefing = cvDocument && jdDocument
     ? composeDeterministicReportBriefing(
@@ -791,17 +792,35 @@ function buildReviewPresentation({
     summaryRetrievalManifest,
     briefingRetrievalManifest
   });
-  const reviewState = buildReviewState({
+  const rawReviewState = buildReviewState({
     canonicalValidationSummary,
     reportQualityValidation
+  });
+  const reviewState = buildReviewState({
+    canonicalValidationSummary,
+    reportQualityValidation,
+    reviewDecisions
   });
 
   return {
     hiringManagerBriefing,
+    rawReviewState,
     reviewState,
     reviewWarnings,
     reportQualityBlockers: reportQualityValidation.blockers
   };
+}
+
+function assertReviewStateAllowsHandoff(reviewPresentation, actionLabel) {
+  const posture = reviewPresentation?.reviewState?.exportPosture;
+
+  if (posture === 'review-required') {
+    throw new Error(`${actionLabel} is not available until the flagged amber issues are reviewed and explicitly allowed.`);
+  }
+
+  if (posture === 'blocked') {
+    throw new Error(`${actionLabel} is blocked until the flagged red review-state issues are resolved.`);
+  }
 }
 
 function buildWorkspaceDerivedProfilePayload({ cvDocument, jdDocument }) {
@@ -928,7 +947,8 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
     summaryRetrievalManifest,
-    briefingRetrievalManifest
+    briefingRetrievalManifest,
+    reviewDecisions: payload.reviewDecisions
   });
   const reviewWarnings = reviewPresentation.reviewWarnings;
   const hiringManagerBriefing = reviewPresentation.hiringManagerBriefing;
@@ -955,6 +975,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     model: 'deterministic-local',
     briefing: validatedBriefing,
     canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+    rawReviewState: reviewPresentation.rawReviewState,
     reviewState: reviewPresentation.reviewState,
     outputMode,
     outputLanguage,
@@ -999,7 +1020,8 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
     summaryRetrievalManifest: payload.summaryRetrievalManifest,
-    briefingRetrievalManifest: payload.briefingRetrievalManifest
+    briefingRetrievalManifest: payload.briefingRetrievalManifest,
+    reviewDecisions: payload.reviewDecisions
   });
   const reviewWarnings = reviewPresentation.reviewWarnings;
   const composed = reviewPresentation.hiringManagerBriefing;
@@ -1015,6 +1037,7 @@ async function buildE2EMockTranslatedDraftResult({ payload, targetLanguage, debu
     summary: recruiterSummary,
     briefing: translatedBriefing,
     canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+    rawReviewState: reviewPresentation.rawReviewState,
     hiringManagerBriefingReview: composed.review,
     outputLanguage: targetLanguage,
     reviewState: reviewPresentation.reviewState,
@@ -1290,12 +1313,43 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
       })
     }
     : normalizedPayload;
+  const outputLanguage = normalizeOutputLanguage(preparedPayload.outputLanguage);
+  const exportFallbackArtifact = buildFallbackBriefingArtifact({
+    cvDocument: preparedPayload.cvDocument,
+    jdDocument: preparedPayload.jdDocument,
+    outputLanguage
+  });
+  const exportRequestedBriefing = preparedPayload.briefing
+    ? mergeBriefingWithFallback(preparedPayload.briefing, exportFallbackArtifact.briefing)
+    : exportFallbackArtifact.briefing;
+  const exportPreparedOutput = applyDraftOutputMode({
+    outputMode: preparedPayload.outputMode,
+    recruiterSummary: preparedPayload.summary,
+    briefing: exportRequestedBriefing,
+    cvDocument: preparedPayload.cvDocument,
+    jdDocument: preparedPayload.jdDocument
+  });
+  const exportReviewPresentation = buildReviewPresentation({
+    briefing: exportPreparedOutput.briefing,
+    recruiterSummary: exportPreparedOutput.summary,
+    outputLanguage,
+    outputMode: preparedPayload.outputMode,
+    canonicalValidationSummary: exportFallbackArtifact.canonicalValidationSummary,
+    cvDocument: preparedPayload.cvDocument,
+    jdDocument: preparedPayload.jdDocument,
+    existingWarnings: exportPreparedOutput.warnings,
+    reviewDecisions: normalizedPayload.reviewDecisions
+  });
   let templateData;
   let suggestedName;
 
   try {
+    assertReviewStateAllowsHandoff(exportReviewPresentation, 'Word export');
     ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
-      payload: preparedPayload,
+      payload: {
+        ...preparedPayload,
+        briefing: exportRequestedBriefing
+      },
       settings,
       debugTrace
     }));
@@ -1444,6 +1498,28 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
     recruiterSummary: preparedPayload.summary,
     outputLanguage
   });
+  const emailPreparedOutput = applyDraftOutputMode({
+    outputMode,
+    recruiterSummary: preparedPayload.summary,
+    briefing: requestedBriefing,
+    cvDocument: preparedPayload.cvDocument,
+    jdDocument: preparedPayload.jdDocument
+  });
+  const emailReviewPresentation = buildReviewPresentation({
+    briefing: emailPreparedOutput.briefing,
+    recruiterSummary: emailPreparedOutput.summary,
+    outputLanguage,
+    outputMode,
+    canonicalValidationSummary: buildFallbackBriefingArtifact({
+      cvDocument: preparedPayload.cvDocument,
+      jdDocument: preparedPayload.jdDocument,
+      outputLanguage
+    }).canonicalValidationSummary,
+    cvDocument: preparedPayload.cvDocument,
+    jdDocument: preparedPayload.jdDocument,
+    existingWarnings: emailPreparedOutput.warnings,
+    reviewDecisions: normalizedPayload.reviewDecisions
+  });
 
   let attachmentPath = '';
 
@@ -1451,8 +1527,12 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
     let templateData;
     let suggestedName;
 
+    assertReviewStateAllowsHandoff(emailReviewPresentation, 'Email sharing');
     ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
-      payload: preparedPayload,
+      payload: {
+        ...preparedPayload,
+        briefing: requestedBriefing
+      },
       settings,
       debugTrace
     }));
@@ -1472,6 +1552,7 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
       debugTrace
     });
   } else {
+    assertReviewStateAllowsHandoff(emailReviewPresentation, 'Email sharing');
     debugTrace.push('No Word template configured; email draft will be opened without a generated attachment.');
   }
 
@@ -1837,7 +1918,8 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
       summaryRetrievalManifest: summaryRequest.retrievalManifest,
-      briefingRetrievalManifest: briefingRequest.retrievalManifest
+      briefingRetrievalManifest: briefingRequest.retrievalManifest,
+      reviewDecisions: normalizedPayload.reviewDecisions
     });
     recordTimingPhase(
       debugTrace,
@@ -1904,6 +1986,7 @@ ipcMain.handle('summary:generate', async (_event, payload) => {
       model: settings.model,
       briefing: validatedBriefing,
       canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+      rawReviewState: reviewPresentation.rawReviewState,
       reviewState: reviewPresentation.reviewState,
       outputMode,
       outputLanguage,
@@ -2024,7 +2107,8 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
       summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
-      briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
+      briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest,
+      reviewDecisions: normalizedPayload.reviewDecisions
     });
     const reviewWarnings = reviewPresentation.reviewWarnings;
     const composed = reviewPresentation.hiringManagerBriefing;
@@ -2056,6 +2140,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       summary: normalizedPayload.summary,
       briefing: normalizedPayload.briefing,
       canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+      rawReviewState: reviewPresentation.rawReviewState,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
       reviewState: reviewPresentation.reviewState,
@@ -2140,7 +2225,8 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       jdDocument: normalizedPayload.jdDocument,
       existingWarnings: preparedOutput.warnings,
       summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
-      briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
+      briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest,
+      reviewDecisions: normalizedPayload.reviewDecisions
     });
     const reviewWarnings = reviewPresentation.reviewWarnings;
     const composed = reviewPresentation.hiringManagerBriefing;
@@ -2172,6 +2258,7 @@ ipcMain.handle('draft:translate-output', async (_event, payload) => {
       summary: repairedTranslatedSummary,
       briefing: translated.briefing,
       canonicalValidationSummary: translationFallbackArtifact.canonicalValidationSummary,
+      rawReviewState: reviewPresentation.rawReviewState,
       hiringManagerBriefingReview: composed.review,
       outputLanguage: targetLanguage,
       reviewState: reviewPresentation.reviewState,
@@ -2239,7 +2326,8 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
     jdDocument: normalizedPayload.jdDocument,
     existingWarnings: preparedOutput.warnings,
     summaryRetrievalManifest: normalizedPayload.summaryRetrievalManifest,
-    briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest
+    briefingRetrievalManifest: normalizedPayload.briefingRetrievalManifest,
+    reviewDecisions: normalizedPayload.reviewDecisions
   });
   const reviewWarnings = reviewPresentation.reviewWarnings;
   const composed = reviewPresentation.hiringManagerBriefing;
@@ -2247,6 +2335,7 @@ ipcMain.handle('briefing:render-review', async (_event, payload) => {
   return {
     briefing: requestedBriefing,
     canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+    rawReviewState: reviewPresentation.rawReviewState,
     hiringManagerBriefingReview: composed.review,
     summary: normalizedPayload.summary,
     modeLabel: preparedOutput.modeLabel,

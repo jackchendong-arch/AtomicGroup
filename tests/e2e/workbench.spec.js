@@ -365,13 +365,12 @@ test.describe('Candidate Match Workbench', () => {
     await page.locator('#generate-summary-button').click();
 
     await expect(page.locator('#summary-status')).toHaveText('Ready');
-    await expect(page.locator('#summary-message')).toContainText('Review the highlighted checks');
+    await expect(page.locator('#review-state-pill')).toHaveText('Review: Red');
+    await expect(page.locator('#summary-message')).toContainText('blocking review-state issues must be resolved');
+    await expect(page.locator('#review-state-panel')).toBeVisible();
+    await expect(page.locator('#review-state-list')).toContainText('Employment row is incomplete');
     await expect(page.locator('#approval-warning-panel')).toBeVisible();
-    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the fit summary section.');
-    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the relevant experience section.');
-    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the match against key requirements section.');
-    await expect(page.locator('#approval-warning-list')).toContainText('Recruiter summary is missing the recommended next step section.');
-    await expect(page.locator('#approval-warning-list')).toContainText('Source evidence is incomplete for this draft.');
+    await expect(page.locator('#approval-warning-list')).toContainText('Several requirement matches do not include clear supporting evidence.');
   });
 
   test('shows a retryable workbench issue when briefing review refresh fails', async () => {
@@ -401,9 +400,10 @@ test.describe('Candidate Match Workbench', () => {
     await configureWordTemplate(page, outputFolderPath);
 
     await page.locator('#open-manual-context-tab').click();
-    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
+    await dispatchUriDrop(page, '#dropzone', [structuredCvPath, sampleJdPath]);
     await page.locator('#generate-summary-button').click();
     await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#review-state-pill')).toHaveText('Review: Green');
     await page.locator('#approve-draft-button').click();
     await expect(page.locator('#summary-status')).toHaveText('Ready');
 
@@ -420,9 +420,10 @@ test.describe('Candidate Match Workbench', () => {
     await configureWordTemplate(page, outputFolderPath);
 
     await page.locator('#open-manual-context-tab').click();
-    await dispatchUriDrop(page, '#dropzone', [sampleCvPath, sampleJdPath]);
+    await dispatchUriDrop(page, '#dropzone', [structuredCvPath, sampleJdPath]);
     await page.locator('#generate-summary-button').click();
     await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#review-state-pill')).toHaveText('Review: Green');
     await page.locator('#approve-draft-button').click();
 
     await page.locator('#share-by-email-button').click();

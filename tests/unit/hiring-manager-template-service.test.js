@@ -634,6 +634,111 @@ test('extractEducationEntries keeps consecutive delayed English degree rows with
   ]);
 });
 
+test('extractEducationEntries parses date-university-degree triplets from legacy report CVs', () => {
+  const educationEntries = extractEducationEntries([
+    '2025 .04– 2026.03',
+    'CCT College Dublin Ireland',
+    'MSc in Cybersecurity',
+    '2003 – 2007',
+    'Tianjin University (985)',
+    'BSc in Software Engineering'
+  ]);
+
+  assert.deepEqual(educationEntries, [
+    {
+      degreeName: 'MSc in Cybersecurity',
+      university: 'CCT College Dublin Ireland',
+      startYear: '2025',
+      endYear: '2026'
+    },
+    {
+      degreeName: 'BSc in Software Engineering',
+      university: 'Tianjin University (985)',
+      startYear: '2003',
+      endYear: '2007'
+    }
+  ]);
+});
+
+test('extractEducationEntries keeps compact BS degree rows alongside MSc rows', () => {
+  const educationEntries = extractEducationEntries([
+    '2013.09-2014.12 Coventry University (UK) MSc in International Business',
+    '2009.09-2013.07 Changchun University of Science and Technology BS in Mechatronic Engineering'
+  ]);
+
+  assert.deepEqual(educationEntries, [
+    {
+      degreeName: 'MSc in International Business',
+      university: 'Coventry University (UK)',
+      startYear: '2013',
+      endYear: '2014'
+    },
+    {
+      degreeName: 'BS in Mechatronic Engineering',
+      university: 'Changchun University of Science and Technology',
+      startYear: '2009',
+      endYear: '2013'
+    }
+  ]);
+});
+
+test('extractEducationEntries parses single-line institution-degree-date rows without merging lab experience', () => {
+  const educationEntries = extractEducationEntries([
+    'Tongji University Control Engineering Master July 2013 – June2016',
+    'Infineon &Vector Lab at Tongji University Software Development (AUTOSAR CP) 2015.07 – 2016.07',
+    'Yancheng Institute of Technology Automobile Service Engineering Bachelor Sept 2009 – July 2013'
+  ]);
+
+  assert.deepEqual(educationEntries, [
+    {
+      degreeName: 'Control Engineering Master',
+      university: 'Tongji University',
+      startYear: '2013',
+      endYear: '2016'
+    },
+    {
+      degreeName: 'Automobile Service Engineering Bachelor',
+      university: 'Yancheng Institute of Technology',
+      startYear: '2009',
+      endYear: '2013'
+    }
+  ]);
+});
+
+test('extractExperienceHistory parses date-company-role triplets from report-style employment sections', () => {
+  const employmentHistory = extractExperienceHistory([
+    'Jun 2022 – Mar 2025',
+    'SIE Co., Ltd',
+    'Cloud Solution Architect & Team Lead',
+    'Led migration of legacy enterprise systems to AWS.',
+    'Dec 2020 – May 2022',
+    'Intelligence Technology Co., Ltd',
+    'Solution Architect',
+    'Designed SaaS-based AIOps platform integrating Prometheus and Zabbix.'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Cloud Solution Architect & Team Lead',
+      companyName: 'SIE Co., Ltd',
+      startDate: '2022',
+      endDate: '2025',
+      responsibilities: [
+        'Led migration of legacy enterprise systems to AWS.'
+      ]
+    },
+    {
+      jobTitle: 'Solution Architect',
+      companyName: 'Intelligence Technology Co., Ltd',
+      startDate: '2020',
+      endDate: '2022',
+      responsibilities: [
+        'Designed SaaS-based AIOps platform integrating Prometheus and Zabbix.'
+      ]
+    }
+  ]);
+});
+
 test('buildTemplateData parses Simplified Chinese summary headings for Word-template fields', () => {
   const templateData = buildTemplateData({
     summary: [

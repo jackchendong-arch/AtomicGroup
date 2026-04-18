@@ -8,6 +8,7 @@ const { importDocument } = require('../../services/document-service');
 const { buildCanonicalExtractionReview } = require('../../services/canonical-schema-service');
 const {
   buildOutputDirectory,
+  clearCanonicalReviewArtifactScope,
   DEBUG_CV_BLOCKS_DIR,
   writeCanonicalReviewArtifacts
 } = require('./canonical-review-artifact-utils');
@@ -145,6 +146,10 @@ const TEST10_PARSER_HARDENING_EXPECTATIONS = {
     expectedEmploymentCompanies: ['香港币界网有限公司', '深圳麦客存储科技有限公司', '矩阵元技术（深圳）有限公司']
   }
 };
+
+test.before(async () => {
+  await clearCanonicalReviewArtifactScope('Test10');
+});
 
 function sanitizeIssueCodes(issues) {
   return [...new Set(

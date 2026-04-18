@@ -150,6 +150,17 @@ test('mergeBriefingWithFallback fills missing structured fields from fallback da
   assert.equal(merged.employment_history.length, 1);
 });
 
+test('extractCandidateName strips English honorific prefixes before applying authoritative filename resolution', () => {
+  const candidateName = extractCandidateName([
+    'Confidential Candidate Report',
+    'Name: Mrs. Claire Li',
+    'Current Residence',
+    'Dalian, Liaoning'
+  ].join('\n'), '11418-李妍-Delivery Lead.doc');
+
+  assert.equal(candidateName, '李妍');
+});
+
 test('mergeBriefingWithFallback keeps fuller grounded fallback arrays when the LLM returns sparse structured detail', () => {
   const merged = mergeBriefingWithFallback(
     normalizeBriefing({

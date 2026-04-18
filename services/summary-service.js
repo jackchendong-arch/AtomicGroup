@@ -222,6 +222,7 @@ const CANDIDATE_NOISE_LABEL_PATTERN =
   /^(?:个人简历|基本信息|个人优势|优势亮点|专业技能|技能|工作内容|工作业绩|业绩|内容|主要课程|项目概况|项目职责|项目目标|技术和职责|工作教育经历|工作经历|工作经验|教育背景|教育经历|项目经历|项目经验|自我评价|工作地区|职位目标|求职岗位|岗位目标|求职意向|期望薪资|期望城市|老家)\s*[:：]?/u;
 const INLINE_DATE_RANGE_PATTERN =
   /(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(?:至今|目前|现在|present|current|now|(?:19|20)\d{2}(?:[./-]\d{1,2})?)/i;
+const CANDIDATE_HONORIFIC_PREFIX_PATTERN = /^(?:mr|mrs|ms|miss|dr)\.?\s+/i;
 
 const GENERIC_ROLE_HEADINGS = new Set([
   'about the job',
@@ -575,7 +576,8 @@ function extractPreferredChineseNameFragment(value) {
 function cleanCandidateNameCandidate(value) {
   const withoutPrefix = stripCandidateLinePrefix(value);
   const withoutMetadataTail = stripCandidateMetadataTail(withoutPrefix);
-  const withoutTrailingToken = stripTrailingSingleLetterLatinToken(withoutMetadataTail);
+  const withoutHonorific = cleanLine(withoutMetadataTail).replace(CANDIDATE_HONORIFIC_PREFIX_PATTERN, '').trim();
+  const withoutTrailingToken = stripTrailingSingleLetterLatinToken(withoutHonorific);
 
   return normalizeUppercaseLatinCandidateName(withoutTrailingToken);
 }

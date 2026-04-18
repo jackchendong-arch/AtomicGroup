@@ -206,7 +206,7 @@ const DOCX_MAIN_CONTENT_TYPE =
 const DOTX_MAIN_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml';
 const DEGREE_LINE_PATTERN =
-  /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|ba|ma|degree|diploma)\b|(?:本科|硕士|博士|学士|研究生)/i;
+  /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|b\.?s|m\.?s|ba|ma|degree|diploma)\b|(?:本科|硕士|博士|学士|研究生)/i;
 const YEAR_RANGE_PATTERN =
   /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(Present|Current|Now|至今|目前|现在|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?)/i;
 const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b|(?:大学|学院|学校|研究院|研究所)/i;
@@ -272,6 +272,13 @@ const KNOWN_LOCATION_LINE_SET = new Set([
   '日本'
 ]);
 const SECTION_NAME_TO_KEY = {
+  summary: 'overview',
+  'candidate summary': 'overview',
+  profile: 'overview',
+  'personal summary': 'overview',
+  'professional summary': 'overview',
+  'executive profile': 'overview',
+  motivation: 'overview',
   experience: 'experience',
   'employment experience': 'experience',
   'professional experience': 'experience',
@@ -306,6 +313,12 @@ function normalizeTextBlock(value) {
   return String(value || '')
     .replace(/\r\n/g, '\n')
     .trim();
+}
+
+function normalizeDateRangeText(value) {
+  return normalizeTextBlock(value)
+    .replace(/\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*)(?=(?:19|20)\d{2}\b)/gi, '$1 ')
+    .replace(/((?:19|20)\d{2})\s*[./-]\s*(\d{1,2})(?!\d)/g, '$1.$2');
 }
 
 function splitNonEmptyLines(value) {
@@ -444,6 +457,77 @@ function looksLikeEducationNoiseLine(value) {
   );
 }
 
+function splitFreeformEducationInstitutionDegree(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (
+    !normalized ||
+    looksLikeEducationNoiseLine(normalized) ||
+    !DEGREE_LINE_PATTERN.test(normalized) ||
+    !EDUCATION_ORG_PATTERN.test(normalized)
+  ) {
+    return null;
+  }
+
+  const englishTokens = normalized.split(/\s+/).filter(Boolean);
+  const degreeTokenIndex = englishTokens.findIndex((token) => DEGREE_LINE_PATTERN.test(token));
+  const institutionTokenIndex = englishTokens.findIndex((token) =>
+    /^(?:university|college|school|academy|institute)$/i.test(token.replace(/[()]/g, ''))
+  );
+
+  if (degreeTokenIndex > institutionTokenIndex && institutionTokenIndex > 0) {
+    let institutionEndIndex = institutionTokenIndex;
+
+    if (/^\([^()]+\)$/.test(englishTokens[institutionEndIndex + 1] || '')) {
+      institutionEndIndex += 1;
+    }
+
+    if (/^of$/i.test(englishTokens[institutionEndIndex + 1] || '')) {
+      const remainingInstitutionTokens = englishTokens.slice(institutionEndIndex + 1, degreeTokenIndex);
+      const trailingTokens = remainingInstitutionTokens.slice(1);
+      const trailingTokenCount = trailingTokens.some((token) => /^(?:and|&)$/i.test(token))
+        ? trailingTokens.length
+        : (trailingTokens.length <= 2 ? trailingTokens.length : 1);
+
+      institutionEndIndex += 1 + trailingTokenCount;
+    }
+
+    const university = normalizeTextBlock(englishTokens.slice(0, institutionEndIndex + 1).join(' '));
+    const degreeName = normalizeTextBlock(englishTokens.slice(institutionEndIndex + 1).join(' '));
+
+    if (university && degreeName && EDUCATION_ORG_PATTERN.test(university) && DEGREE_LINE_PATTERN.test(degreeName)) {
+      return {
+        university,
+        degreeName
+      };
+    }
+  }
+
+  const englishInstitutionMatch = normalized.match(
+    /^(.*?\b(?:university|college|school|academy|institute)\b(?:\s*\([^()]+\))?)\s+(.+?\b(?:bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|b\.?s|m\.?s|ba|ma|degree|diploma)\b.*)$/i
+  );
+
+  if (englishInstitutionMatch?.[1] && englishInstitutionMatch?.[2]) {
+    return {
+      university: normalizeTextBlock(englishInstitutionMatch[1]),
+      degreeName: normalizeTextBlock(englishInstitutionMatch[2])
+    };
+  }
+
+  const chineseInstitutionMatch = normalized.match(
+    /^(.*?(?:大学|学院|学校|研究院|研究所))(?:\s+)(.+)$/u
+  );
+
+  if (chineseInstitutionMatch?.[1] && chineseInstitutionMatch?.[2]) {
+    return {
+      university: normalizeTextBlock(chineseInstitutionMatch[1]),
+      degreeName: normalizeTextBlock(chineseInstitutionMatch[2])
+    };
+  }
+
+  return null;
+}
+
 function parseEducationDetailLine(value) {
   const normalized = normalizeTextBlock(value);
 
@@ -458,9 +542,14 @@ function parseEducationDetailLine(value) {
     .map((part) => part.trim())
     .filter(Boolean);
   const universityFromParts = inlineParts.find((part) =>
-    EDUCATION_ORG_PATTERN.test(part) || /^[A-Z][A-Z0-9&.-]{2,}$/.test(part)
+    (EDUCATION_ORG_PATTERN.test(part) || /^[A-Z][A-Z0-9&.-]{2,}$/.test(part)) &&
+    !DEGREE_LINE_PATTERN.test(part)
   ) || '';
-  const degreeParts = inlineParts.filter((part) => DEGREE_LINE_PATTERN.test(part) && part !== universityFromParts);
+  const degreeParts = inlineParts.filter((part) =>
+    DEGREE_LINE_PATTERN.test(part) &&
+    part !== universityFromParts &&
+    !EDUCATION_ORG_PATTERN.test(part)
+  );
 
   const labeledUniversityMatch = withoutTrailingDate.match(/(?:学校|院校|university|college|school|institution)\s*[:：]\s*([^|｜]+)/iu);
   const labeledDegreeMatch = withoutTrailingDate.match(/(?:学历|学位|degree)\s*[:：]\s*([^|｜]+)/iu);
@@ -468,9 +557,10 @@ function parseEducationDetailLine(value) {
   const compactUniversity = compactChineseMatch?.[1] && EDUCATION_ORG_PATTERN.test(compactChineseMatch[1])
     ? normalizeTextBlock(compactChineseMatch[1]).replace(/[|｜\s-]+$/u, '')
     : '';
+  const freeformEntry = splitFreeformEducationInstitutionDegree(withoutTrailingDate);
   let university = labeledUniversityMatch?.[1]
     ? normalizeTextBlock(labeledUniversityMatch[1])
-    : (compactUniversity || universityFromParts);
+    : (compactUniversity || universityFromParts || freeformEntry?.university || '');
   const compactDegreeName = compactChineseMatch?.[2]
     ? [compactChineseMatch[2], normalizeTextBlock(compactChineseMatch[3] || '').replace(/^[:：|｜\s-]+/, '')]
       .filter(Boolean)
@@ -478,11 +568,14 @@ function parseEducationDetailLine(value) {
     : '';
   let degreeName = labeledDegreeMatch?.[1]
     ? normalizeTextBlock(labeledDegreeMatch[1])
-    : (compactDegreeName || degreeParts.join(' | '));
+    : (compactDegreeName || degreeParts.join(' | ') || freeformEntry?.degreeName || '');
 
   if (!degreeName || !university) {
     return null;
   }
+
+  university = university.replace(/[;,]+$/g, '').trim();
+  degreeName = degreeName.replace(/[;,]+$/g, '').trim();
 
   return {
     degreeName,
@@ -1112,7 +1205,7 @@ function parseEducationEntry(sectionLines = []) {
 }
 
 function parseCompactEducationLine(value) {
-  const normalized = normalizeTextBlock(value);
+  const normalized = normalizeDateRangeText(value);
   const match = normalized.match(YEAR_RANGE_PATTERN);
 
   if (!normalized || looksLikeEducationNoiseLine(normalized)) {
@@ -1188,7 +1281,7 @@ function parseCompactEducationLine(value) {
 }
 
 function stripTrailingDateRangeText(value) {
-  const normalized = normalizeTextBlock(value);
+  const normalized = normalizeDateRangeText(value);
   const trailingDateLine = splitTrailingDateLine(normalized);
 
   if (!trailingDateLine) {
@@ -1217,8 +1310,29 @@ function extractEducationEntries(sectionLines = []) {
       continue;
     }
 
+    const datedLine = splitLeadingDateLine(lines[index]);
+    const companionEntry = parseEducationCompanionLine(lines[index + 1] || '');
+    const degreeLine = normalizeTextBlock(lines[index + 2] || '');
+
+    if (
+      datedLine &&
+      !datedLine.remainder &&
+      companionEntry &&
+      degreeLine &&
+      DEGREE_LINE_PATTERN.test(degreeLine) &&
+      !looksLikeEducationNoiseLine(degreeLine)
+    ) {
+      entries.push({
+        degreeName: degreeLine,
+        university: companionEntry.university,
+        startYear: datedLine.startDate,
+        endYear: datedLine.endDate
+      });
+      index += 2;
+      continue;
+    }
+
     if (DEGREE_LINE_PATTERN.test(lines[index]) && !YEAR_RANGE_PATTERN.test(lines[index])) {
-      const companionEntry = parseEducationCompanionLine(lines[index + 1] || '');
       const trailingDate = splitTrailingDateLine(lines[index + 1] || '');
       const leadingDate = splitLeadingDateLine(lines[index + 1] || '');
       const deferredTrailingDate = splitTrailingDateLine(lines[index + 2] || '');
@@ -1254,7 +1368,6 @@ function extractEducationEntries(sectionLines = []) {
       }
     }
 
-    const datedLine = splitLeadingDateLine(lines[index]);
     const nextDetail = parseEducationDetailLine(lines[index + 1] || '');
 
     if (datedLine && !datedLine.remainder && nextDetail) {
@@ -1277,7 +1390,8 @@ function extractEducationEntries(sectionLines = []) {
 }
 
 function extractDateRange(value) {
-  const match = value.match(YEAR_RANGE_PATTERN);
+  const normalized = normalizeDateRangeText(value);
+  const match = normalized.match(YEAR_RANGE_PATTERN);
 
   if (!match) {
     return {
@@ -1462,7 +1576,7 @@ function splitCompanyDateLine(value) {
 }
 
 function splitLeadingDateLine(value) {
-  const normalized = normalizeTextBlock(value);
+  const normalized = normalizeDateRangeText(value);
   const match = normalized.match(YEAR_RANGE_PATTERN);
 
   if (!match || typeof match.index !== 'number' || match.index !== 0) {
@@ -1484,7 +1598,7 @@ function splitLeadingDateLine(value) {
 }
 
 function splitTrailingDateLine(value) {
-  const normalized = normalizeTextBlock(value);
+  const normalized = normalizeDateRangeText(value);
   const match = normalized.match(YEAR_RANGE_PATTERN);
 
   if (!match || typeof match.index !== 'number' || match.index <= 0) {
@@ -1612,9 +1726,14 @@ function detectExperienceEntry(lines, index) {
   const line = lines[index];
   const nextLine = lines[index + 1] || '';
   const nextNextLine = lines[index + 2] || '';
+  const dateCompanyRoleTriplet = detectDateCompanyRoleTriplet(lines, index);
   const dateLineInlineEntry = detectDateLineThenInlineExperienceEntry(lines, index);
   const trailingDatedInlineEntry = detectTrailingInlineExperienceEntry(line);
   const datedInlineEntry = detectDatedInlineExperienceEntry(line);
+
+  if (dateCompanyRoleTriplet) {
+    return dateCompanyRoleTriplet;
+  }
 
   if (dateLineInlineEntry) {
     return dateLineInlineEntry;
@@ -1778,6 +1897,33 @@ function detectDateLineThenInlineExperienceEntry(lines, index) {
     startDate: datedLine.startDate,
     endDate: datedLine.endDate,
     cursor: index + 2
+  };
+}
+
+function detectDateCompanyRoleTriplet(lines, index) {
+  const currentLine = normalizeTextBlock(lines[index]);
+  const companyLine = normalizeTextBlock(lines[index + 1] || '');
+  const roleLine = normalizeTextBlock(lines[index + 2] || '');
+  const datedLine = splitLeadingDateLine(currentLine);
+
+  if (
+    !datedLine ||
+    datedLine.remainder ||
+    !companyLine ||
+    !roleLine ||
+    looksLikeExperienceNoiseLine(companyLine) ||
+    !looksLikeCompanyLine(companyLine) ||
+    !looksLikeCompactRoleTitleText(roleLine)
+  ) {
+    return null;
+  }
+
+  return {
+    jobTitle: roleLine,
+    companyName: companyLine,
+    startDate: datedLine.startDate,
+    endDate: datedLine.endDate,
+    cursor: index + 3
   };
 }
 
@@ -2002,6 +2148,21 @@ function scoreExperienceHistory(entries = []) {
   }, 0);
 }
 
+function shouldFallbackToFullCvExperienceHistory(sectionExperienceHistory = [], fullCvExperienceHistory = []) {
+  if (!Array.isArray(fullCvExperienceHistory) || fullCvExperienceHistory.length === 0) {
+    return false;
+  }
+
+  if (!Array.isArray(sectionExperienceHistory) || sectionExperienceHistory.length === 0) {
+    return true;
+  }
+
+  return (
+    fullCvExperienceHistory.length > sectionExperienceHistory.length &&
+    scoreExperienceHistory(sectionExperienceHistory) <= 30
+  );
+}
+
 function selectPreferredExperienceHistory(candidateHistories = []) {
   const normalizedCandidateHistories = candidateHistories
     .map((history) => Array.isArray(history) ? history.filter(Boolean) : [])
@@ -2159,8 +2320,12 @@ function extractDocumentDerivedProfile({ cvDocument, jdDocument }) {
   const candidateCertifications = extractCertificationList(lines, sections.certifications || []);
   const projectExperiences = extractProjectExperiences(projectSectionLines);
   const sectionExperienceHistory = extractExperienceHistory(experienceSectionLines);
-  const fullCvExperienceHistory = sectionExperienceHistory.length === 0
-    ? extractExperienceHistory(lines)
+  const fullCvExperienceHistoryCandidate = extractExperienceHistory(lines);
+  const fullCvExperienceHistory = shouldFallbackToFullCvExperienceHistory(
+    sectionExperienceHistory,
+    fullCvExperienceHistoryCandidate
+  )
+    ? fullCvExperienceHistoryCandidate
     : [];
   const experienceHistory = selectPreferredExperienceHistory([
     sectionExperienceHistory,

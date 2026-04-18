@@ -53,6 +53,8 @@
 - Highlight the highest-signal cases that define the next engineering work and include the recommended fix direction or next slice proposal.
 - Treat generated manifests, debug folders, and triage summaries as supporting evidence for the review, not as a substitute for the review itself.
 - Ask the user to inspect raw regression artifacts only when product intent is ambiguous or a human judgment call is genuinely required.
+- Before regenerating regression artifacts, clear the relevant `debug/CV_blocks` scope for that run so reviewers only see latest-run output.
+- If rerunning only one fixture pack such as `Test10`, clear only that corresponding debug scope first; if rerunning broader packs, clear each relevant fixture scope before writing fresh artifacts.
 
 ## Dual-Role Delivery Rule
 - Use a two-pass workflow for regression-driven development:

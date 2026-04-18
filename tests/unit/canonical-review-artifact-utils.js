@@ -47,6 +47,49 @@ function buildOutputDirectory({ fixtureId, outputSubdirectory = '' }) {
   );
 }
 
+function buildLegacyOutputDirectory({ fixtureId, outputSubdirectory = '' }) {
+  const pathSegments = Array.isArray(outputSubdirectory)
+    ? outputSubdirectory
+    : String(outputSubdirectory || '')
+      .split(/[\\/]/)
+      .filter(Boolean);
+
+  return path.join(
+    DEBUG_CV_BLOCKS_DIR,
+    ...pathSegments.map((segment) => sanitizePathSegment(segment)),
+    sanitizePathSegment(fixtureId)
+  );
+}
+
+function buildOutputScopeDirectory(outputSubdirectory = '') {
+  const pathSegments = Array.isArray(outputSubdirectory)
+    ? outputSubdirectory
+    : String(outputSubdirectory || '')
+      .split(/[\\/]/)
+      .filter(Boolean);
+
+  return path.join(
+    DEBUG_CV_BLOCKS_DIR,
+    ...pathSegments.map((segment) => sanitizePathSegment(segment))
+  );
+}
+
+async function removeDirectoryIfPresent(directoryPath) {
+  await fs.rm(directoryPath, { recursive: true, force: true });
+}
+
+async function clearCanonicalReviewArtifacts({
+  fixtureId,
+  outputSubdirectory = ''
+}) {
+  await removeDirectoryIfPresent(buildOutputDirectory({ fixtureId, outputSubdirectory }));
+  await removeDirectoryIfPresent(buildLegacyOutputDirectory({ fixtureId, outputSubdirectory }));
+}
+
+async function clearCanonicalReviewArtifactScope(outputSubdirectory = '') {
+  await removeDirectoryIfPresent(buildOutputScopeDirectory(outputSubdirectory));
+}
+
 async function writeJson(filePath, value) {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -85,6 +128,9 @@ async function writeCanonicalReviewArtifacts({
 
 module.exports = {
   DEBUG_CV_BLOCKS_DIR,
+  clearCanonicalReviewArtifacts,
+  clearCanonicalReviewArtifactScope,
+  buildLegacyOutputDirectory,
   buildOutputDirectory,
   writeCanonicalReviewArtifacts
 };

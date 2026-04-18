@@ -13,7 +13,10 @@ const {
   getFixtureCvPath,
   getFixtureJdPath
 } = require('./external-fixture-registry');
-const { writeCanonicalReviewArtifacts } = require('./canonical-review-artifact-utils');
+const {
+  clearCanonicalReviewArtifacts,
+  writeCanonicalReviewArtifacts
+} = require('./canonical-review-artifact-utils');
 
 const EXPECTED_CANONICAL_REGRESSION = {
   Test1: {
@@ -23,8 +26,8 @@ const EXPECTED_CANONICAL_REGRESSION = {
     selectedCandidateLocation: ''
   },
   Test2: {
-    state: 'red',
-    uniqueIssueCodes: ['education_entry_malformed'],
+    state: 'green',
+    uniqueIssueCodes: [],
     minProjects: 0,
     selectedCandidateLocation: 'Shanghai'
   },
@@ -36,7 +39,7 @@ const EXPECTED_CANONICAL_REGRESSION = {
   },
   Test5: {
     state: 'red',
-    uniqueIssueCodes: ['education_entry_malformed', 'employment_entry_missing_core_fields'],
+    uniqueIssueCodes: ['employment_entry_missing_core_fields'],
     minProjects: 1,
     selectedCandidateLocation: ''
   },
@@ -105,6 +108,7 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
     `canonical extraction review writes ${fixtureCase.name} fixture artifacts with expected validation state`,
     { skip: fixtureAvailable ? false : 'Canonical fixture pair is not available or not part of the valid regression pack.' },
     async () => {
+      await clearCanonicalReviewArtifacts({ fixtureId: fixtureCase.name });
       const cvPath = getFixtureCvPath(fixtureCase);
       const jdPath = getFixtureJdPath(fixtureCase);
       const cvDocument = await importDocument(cvPath);

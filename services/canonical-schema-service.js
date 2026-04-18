@@ -61,11 +61,13 @@ const COMPANY_HINT_PATTERN =
 const ROLE_HINT_PATTERN =
   /\b(analyst|architect|consultant|coordinator|designer|developer|director|engineer|head|lead|manager|officer|owner|partner|president|principal|product|program|project|recruiter|researcher|scientist|specialist|vice president|vp)\b|(?:工程师|开发|架构师|经理|总监|负责人|顾问|分析师|研究员|产品经理|技术负责人)/i;
 const EDUCATION_HINT_PATTERN =
-  /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|college|degree|diploma|doctor|institute|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|mba|phd|school|university)\b|(?:本科|硕士|博士|学士|大学|学院|学校)/i;
+  /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|b\.?s|college|degree|diploma|doctor|institute|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|m\.?s|mba|phd|school|university)\b|(?:本科|硕士|博士|学士|大学|学院|学校)/i;
 const EDUCATION_INSTITUTION_HINT_PATTERN =
   /\b(college|institute|school|university)\b|(?:大学|学院|学校|研究院|研究所)/i;
 const DEGREE_VALUE_HINT_PATTERN =
-  /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|degree|diploma|doctor|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|mba|phd)\b|(?:本科|硕士|博士|学士)/i;
+  /\b(bachelor|b\.?a\.?|b\.?eng|b\.?s\.?c?|b\.?s|degree|diploma|doctor|master|m\.?a\.?|m\.?eng|m\.?s\.?c?|m\.?s|mba|phd)\b|(?:本科|硕士|博士|学士)/i;
+const PROJECT_SIGNAL_HINT_PATTERN =
+  /\b(?:app|automation|blockchain|browser|cloud|engine|exchange|feed|framework|marketplace|module|nas|netbackup|phibox|phicoin|platform|portal|product|project|search|service|solution|storage|system|taas|testing|trading|vcf|wallet)\b/i;
 const SUSPICIOUS_PROJECT_PREFIX_PATTERN = /^(?:and|for|from|in|of|on|or|to|with)\b/i;
 const SUSPICIOUS_PROJECT_LABEL_PATTERN = /^(?:english|language|languages|skills?)[:：]/i;
 const EXPLICIT_LOCATION_PREFIX_PATTERN = /^(?:location|current location|based in|所在地|地点|当前地点)\s*[:：]/i;
@@ -351,11 +353,47 @@ function looksLikeSuspiciousProjectName(value) {
     return true;
   }
 
+  if (
+    DATE_RANGE_PATTERN.test(normalized) ||
+    /^(?:certificate|certificates|certification|certifications)$/i.test(normalized) ||
+    /\b(?:acp|aws|azure|ccna|ccnp|cet-\d|gcp|ielts|istqb|oracle|pmp|rhce|rhcsa|toefl)\b/i.test(normalized)
+  ) {
+    return true;
+  }
+
+  if (
+    /^(?:technical points?|recommendation)\b[:：]?/i.test(normalized) ||
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(?:19|20)\d{2}\b/i.test(normalized)
+  ) {
+    return true;
+  }
+
+  if (
+    EDUCATION_HINT_PATTERN.test(normalized) &&
+    !PROJECT_SIGNAL_HINT_PATTERN.test(normalized)
+  ) {
+    return true;
+  }
+
   if (/^[a-z]/.test(normalized)) {
     return true;
   }
 
+  if (
+    ROLE_HINT_PATTERN.test(normalized) &&
+    !PROJECT_SIGNAL_HINT_PATTERN.test(normalized)
+  ) {
+    return true;
+  }
+
   if (/^(?:achieved|architected|built|contributed|delivered|designed|developed|handled|implemented|integrated|migrated|optimized|reduced)\b/i.test(normalized)) {
+    return true;
+  }
+
+  if (
+    normalized.split(/\s+/).length > 5 &&
+    /\b(?:include(?:s|d)?|integrating|is|mainly|provides?|redirect|responsible|used?|using|was|were)\b/i.test(normalized)
+  ) {
     return true;
   }
 
@@ -1442,9 +1480,31 @@ function normalizeProjectEntries(entries = [], cvBlocks = [], employmentHistory 
     entry.project_end_date
   ].join('|')));
   const nonSuspiciousEntries = deduped.filter((entry) => !looksLikeSuspiciousProjectName(entry.project_name));
+  const stronglySignaledEntries = deduped.filter((entry) => {
+    const projectName = cleanLine(entry.project_name);
+    const projectBullets = Array.isArray(entry.project_bullets)
+      ? entry.project_bullets.map((value) => cleanLine(value)).filter(Boolean)
+      : [];
+    const signalText = cleanLine([projectName, ...projectBullets.slice(0, 3)].join(' '));
+    const hasDates = Boolean(cleanLine(entry.project_start_date) || cleanLine(entry.project_end_date));
+
+    if (!projectName) {
+      return false;
+    }
+
+    if (!looksLikeSuspiciousProjectName(projectName)) {
+      return true;
+    }
+
+    if (!hasDates && projectBullets.length === 0) {
+      return false;
+    }
+
+    return PROJECT_SIGNAL_HINT_PATTERN.test(signalText);
+  });
   const candidateEntries = nonSuspiciousEntries.length > 0
     ? nonSuspiciousEntries
-    : deduped.filter((entry) => cleanLine(entry.project_name));
+    : stronglySignaledEntries;
 
   return candidateEntries
     .map((entry) => {

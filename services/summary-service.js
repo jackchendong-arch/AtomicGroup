@@ -398,9 +398,10 @@ function stripGenericCandidateFileAffixes(fileName) {
   normalized = normalized
     .replace(/^[【\[].*?[】\]]\s*/u, '')
     .replace(/\b(?:atomic\s+cv|encv|cv|resume|candidate|profile)\b/ig, ' ')
+    .replace(/\d+(?:\.\d+)?\s*(?:年以上|年(?:工作经验)?|年经验)/gu, ' ')
     .replace(/\b\d+\s*(?:years?|yrs?)\b/ig, ' ')
     .replace(/\b\d+(?:\.\d+)?\b/g, ' ')
-    .replace(/\d+\s*(?:年以上|年)\b/gu, ' ')
+    .replace(/(?:年以上|工作经验)\b/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -456,6 +457,14 @@ function resolveCandidateNameWithFileName(candidateName, fileName) {
   }
 
   const fileNameCandidateName = formatCandidateNameFromFileName(fileName);
+
+  if (
+    isSimpleChineseCandidateName(fileNameCandidateName) &&
+    isSimpleChineseCandidateName(normalizedCandidateName) &&
+    fileNameCandidateName !== normalizedCandidateName
+  ) {
+    return fileNameCandidateName;
+  }
 
   if (
     isSimpleChineseCandidateName(fileNameCandidateName) &&
@@ -563,7 +572,8 @@ function extractPreferredChineseNameFragment(value) {
   const candidates = fragments.filter((fragment) => (
     !isGenericCandidateHeading(fragment) &&
     !looksLikeRoleTitleInsteadOfName(fragment) &&
-    !looksLikeEducationLabelInsteadOfName(fragment)
+    !looksLikeEducationLabelInsteadOfName(fragment) &&
+    !/(?:年以上|工作经验|求职意向|期望城市|工作地区|专业技能|现居住地|现居住|简历)$/u.test(fragment)
   ));
 
   if (!candidates.length) {

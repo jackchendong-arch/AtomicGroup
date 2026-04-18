@@ -209,6 +209,8 @@ const DEGREE_LINE_PATTERN =
   /\b(bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|b\.?s|m\.?s|ba|ma|degree|diploma)\b|(?:本科|硕士|博士|学士|研究生)/i;
 const YEAR_RANGE_PATTERN =
   /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(Present|Current|Now|至今|目前|现在|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?)/i;
+const OPEN_ENDED_YEAR_RANGE_PATTERN =
+  /(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?((?:19|20)\d{2})(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*$/i;
 const EDUCATION_ORG_PATTERN = /\b(university|college|school|institute|academy)\b|(?:大学|学院|学校|研究院|研究所)/i;
 const COMPANY_HINT_PATTERN =
   /\b(group|company|corp|corporation|inc|inc\.|ltd|limited|llc|plc|pte|partners|solutions|technologies|technology|systems|bank|capital|consulting|advisors|advisory|recruitment|staffing|search|university|college|school)\b/i;
@@ -223,11 +225,16 @@ const EXPERIENCE_NOISE_PATTERN =
   /^(?:个人简历|基本信息|个人优势|优势亮点|专业技能|技能|自我评价|工作内容|工作业绩|业绩|内容|主要课程|项目概况|项目目标|项目职责|技术和职责|工作教育经历|工作经验|教育背景|教育经历|项目经历|项目经验|联系方式|工作地区|职位目标|求职岗位|岗位目标|求职意向|summary|profile|professional summary|executive profile)\s*[:：]?/iu;
 const EDUCATION_NOISE_PATTERN =
   /(?:项目经历|项目概况|项目目标|项目职责|工作内容|工作业绩|业绩|主要课程|技术和职责|自我评价|专业技能|个人优势|优势亮点|工作经历|工作经验|求职意向|求职岗位|工作地区|奖学金|校赛|蓝桥杯|acm|证书|认证|英语(?:四|五|六|七|八)级|wallet|app\b|platform\b|project\b)/iu;
+const PROJECT_NOISE_TITLE_PATTERN =
+  /^(?:certificate|certificates|certification|certifications|summary|motivation|availability)$/i;
+const PROJECT_CERTIFICATION_HINT_PATTERN =
+  /\b(?:acp|aws|azure|ccna|ccnp|cet-\d|gcp|ielts|istqb|oracle|pmp|rhce|rhcsa|toefl)\b/i;
 const EDUCATION_LABEL_PATTERN =
   /(?:学校|院校|专业|学历|学位|education|major|degree|university|college|school|institution)/iu;
 const KNOWN_LOCATION_LINE_SET = new Set([
   'australia',
   'beijing',
+  'california',
   'canada',
   'china',
   'dubai',
@@ -239,6 +246,7 @@ const KNOWN_LOCATION_LINE_SET = new Set([
   'indonesia',
   'japan',
   'london',
+  'manchester',
   'malaysia',
   'new york',
   'paris',
@@ -503,8 +511,19 @@ function splitFreeformEducationInstitutionDegree(value) {
     }
   }
 
+  const dashSeparatedMatch = normalized.match(
+    /^(.*?\b(?:university|college|school|academy|institute)\b.*?)(?:\s*[—–-]\s*)(.+)$/i
+  );
+
+  if (dashSeparatedMatch?.[1] && dashSeparatedMatch?.[2] && DEGREE_LINE_PATTERN.test(dashSeparatedMatch[2])) {
+    return {
+      university: normalizeTextBlock(dashSeparatedMatch[1]).replace(/[;,]+$/g, '').trim(),
+      degreeName: normalizeTextBlock(dashSeparatedMatch[2]).replace(/[;,]+$/g, '').trim()
+    };
+  }
+
   const englishInstitutionMatch = normalized.match(
-    /^(.*?\b(?:university|college|school|academy|institute)\b(?:\s*\([^()]+\))?)\s+(.+?\b(?:bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|b\.?s|m\.?s|ba|ma|degree|diploma)\b.*)$/i
+    /^(.*?\b(?:university|college|school|academy|institute)\b(?:\s*\([^()]+\))?)(?:\s*[—–-]\s*|\s+)(.+?\b(?:bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|b\.?s|m\.?s|ba|ma|degree|diploma)\b.*)$/i
   );
 
   if (englishInstitutionMatch?.[1] && englishInstitutionMatch?.[2]) {
@@ -648,6 +667,89 @@ function stripTrailingLocationSuffix(value) {
   }
 
   return looksLikeLocationLine(match[2]) ? match[1].trim() : normalized;
+}
+
+function looksLikeLocationPrefixText(value) {
+  const normalized = normalizeTextBlock(value)
+    .replace(/[()]/g, '')
+    .replace(/\//g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    ROLE_TITLE_PATTERN.test(normalized) ||
+    COMPANY_HINT_PATTERN.test(normalized) ||
+    /\b(?:android|architecture|backend|blockchain|cloud|data|engineering|finance|frontend|front-end|full[-\s]?stack|golang|ios|java|junior|markets|platform|product|program|project|qa|senior|services?|software|solution|staff|technology|test(?:ing)?)\b/i.test(normalized)
+  ) {
+    return false;
+  }
+
+  const normalizedLower = normalized.toLowerCase();
+
+  if ([...KNOWN_LOCATION_LINE_SET].some((location) => normalizedLower.includes(location))) {
+    return true;
+  }
+
+  return looksLikeLocationLine(normalized) ||
+    (
+      normalized.split(',').map((part) => part.trim()).filter(Boolean).length <= 4 &&
+      normalized
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .every((part) => /^[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*$/.test(part) && !ROLE_TITLE_PATTERN.test(part))
+    );
+}
+
+function stripLeadingLocationPrefix(value) {
+  const normalized = normalizeTextBlock(value).replace(/^[,|/]\s*/, '').trim();
+
+  if (!normalized) {
+    return normalized;
+  }
+
+  const commaParts = normalized.split(/\s*,\s*/).map((part) => part.trim()).filter(Boolean);
+
+  if (commaParts.length >= 2 && looksLikeLocationPrefixText(commaParts[0])) {
+    const remainder = commaParts.slice(1).join(', ').trim();
+
+    if (looksLikeCompactRoleTitleText(remainder)) {
+      return stripLeadingLocationPrefix(remainder);
+    }
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+
+  for (let prefixLength = 1; prefixLength <= Math.min(4, tokens.length - 1); prefixLength += 1) {
+    const prefix = tokens.slice(0, prefixLength).join(' ').replace(/[(),]/g, '').trim();
+    const remainder = tokens.slice(prefixLength).join(' ').trim();
+
+    if (looksLikeLocationPrefixText(prefix) && looksLikeCompactRoleTitleText(remainder)) {
+      return stripLeadingLocationPrefix(remainder);
+    }
+  }
+
+  return normalized;
+}
+
+function stripTrailingLocationPhrase(value) {
+  const normalized = normalizeTextBlock(value);
+
+  if (!normalized) {
+    return '';
+  }
+
+  const commaParts = normalized.split(/\s*,\s*/).map((part) => part.trim()).filter(Boolean);
+
+  while (commaParts.length > 1 && looksLikeLocationPrefixText(commaParts[commaParts.length - 1])) {
+    commaParts.pop();
+  }
+
+  return commaParts.join(', ').trim();
 }
 
 function isResponsibilityBulletLine(value) {
@@ -922,7 +1024,12 @@ function looksLikeProjectHeading(value) {
     isKnownCvSectionHeading(headingValue) ||
     isResponsibilityBulletLine(headingValue) ||
     /^tech stack\s*:/i.test(headingValue) ||
-    headingValue === '.'
+    headingValue === '.' ||
+    PROJECT_NOISE_TITLE_PATTERN.test(headingValue) ||
+    PROJECT_CERTIFICATION_HINT_PATTERN.test(headingValue) ||
+    /^\d{4}(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(?:\d{4}(?:[./-]\d{1,2})?|present|current|now|至今|目前|现在)?$/i.test(headingValue) ||
+    (DEGREE_LINE_PATTERN.test(headingValue) && !/(?:app|automation|blockchain|engine|framework|platform|project|relayer|system|tool|wallet)/i.test(headingValue)) ||
+    (EDUCATION_ORG_PATTERN.test(headingValue) && !/(?:app|automation|blockchain|engine|framework|platform|project|relayer|system|tool|wallet)/i.test(headingValue))
   ) {
     return false;
   }
@@ -992,6 +1099,10 @@ function hasStrongProjectHeadingSignal(value, parsedHeading = parseProjectHeadin
   const headingValue = parsedHeading.projectName || normalized;
 
   if (!headingValue) {
+    return false;
+  }
+
+  if (!looksLikeProjectHeading(headingValue)) {
     return false;
   }
 
@@ -1229,16 +1340,14 @@ function parseCompactEducationLine(value) {
         : null
     );
 
-    if (!detailEntry) {
-      return null;
+    if (detailEntry) {
+      return {
+        degreeName: detailEntry.degreeName,
+        university: detailEntry.university,
+        startYear,
+        endYear
+      };
     }
-
-    return {
-      degreeName: detailEntry.degreeName,
-      university: detailEntry.university,
-      startYear,
-      endYear
-    };
   }
 
   const trailingDateLine = splitTrailingDateLine(normalized);
@@ -1254,15 +1363,60 @@ function parseCompactEducationLine(value) {
         : null
     );
 
-    if (!detailEntry) {
-      return null;
+    if (detailEntry) {
+      return {
+        degreeName: detailEntry.degreeName,
+        university: detailEntry.university,
+        startYear: trailingDateLine.startDate,
+        endYear: trailingDateLine.endDate
+      };
     }
+  }
+
+  if (match && typeof match.index === 'number' && match.index > 0) {
+    const degreeName = normalized
+      .slice(0, match.index)
+      .replace(/[|,，/\\-]+\s*$/u, '')
+      .trim();
+    const university = normalized
+      .slice(match.index + match[0].length)
+      .replace(/^[|,，/\\-]+\s*/u, '')
+      .trim();
+
+    if (
+      degreeName &&
+      university &&
+      DEGREE_LINE_PATTERN.test(degreeName) &&
+      EDUCATION_ORG_PATTERN.test(university)
+    ) {
+      const { startDate, endDate } = extractDateRange(match[0]);
+
+      return {
+        degreeName: normalizeTextBlock(degreeName).replace(/[;,]+$/g, '').trim(),
+        university: normalizeTextBlock(university).replace(/[;,]+$/g, '').trim(),
+        startYear: startDate,
+        endYear: endDate
+      };
+    }
+  }
+
+  const degreeDateInstitutionMatch = normalized.match(
+    /^((?:bachelor|master|phd|doctor|mba|b\.?sc|m\.?sc|b\.?eng|m\.?eng|b\.?s|m\.?s|ba|ma|硕士|本科|博士|学士|研究生)[^,，|｜]*)[,，]?\s+((?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:19|20)\d{2}(?:[./-]\d{1,2})?\s*[–—-]{1,2}\s*(?:Present|Current|Now|至今|目前|现在|(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+)?(?:19|20)\d{2}(?:[./-]\d{1,2})?))\s+(.+)$/i
+  );
+
+  if (
+    degreeDateInstitutionMatch?.[1] &&
+    degreeDateInstitutionMatch?.[2] &&
+    degreeDateInstitutionMatch?.[3] &&
+    EDUCATION_ORG_PATTERN.test(degreeDateInstitutionMatch[3])
+  ) {
+    const { startDate, endDate } = extractDateRange(degreeDateInstitutionMatch[2]);
 
     return {
-      degreeName: detailEntry.degreeName,
-      university: detailEntry.university,
-      startYear: trailingDateLine.startDate,
-      endYear: trailingDateLine.endDate
+      degreeName: normalizeTextBlock(degreeDateInstitutionMatch[1]).replace(/[;,]+$/g, '').trim(),
+      university: normalizeTextBlock(degreeDateInstitutionMatch[3]).replace(/[;,]+$/g, '').trim(),
+      startYear: startDate,
+      endYear: endDate
     };
   }
 
@@ -1407,7 +1561,7 @@ function extractDateRange(value) {
 }
 
 function splitRoleCompanyLine(value) {
-  const normalized = stripTrailingLocationSuffix(value);
+  const normalized = stripTrailingLocationPhrase(stripTrailingLocationSuffix(value));
 
   if (!normalized) {
     return {
@@ -1455,7 +1609,7 @@ function splitRoleCompanyLine(value) {
 }
 
 function looksLikeOrganizationText(value) {
-  const normalized = normalizeTextBlock(value);
+  const normalized = stripTrailingLocationPhrase(normalizeTextBlock(value));
 
   if (!normalized) {
     return false;
@@ -1502,7 +1656,7 @@ function splitInlineCompanyRoleRemainder(value) {
   const tokens = normalized.split(/\s+/).filter(Boolean);
 
   for (let index = 1; index < tokens.length; index += 1) {
-    const companyName = tokens.slice(0, index).join(' ').trim();
+    const companyName = stripTrailingLocationPhrase(tokens.slice(0, index).join(' ').trim());
     const jobTitle = tokens.slice(index).join(' ').trim();
 
     if (looksLikeOrganizationText(companyName) && looksLikeCompactRoleTitleText(jobTitle) && !looksLikeCompanyLine(jobTitle)) {
@@ -1579,21 +1733,31 @@ function splitLeadingDateLine(value) {
   const normalized = normalizeDateRangeText(value);
   const match = normalized.match(YEAR_RANGE_PATTERN);
 
-  if (!match || typeof match.index !== 'number' || match.index !== 0) {
+  if (match && typeof match.index === 'number' && match.index === 0) {
+    const matchedRange = match[0].trim();
+    const remainder = normalized
+      .slice(match[0].length)
+      .replace(/^[|,/-]\s*/, '')
+      .trim();
+    const { startDate, endDate } = extractDateRange(matchedRange);
+
+    return {
+      startDate,
+      endDate,
+      remainder
+    };
+  }
+
+  const openEndedMatch = normalized.match(OPEN_ENDED_YEAR_RANGE_PATTERN);
+
+  if (!openEndedMatch || typeof openEndedMatch.index !== 'number' || openEndedMatch.index !== 0) {
     return null;
   }
 
-  const matchedRange = match[0].trim();
-  const remainder = normalized
-    .slice(match[0].length)
-    .replace(/^[|,/-]\s*/, '')
-    .trim();
-  const { startDate, endDate } = extractDateRange(matchedRange);
-
   return {
-    startDate,
-    endDate,
-    remainder
+    startDate: openEndedMatch[1] || '',
+    endDate: 'Present',
+    remainder: ''
   };
 }
 
@@ -1727,16 +1891,27 @@ function detectExperienceEntry(lines, index) {
   const nextLine = lines[index + 1] || '';
   const nextNextLine = lines[index + 2] || '';
   const dateCompanyRoleTriplet = detectDateCompanyRoleTriplet(lines, index);
+  const companyDateRoleTriplet = detectCompanyDateRoleTriplet(lines, index);
   const dateLineInlineEntry = detectDateLineThenInlineExperienceEntry(lines, index);
+  const dateContinuationEntry = detectDatedCompanyContinuationEntry(lines, index);
   const trailingDatedInlineEntry = detectTrailingInlineExperienceEntry(line);
   const datedInlineEntry = detectDatedInlineExperienceEntry(line);
+  const embeddedDateInlineEntry = detectEmbeddedDateExperienceEntry(line);
 
   if (dateCompanyRoleTriplet) {
     return dateCompanyRoleTriplet;
   }
 
+  if (companyDateRoleTriplet) {
+    return companyDateRoleTriplet;
+  }
+
   if (dateLineInlineEntry) {
     return dateLineInlineEntry;
+  }
+
+  if (dateContinuationEntry) {
+    return dateContinuationEntry;
   }
 
   if (trailingDatedInlineEntry) {
@@ -1749,6 +1924,13 @@ function detectExperienceEntry(lines, index) {
   if (datedInlineEntry) {
     return {
       ...datedInlineEntry,
+      cursor: index + 1
+    };
+  }
+
+  if (embeddedDateInlineEntry) {
+    return {
+      ...embeddedDateInlineEntry,
       cursor: index + 1
     };
   }
@@ -1834,17 +2016,18 @@ function detectDatedInlineExperienceEntry(value) {
   }
 
   const splitHeading = splitInlineExperienceHeading(datedLine.remainder);
+  const normalizedJobTitle = stripLeadingLocationPrefix(splitHeading.jobTitle);
 
   if (
-    !splitHeading.jobTitle ||
-    !looksLikeCompactRoleTitleText(splitHeading.jobTitle) ||
+    !normalizedJobTitle ||
+    !looksLikeCompactRoleTitleText(normalizedJobTitle) ||
     (!splitHeading.companyName && looksLikeProjectStyleHeading(datedLine.remainder))
   ) {
     return null;
   }
 
   return {
-    jobTitle: splitHeading.jobTitle,
+    jobTitle: normalizedJobTitle,
     companyName: splitHeading.companyName,
     startDate: datedLine.startDate,
     endDate: datedLine.endDate
@@ -1859,20 +2042,55 @@ function detectTrailingInlineExperienceEntry(value) {
   }
 
   const splitHeading = splitInlineExperienceHeading(trailingLine.remainder);
+  const normalizedJobTitle = stripLeadingLocationPrefix(splitHeading.jobTitle);
 
   if (
-    !splitHeading.jobTitle ||
-    !looksLikeCompactRoleTitleText(splitHeading.jobTitle) ||
+    !normalizedJobTitle ||
+    !looksLikeCompactRoleTitleText(normalizedJobTitle) ||
     (!splitHeading.companyName && looksLikeProjectStyleHeading(trailingLine.remainder))
   ) {
     return null;
   }
 
   return {
-    jobTitle: splitHeading.jobTitle,
+    jobTitle: normalizedJobTitle,
     companyName: splitHeading.companyName,
     startDate: trailingLine.startDate,
     endDate: trailingLine.endDate
+  };
+}
+
+function detectEmbeddedDateExperienceEntry(value) {
+  const normalized = normalizeDateRangeText(value);
+  const match = normalized.match(YEAR_RANGE_PATTERN);
+
+  if (!match || typeof match.index !== 'number' || match.index <= 0) {
+    return null;
+  }
+
+  const companyName = stripTrailingLocationPhrase(
+    normalized
+      .slice(0, match.index)
+      .replace(/[|,/-]\s*$/g, '')
+      .trim()
+  );
+  const jobTitle = stripLeadingLocationPrefix(
+    normalized
+      .slice(match.index + match[0].length)
+      .replace(/^[|,/-]\s*/, '')
+      .trim()
+  );
+  const { startDate, endDate } = extractDateRange(match[0]);
+
+  if (!companyName || !jobTitle || !looksLikeOrganizationText(companyName) || !looksLikeCompactRoleTitleText(jobTitle)) {
+    return null;
+  }
+
+  return {
+    jobTitle,
+    companyName,
+    startDate,
+    endDate
   };
 }
 
@@ -1900,6 +2118,84 @@ function detectDateLineThenInlineExperienceEntry(lines, index) {
   };
 }
 
+function detectCompanyDateRoleTriplet(lines, index) {
+  const companyLine = normalizeTextBlock(lines[index]);
+  const dateLine = splitLeadingDateLine(lines[index + 1] || '');
+  const roleLine = normalizeTextBlock(lines[index + 2] || '');
+
+  if (
+    !companyLine ||
+    !dateLine ||
+    dateLine.remainder ||
+    !roleLine ||
+    looksLikeExperienceNoiseLine(companyLine) ||
+    looksLikeCompactRoleTitleText(companyLine) ||
+    !(looksLikeCompanyLine(companyLine) || looksLikeOrganizationText(companyLine)) ||
+    !looksLikeCompactRoleTitleText(roleLine) ||
+    looksLikeCompanyLine(roleLine)
+  ) {
+    return null;
+  }
+
+  return {
+    jobTitle: roleLine,
+    companyName: stripTrailingLocationPhrase(companyLine),
+    startDate: dateLine.startDate,
+    endDate: dateLine.endDate,
+    cursor: index + 3
+  };
+}
+
+function detectDatedCompanyContinuationEntry(lines, index) {
+  const currentLine = normalizeTextBlock(lines[index]);
+  const nextLine = normalizeTextBlock(lines[index + 1] || '');
+  const roleLine = normalizeTextBlock(lines[index + 2] || '');
+  const roleContinuationLine = normalizeTextBlock(lines[index + 3] || '');
+  const datedLine = splitLeadingDateLine(currentLine);
+
+  if (
+    !datedLine ||
+    !datedLine.remainder ||
+    !nextLine ||
+    looksLikeExperienceNoiseLine(nextLine)
+  ) {
+    return null;
+  }
+
+  const companyName = stripTrailingLocationPhrase(`${datedLine.remainder} ${nextLine}`.trim());
+
+  if (!companyName || !looksLikeOrganizationText(companyName)) {
+    return null;
+  }
+
+  let jobTitle = '';
+  let cursor = index + 2;
+
+  if (roleLine && looksLikeCompactRoleTitleText(roleLine)) {
+    jobTitle = roleLine;
+    cursor = index + 3;
+
+    const combinedRole = [roleLine, roleContinuationLine].filter(Boolean).join(' ').trim();
+
+    if (roleContinuationLine && looksLikeCompactRoleTitleText(combinedRole)) {
+      jobTitle = combinedRole;
+      cursor = index + 4;
+    }
+  }
+
+  if (!jobTitle) {
+    return null;
+  }
+
+  return {
+    jobTitle,
+    companyName,
+    startDate: datedLine.startDate,
+    endDate: datedLine.endDate,
+    cursor
+  };
+}
+
 function detectDateCompanyRoleTriplet(lines, index) {
   const currentLine = normalizeTextBlock(lines[index]);
   const companyLine = normalizeTextBlock(lines[index + 1] || '');
@@ -1912,8 +2208,10 @@ function detectDateCompanyRoleTriplet(lines, index) {
     !companyLine ||
     !roleLine ||
     looksLikeExperienceNoiseLine(companyLine) ||
-    !looksLikeCompanyLine(companyLine) ||
-    !looksLikeCompactRoleTitleText(roleLine)
+    looksLikeCompactRoleTitleText(companyLine) ||
+    !(looksLikeCompanyLine(companyLine) || looksLikeOrganizationText(companyLine)) ||
+    !looksLikeCompactRoleTitleText(roleLine) ||
+    looksLikeCompanyLine(roleLine)
   ) {
     return null;
   }

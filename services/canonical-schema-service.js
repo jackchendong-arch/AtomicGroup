@@ -41,17 +41,24 @@ const GENERIC_ROLE_LABELS = new Set([
 
 const GENERIC_SECTION_LABELS = new Set([
   'candidate cv',
+  'candidate summary',
+  'confidential candidate report',
   'education',
+  'email',
+  'employment experience',
+  'end of report',
   'experience',
   'job description',
   'key projects',
   'languages',
+  'motivation',
   'overview',
   'professional experience',
   'projects',
   'requirements',
   'responsibilities',
   'skills',
+  'summary',
   'technical skills',
   'work experience'
 ]);
@@ -785,11 +792,12 @@ function chooseProjectEntries(sectionEntries = [], fallbackEntries = []) {
 }
 
 function chooseProjectEntriesWithSource(sectionEntries = [], fallbackEntries = []) {
+  const usableFallbackEntries = fallbackEntries.filter((entry) => !looksLikeSuspiciousProjectName(entry.project_name));
   const mergedByName = new Map();
 
   [
     ...sectionEntries.map((entry) => ({ entry, origin: 'section' })),
-    ...fallbackEntries.map((entry) => ({ entry, origin: 'fallback' }))
+    ...usableFallbackEntries.map((entry) => ({ entry, origin: 'fallback' }))
   ].forEach(({ entry, origin }) => {
     const key = normalizeKey(entry.project_name);
 
@@ -1271,7 +1279,7 @@ function shouldDropEmploymentNoiseEntry(entry = {}) {
     !companyName ||
     !jobTitle
   ) {
-    return false;
+    return !companyName && looksLikeGenericSectionLabel(jobTitle);
   }
 
   return (
@@ -1289,6 +1297,23 @@ function shouldDropEmploymentNoiseEntry(entry = {}) {
       )
     )
   );
+}
+
+function normalizeSelfEmployedEmploymentEntry(companyName, jobTitle) {
+  if (
+    !companyName &&
+    /^(?:independent|freelance|self-employed)\s+(?:consultant|contractor)$/i.test(jobTitle)
+  ) {
+    return {
+      companyName: 'Self-employed',
+      jobTitle
+    };
+  }
+
+  return {
+    companyName,
+    jobTitle
+  };
 }
 
 function parseDegreeAndField(degreeName) {
@@ -1360,8 +1385,12 @@ function normalizeEmploymentEntries(entries = [], cvBlocks = []) {
 
   return filtered
     .map((entry) => {
-      const companyName = cleanLine(entry.companyName);
-      const jobTitle = normalizeEmploymentJobTitleValue(entry.jobTitle);
+      const normalizedEntry = normalizeSelfEmployedEmploymentEntry(
+        cleanLine(entry.companyName),
+        normalizeEmploymentJobTitleValue(entry.jobTitle)
+      );
+      const companyName = normalizedEntry.companyName;
+      const jobTitle = normalizedEntry.jobTitle;
       const validationFlags = [];
 
       if (!isLikelyValidEmploymentEntry({

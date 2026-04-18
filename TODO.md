@@ -429,6 +429,7 @@ Mark a release complete only when the work is:
   - continue deterministic stage-2/3 hardening until the supported `Test10` corpus no longer leaves avoidable parser-caused `red` cases for employment and education extraction
   - explicitly fix remaining education/study-experience confusion such as `CV_Zhaihui_ZHANG_EN_202512.pdf`, where degree/school rows are still merged with adjacent lab/software study-experience text
   - close the remaining high-signal employment parser gaps in the supported `Test10` pack before treating factual extraction as production-ready
+  - add a final identity sanity pass for likely false-green mismatches surfaced by fixture evidence, so clean filename/header name conflicts do not slip through as `green`
   - keep generating per-fixture review artifacts under `debug/CV_blocks/` so parser changes remain reviewable
   - defer additional UI expansion until this factual stage is stable enough to support Word-output quality confidently
 

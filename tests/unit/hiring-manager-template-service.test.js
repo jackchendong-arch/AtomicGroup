@@ -705,6 +705,28 @@ test('extractEducationEntries parses single-line institution-degree-date rows wi
   ]);
 });
 
+test('extractEducationEntries parses summary-style degree-date-institution lines', () => {
+  const educationEntries = extractEducationEntries([
+    'Bachelor, 2009-2013 Guangdong University of Finance, China',
+    'Master, 2013-2015 The George Washington University, Washington DC, USA'
+  ]);
+
+  assert.deepEqual(educationEntries, [
+    {
+      degreeName: 'Bachelor',
+      university: 'Guangdong University of Finance, China',
+      startYear: '2009',
+      endYear: '2013'
+    },
+    {
+      degreeName: 'Master',
+      university: 'The George Washington University, Washington DC, USA',
+      startYear: '2013',
+      endYear: '2015'
+    }
+  ]);
+});
+
 test('extractExperienceHistory parses date-company-role triplets from report-style employment sections', () => {
   const employmentHistory = extractExperienceHistory([
     'Jun 2022 – Mar 2025',
@@ -734,6 +756,59 @@ test('extractExperienceHistory parses date-company-role triplets from report-sty
       endDate: '2022',
       responsibilities: [
         'Designed SaaS-based AIOps platform integrating Prometheus and Zabbix.'
+      ]
+    }
+  ]);
+});
+
+test('extractExperienceHistory parses company-date-role lines with embedded dates and location text', () => {
+  const employmentHistory = extractExperienceHistory([
+    'Bet365 Nov 2022 - April 2025, Manchester Senior Test Engineer',
+    'LMS August 2021— Nov 2022,Manchester Senior Engineer - QA (Contract)',
+    'July 2022 - Feb 2025 DoorDash, San Francisco, California, USA Software Engineer'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Senior Test Engineer',
+      companyName: 'Bet365',
+      startDate: '2022',
+      endDate: '2025',
+      responsibilities: []
+    },
+    {
+      jobTitle: 'Senior Engineer - QA (Contract)',
+      companyName: 'LMS',
+      startDate: '2021',
+      endDate: '2022',
+      responsibilities: []
+    },
+    {
+      jobTitle: 'Software Engineer',
+      companyName: 'DoorDash',
+      startDate: '2022',
+      endDate: '2025',
+      responsibilities: []
+    }
+  ]);
+});
+
+test('extractExperienceHistory parses open-ended date-company-role triplets from report summaries', () => {
+  const employmentHistory = extractExperienceHistory([
+    'April 2022 –',
+    'Intel',
+    'Senior Infrastructure Service Engineer',
+    'Software release system enabling and roadmap definition.'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Senior Infrastructure Service Engineer',
+      companyName: 'Intel',
+      startDate: '2022',
+      endDate: 'Present',
+      responsibilities: [
+        'Software release system enabling and roadmap definition.'
       ]
     }
   ]);
@@ -1016,4 +1091,47 @@ test('extractDocumentDerivedProfile infers delayed English section headings with
     ),
     false
   );
+});
+
+test('extractDocumentDerivedProfile does not promote education or certificate rows into fallback projects for report-style CVs', () => {
+  const profile = extractDocumentDerivedProfile({
+    cvDocument: {
+      text: [
+        'Confidential Candidate Report',
+        'Name: Peng Wang王鹏',
+        'Position: Associate Director, Software Engineering Specialist',
+        'Candidate Summary',
+        'Name',
+        'Peng Wang王鹏',
+        'Current Residence',
+        'Chengdu',
+        'Education',
+        '2001-2004',
+        'Beihang University (985)',
+        'Master of Computer-Aided Design and Manufacturing',
+        '1997-2001',
+        'Hefei University of Technology (211)',
+        'Bachelor of Materials Science and Engineering',
+        'Certificate',
+        'CET-6 Alibaba Cloud ACP',
+        'Summary',
+        'Solid foundation in software testing theory; proficient in UI, API, and performance test automation.',
+        'Employment Experience',
+        '2021.10-2025.10',
+        'Huawei',
+        'Test System Engineer'
+      ].join('\n'),
+      file: {
+        name: 'Peng Wang王鹏-Test Automation Architect-Atomic-2026.1.30.docx'
+      }
+    },
+    jdDocument: {
+      text: 'Job Title: Senior Software Engineering Manager : 0000K19E',
+      file: {
+        name: 'HSBC JD - Senior Software Engineering Manager.docx'
+      }
+    }
+  });
+
+  assert.deepEqual(profile.projectExperiences, []);
 });

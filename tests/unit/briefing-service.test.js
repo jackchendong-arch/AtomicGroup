@@ -1121,7 +1121,7 @@ test('extractCandidateName keeps explicit Chinese resume headers authoritative e
     '【ios技术专家_西安 30-50K】王虎啸 5年.pdf'
   );
 
-  const zhangYingName = extractCandidateName(
+  const zhangJingName = extractCandidateName(
     [
       '个人简历',
       '张滢',
@@ -1154,7 +1154,7 @@ test('extractCandidateName keeps explicit Chinese resume headers authoritative e
   );
 
   assert.equal(wangHuxiaoName, '王虎啸');
-  assert.equal(zhangYingName, '张滢');
+  assert.equal(zhangJingName, '张晶');
   assert.equal(zhaoName, '赵先生');
   assert.equal(huangName, '黄章成');
 });

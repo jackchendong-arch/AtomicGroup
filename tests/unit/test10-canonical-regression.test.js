@@ -101,7 +101,7 @@ const TEST10_PARSER_HARDENING_EXPECTATIONS = {
     expectedEmploymentCompanies: ['多益网络', '格步科技（北京）有限公司', '北京度友信息技术有限公司']
   },
   '【JAVA engineer_西安 40-60K】张晶 10年以上.pdf': {
-    expectedCandidateName: '张滢',
+    expectedCandidateName: '张晶',
     forbiddenIssueCodes: [
       'candidate_name_missing_or_generic',
       'candidate_name_embedded_metadata',

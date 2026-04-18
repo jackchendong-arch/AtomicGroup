@@ -1614,6 +1614,7 @@ Approved later factual-completion boundary before `Release 7C` is considered clo
 - continue deterministic stage-2/3 hardening until the supported regression corpus no longer carries avoidable parser-caused `red` states for employment and education extraction
 - explicitly separate pure education facts from adjacent study, lab, software, certification, or credential experience text in education sections such as `CV_Zhaihui_ZHANG_EN_202512.pdf`
 - continue deterministic employment-history cleanup for the remaining supported `Test10` parser outliers before treating the canonical candidate model as reliable enough for final Word-fidelity work
+- add a final identity sanity pass for likely false-green mismatches surfaced by fixture evidence, so clean filename/header name conflicts are surfaced or corrected before the canonical candidate model is treated as trustworthy
 - keep fixture review artifacts and triage outputs as the review mechanism for stage-2/3 closure
 - defer further UI workflow expansion until the factual spine is stable enough to support Word-output quality as the primary metric
 

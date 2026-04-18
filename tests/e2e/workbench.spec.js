@@ -17,6 +17,7 @@ const sampleWorkspaceJordanCvPath = path.join(sampleWorkspacePath, 'CV-jordan.tx
 const smallWorkspacePath = path.join(appRoot, 'samples', 'two-file-workspace');
 const smallWorkspaceJdPath = path.join(smallWorkspacePath, 'JD-small.txt');
 const smallWorkspaceCvPath = path.join(smallWorkspacePath, 'CV-small.txt');
+const legacyDocCvPath = '/Users/jack/Dev/Test/AtomicGroup/Test10/10784-吴云-Auto Testing.doc';
 const unsupportedImagePath = path.join(appRoot, 'samples', 'unsupported-image.png');
 const defaultSystemPrompt =
   'You are an executive search recruiter assistant. Produce grounded, evidence-based candidate profile summaries for hiring managers. Do not invent facts. Call out strengths and gaps clearly.';
@@ -535,6 +536,24 @@ test.describe('Candidate Match Workbench', () => {
     await page.locator('#open-cv-tab').click();
     await expect(page.locator('#cv-preview-status')).toHaveText(/Ready|Warning/i);
     await expect(page.locator('#cv-preview-text')).toContainText('Jordan Lee');
+  });
+
+  test('imports legacy .doc CVs through the manual import path when the fixture is available', async () => {
+    const legacyDocAvailable = await fs.access(legacyDocCvPath).then(() => true).catch(() => false);
+    test.skip(!legacyDocAvailable, 'Legacy .doc fixture is not available on this machine.');
+
+    await page.locator('#open-manual-context-tab').click();
+    await page.evaluate(async ({ slot, filePath }) => {
+      await window.__atomicgroupTest.importDocument(slot, filePath);
+    }, {
+      slot: 'cv',
+      filePath: legacyDocCvPath
+    });
+
+    await expect(page.locator('#operation-failure-panel')).toBeHidden();
+    await page.locator('#open-cv-tab').click();
+    await expect(page.locator('#cv-preview-status')).toHaveText(/Warning/i);
+    await expect(page.locator('#cv-preview-text')).toContainText('吴云');
   });
 
   test('shows a clear import issue for unsupported source files', async () => {

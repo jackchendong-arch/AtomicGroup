@@ -37,6 +37,26 @@ test('importDocument records total timing for unsupported files', async () => {
 });
 
 test(
+  'importDocument converts legacy .doc files through the intake boundary when textutil is available',
+  {
+    skip: fs.existsSync('/Users/jack/Dev/Test/AtomicGroup/Test10/10784-吴云-Auto Testing.doc') &&
+      commandExists('textutil')
+      ? false
+      : 'Legacy .doc fixture or textutil is not available on this machine.'
+  },
+  async () => {
+    const result = await importDocument('/Users/jack/Dev/Test/AtomicGroup/Test10/10784-吴云-Auto Testing.doc');
+
+    assert.equal(result.error, null);
+    assert.equal(result.file.extension, '.doc');
+    assert.match(result.text, /Name:\s*吴云/i);
+    assert.match((result.warnings || []).join('\n'), /legacy Word \(\.doc\) file was converted/i);
+    assert.equal(typeof result.performance?.extractMs, 'number');
+    assert.equal(typeof result.performance?.normalizeMs, 'number');
+  }
+);
+
+test(
   'importDocument uses OCR fallback for weak image-based PDFs when local OCR tooling is available',
   {
     skip: fs.existsSync(path.join(fixtureRoot, 'CV4-3.pdf')) &&

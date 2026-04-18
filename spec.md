@@ -1602,11 +1602,18 @@ Approved later implementation slice (`7C.4`) boundary:
 - keep red cases blocked until the required factual issue is resolved or an explicit allowed action exists
 - defer free-form schema editing
 
-Approved next factual-completion boundary before `Release 7C` is considered closed:
+Approved next implementation slice (`7C.5`) boundary:
+- support legacy `.doc` CV intake at the import boundary
+- convert legacy `.doc` files into the same text and normalized-source contract used by `.pdf`, `.docx`, and `.txt`
+- move the current legacy `.doc` `Test10` cases from unsupported smoke into the stage-2/3 factual regression path where conversion succeeds
+- keep downstream canonical extraction, validation, and artifact generation format-agnostic and unchanged
+- preserve fixture review artifacts and triage outputs for converted legacy CVs under the existing `debug/CV_blocks/` structure
+- defer additional UI work and Word adapter work
+
+Approved later factual-completion boundary before `Release 7C` is considered closed:
 - continue deterministic stage-2/3 hardening until the supported regression corpus no longer carries avoidable parser-caused `red` states for employment and education extraction
 - explicitly separate pure education facts from adjacent study, lab, software, certification, or credential experience text in education sections such as `CV_Zhaihui_ZHANG_EN_202512.pdf`
 - continue deterministic employment-history cleanup for the remaining supported `Test10` parser outliers before treating the canonical candidate model as reliable enough for final Word-fidelity work
-- decide the intake strategy for legacy `.doc` CVs so they can enter the same normalized extraction and canonical-validation path instead of remaining unsupported smoke-only cases
 - keep fixture review artifacts and triage outputs as the review mechanism for stage-2/3 closure
 - defer further UI workflow expansion until the factual spine is stable enough to support Word-output quality as the primary metric
 

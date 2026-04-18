@@ -1,4 +1,4 @@
-const FILE_EXTENSION_PATTERN = /\.(pdf|docx|txt)$/i;
+const FILE_EXTENSION_PATTERN = /\.(pdf|doc|docx|txt)$/i;
 
 const GENERIC_CANDIDATE_LABELS = new Set([
   'candidate',

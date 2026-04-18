@@ -13,6 +13,15 @@ const TEST10_NOISE_FILE_NAMES = new Set([
 
 const TEST10_CURATED_CASES = [
   {
+    fileName: '10784-吴云-Auto Testing.doc',
+    expectedCandidateName: '吴云',
+    expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
+    expectedState: 'green',
+    expectedIssueCodes: [],
+    minEmploymentHistory: 1,
+    minProjects: 0
+  },
+  {
     fileName: 'Peng Wang王鹏-Test Automation Architect-Atomic-2026.1.30.docx',
     expectedCandidateName: 'Peng Wang王鹏',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',

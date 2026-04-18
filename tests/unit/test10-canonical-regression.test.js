@@ -515,6 +515,16 @@ test(
       ),
       'The manifest should surface the selected candidate name for 殷昱的简历.pdf'
     );
+    assert.ok(
+      reloaded.entries.some(
+        (entry) =>
+          entry.fileName === '10784-吴云-Auto Testing.doc' &&
+          entry.status === 'supported' &&
+          entry.selectedCandidateName === '吴云' &&
+          entry.validationState === 'green'
+      ),
+      'The manifest should include converted legacy .doc fixtures in supported canonical coverage.'
+    );
     assert.equal(reloadedTriage.fixturePack, 'Test10');
     assert.equal(reloadedTriage.counts.supported, getSupportedTest10CvCases().length);
     assert.equal(reloadedTriage.counts.validationStates.green >= 1, true);

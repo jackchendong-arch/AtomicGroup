@@ -7,13 +7,14 @@ const { promisify } = require('node:util');
 const mammoth = require('mammoth');
 const { PDFParse } = require('pdf-parse');
 
-const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.docx', '.txt']);
+const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.txt']);
 const REFERENCE_TEMPLATE_EXTENSIONS = new Set(['.md']);
 const execFileAsync = promisify(execFile);
 const PDF_PAGE_MARKER_PATTERN = /^[-–—]*\s*\d+\s+of\s+\d+\s*[-–—]*$/i;
 const PDF_OPAQUE_ARTIFACT_PATTERN = /^(?:~+|(?=.*\d)(?=.*[A-Za-z])(?=.*[_~-])[A-Za-z0-9_~-]{20,})$/;
 const PDF_OCR_PAGE_LIMIT = 6;
 const OCR_LANGUAGE = 'eng+chi_sim';
+let legacyWordConverterCheckPromise = null;
 
 function startTimer() {
   const startedAt = process.hrtime.bigint();
@@ -85,6 +86,10 @@ function createWarnings(text, extension, extractionMeta = {}) {
     warnings.push('OCR fallback was used for this PDF because the embedded text looked incomplete.');
   }
 
+  if (extension === '.doc' && extractionMeta.usedLegacyWordConverter) {
+    warnings.push('This legacy Word (.doc) file was converted during import. Review the extracted text before drafting.');
+  }
+
   return warnings;
 }
 
@@ -99,6 +104,29 @@ async function extractTextFromMd(filePath) {
 async function extractTextFromDocx(filePath) {
   const result = await mammoth.extractRawText({ path: filePath });
   return result.value;
+}
+
+async function checkLegacyWordConverterAvailable() {
+  if (!legacyWordConverterCheckPromise) {
+    legacyWordConverterCheckPromise = execFileAsync('textutil', ['-help'], {
+      maxBuffer: 2 * 1024 * 1024
+    })
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  return legacyWordConverterCheckPromise;
+}
+
+async function extractTextFromDoc(filePath) {
+  const converterAvailable = await checkLegacyWordConverterAvailable();
+
+  if (!converterAvailable) {
+    throw new Error('Legacy Word (.doc) import requires the macOS textutil converter on this machine.');
+  }
+
+  const output = await getCommandOutput('textutil', ['-convert', 'txt', '-stdout', filePath]);
+  return output;
 }
 
 async function extractTextFromPdf(filePath) {
@@ -305,6 +333,10 @@ async function extractText(filePath, extension) {
     return extractTextFromDocx(filePath);
   }
 
+  if (extension === '.doc') {
+    return extractTextFromDoc(filePath);
+  }
+
   if (extension === '.pdf') {
     return extractTextFromPdf(filePath);
   }
@@ -314,7 +346,7 @@ async function extractText(filePath, extension) {
 
 async function importDocumentWithOptions(filePath, {
   supportedExtensions = SUPPORTED_EXTENSIONS,
-  unsupportedMessage = 'Unsupported file type. Release 1 accepts PDF, DOCX, and TXT only.'
+  unsupportedMessage = 'Unsupported file type. Source documents accept PDF, DOC, DOCX, and TXT only.'
 } = {}) {
   const totalTimer = startTimer();
   const resolvedPath = path.resolve(filePath);
@@ -367,6 +399,13 @@ async function importDocumentWithOptions(filePath, {
     const normalizeTimer = startTimer();
     const improvedPdfExtraction = extension === '.pdf'
       ? await improvePdfExtractionIfNeeded(resolvedPath, extractedText)
+      : extension === '.doc'
+        ? {
+          text: extractedText,
+          weakImageBasedPdf: false,
+          usedOcrFallback: false,
+          usedLegacyWordConverter: true
+        }
       : {
         text: extractedText,
         weakImageBasedPdf: false,

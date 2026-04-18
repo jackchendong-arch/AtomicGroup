@@ -417,11 +417,18 @@ Mark a release complete only when the work is:
   - persist those targeted review decisions with the generated draft and recent-work snapshots
   - keep red cases blocked until the required factual issue is resolved or an explicit allowed action exists
   - no free-form schema editing yet
-- Approved next factual-completion slice before moving beyond Release `7C` should cover:
+- Approved `7C.5` slice should cover:
+  - support legacy `.doc` CV intake at the import boundary
+  - convert `.doc` files into the same text and normalized-source contract used by `.pdf`, `.docx`, and `.txt`
+  - move the current legacy `.doc` `Test10` smoke-only cases into the factual stage-2/3 regression path where conversion succeeds
+  - keep downstream canonical extraction, validation, and artifact generation unchanged
+  - keep producing review artifacts under `debug/CV_blocks/` for converted legacy CVs
+  - no new UI work yet
+  - no Word adapter work yet
+- Approved later factual-completion slice before moving beyond Release `7C` should cover:
   - continue deterministic stage-2/3 hardening until the supported `Test10` corpus no longer leaves avoidable parser-caused `red` cases for employment and education extraction
   - explicitly fix remaining education/study-experience confusion such as `CV_Zhaihui_ZHANG_EN_202512.pdf`, where degree/school rows are still merged with adjacent lab/software study-experience text
   - close the remaining high-signal employment parser gaps in the supported `Test10` pack before treating factual extraction as production-ready
-  - decide and implement the `.doc` intake strategy so legacy Word CVs can enter the same factual pipeline instead of stopping at unsupported-import smoke
   - keep generating per-fixture review artifacts under `debug/CV_blocks/` so parser changes remain reviewable
   - defer additional UI expansion until this factual stage is stable enough to support Word-output quality confidently
 

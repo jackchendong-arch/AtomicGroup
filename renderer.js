@@ -268,7 +268,7 @@ function createEmptyDocumentSlot(slot) {
   };
 }
 
-const SUPPORTED_SOURCE_EXTENSIONS = new Set(['.pdf', '.docx', '.txt']);
+const SUPPORTED_SOURCE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.txt']);
 
 function formatExtension(extension) {
   if (!extension || extension === 'unknown') {
@@ -417,7 +417,7 @@ function buildUnsupportedImportResult(filePath) {
     text: '',
     previewText: '',
     warnings: [],
-    error: 'Unsupported file type. Only PDF, DOCX, and TXT files can be loaded as source documents.'
+    error: 'Unsupported file type. Only PDF, DOC, DOCX, and TXT files can be loaded as source documents.'
   };
 }
 

@@ -149,7 +149,7 @@ test(
 );
 
 test(
-  'Role4 CV4-4 fails the Word report quality gate for generic candidate identity and misclassified employment',
+  'Role4 CV4-4 fails the Word report quality gate for the remaining generic candidate identity blocker',
   { skip: fs.existsSync(path.join(ROLE4_ROOT, 'CV4-4.pdf')) && fs.existsSync(JD4_PATH) ? false : 'Role4 fixture files are not available on this machine.' },
   async () => {
     const templateData = await loadRole4TemplateData('CV4-4.pdf');
@@ -157,6 +157,5 @@ test(
 
     assert.equal(validation.isValid, false);
     assert(validation.blockers.some((message) => /candidate name looks generic/i.test(message)));
-    assert(validation.blockers.some((message) => /company name was captured as the role title/i.test(message)));
   }
 );

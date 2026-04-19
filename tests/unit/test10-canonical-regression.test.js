@@ -86,6 +86,15 @@ const TEST10_IDENTITY_EXPECTATIONS = {
       'candidate_name_embedded_role_or_banner'
     ],
     expectedState: 'green'
+  },
+  '潘永高-软件平台研发负责人-Atomic-CV.doc': {
+    expectedCandidateName: '潘永高',
+    forbiddenIssueCodes: [
+      'candidate_name_missing_or_generic',
+      'candidate_name_embedded_metadata',
+      'candidate_name_heading_or_table_header',
+      'candidate_name_embedded_role_or_banner'
+    ]
   }
 };
 const TEST10_PARSER_HARDENING_EXPECTATIONS = {
@@ -131,8 +140,7 @@ const TEST10_PARSER_HARDENING_EXPECTATIONS = {
       'candidate_name_heading_or_table_header',
       'candidate_name_embedded_role_or_banner',
       'education_entry_malformed'
-    ],
-    expectedIssueCodes: ['employment_entry_missing_core_fields']
+    ]
   },
   '【高级IOS开发工程师(Swift)-高福利外企_广州 40-50K】黄章成 10年以上.pdf': {
     expectedCandidateName: '黄章成',
@@ -144,6 +152,14 @@ const TEST10_PARSER_HARDENING_EXPECTATIONS = {
       'education_entry_malformed'
     ],
     expectedEmploymentCompanies: ['香港币界网有限公司', '深圳麦客存储科技有限公司', '矩阵元技术（深圳）有限公司']
+  },
+  '季晖 Hui Ji-GSC-B5- Financial Engineering-GRA-Atomic CV-2026.3.19.docx': {
+    expectedCandidateName: 'Ji Hui季晖',
+    forbiddenIssueCodes: [
+      'employment_entry_missing_core_fields',
+      'education_entry_malformed'
+    ],
+    expectedEmploymentCompanies: ['Intel', 'SAP Shanghai Labs', 'Alcatel-Lucent, Shanghai Bell']
   }
 };
 

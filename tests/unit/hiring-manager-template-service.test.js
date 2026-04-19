@@ -761,6 +761,54 @@ test('extractExperienceHistory parses date-company-role triplets from report-sty
   ]);
 });
 
+test('extractExperienceHistory parses tilde-separated date-company-role triplets from converted legacy CVs', () => {
+  const employmentHistory = extractExperienceHistory([
+    '2010 ~ 2025',
+    'PwC Service Deliver Center Shanghai',
+    'Senior Test Manager',
+    '2009 ~ 2010',
+    'HP',
+    'Testing Lead'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Senior Test Manager',
+      companyName: 'PwC Service Deliver Center Shanghai',
+      startDate: '2010',
+      endDate: '2025',
+      responsibilities: []
+    },
+    {
+      jobTitle: 'Testing Lead',
+      companyName: 'HP',
+      startDate: '2009',
+      endDate: '2010',
+      responsibilities: []
+    }
+  ]);
+});
+
+test('extractExperienceHistory strips decorative bullets before parsing Chinese date-led employment rows', () => {
+  const employmentHistory = extractExperienceHistory([
+    ' 2021.2—2021.8 一起教育科技 测试 lead',
+    '主要工作：',
+    '推进测试计划与交付。'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: '测试 lead',
+      companyName: '一起教育科技',
+      startDate: '2021',
+      endDate: '2021',
+      responsibilities: [
+        '主要工作： 推进测试计划与交付。'
+      ]
+    }
+  ]);
+});
+
 test('extractExperienceHistory parses company-date-role lines with embedded dates and location text', () => {
   const employmentHistory = extractExperienceHistory([
     'Bet365 Nov 2022 - April 2025, Manchester Senior Test Engineer',
@@ -793,6 +841,24 @@ test('extractExperienceHistory parses company-date-role lines with embedded date
   ]);
 });
 
+test('extractExperienceHistory strips location suffixes from company lines in date-company-role triplets', () => {
+  const employmentHistory = extractExperienceHistory([
+    'Jul 2021 – Mar 2022',
+    'Slyp|Sydney,Australia',
+    'Senior DevOps Engineer'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Senior DevOps Engineer',
+      companyName: 'Slyp',
+      startDate: '2021',
+      endDate: '2022',
+      responsibilities: []
+    }
+  ]);
+});
+
 test('extractExperienceHistory parses open-ended date-company-role triplets from report summaries', () => {
   const employmentHistory = extractExperienceHistory([
     'April 2022 –',
@@ -809,6 +875,165 @@ test('extractExperienceHistory parses open-ended date-company-role triplets from
       endDate: 'Present',
       responsibilities: [
         'Software release system enabling and roadmap definition.'
+      ]
+    }
+  ]);
+});
+
+test('extractExperienceHistory parses labeled Time/Company/Position employment rows from consultant reports', () => {
+  const employmentHistory = extractExperienceHistory([
+    'Time: 2019.08 – 2025.10',
+    'Company:Tencent',
+    'Position: iOS engineer',
+    'Responsibility: Develop and maintain the core business and framework of Mobile QQ.',
+    'Time: 2018.04 – 2018.12',
+    'Company: Zhizhe Tianxia',
+    'Position: iOS engineer',
+    'Responsibility: Develop and maintain Zhihu modules.'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'iOS engineer',
+      companyName: 'Tencent',
+      startDate: '2019',
+      endDate: '2025',
+      responsibilities: [
+        'Responsibility: Develop and maintain the core business and framework of Mobile QQ.'
+      ]
+    },
+    {
+      jobTitle: 'iOS engineer',
+      companyName: 'Zhizhe Tianxia',
+      startDate: '2018',
+      endDate: '2018',
+      responsibilities: [
+        'Responsibility: Develop and maintain Zhihu modules.'
+      ]
+    }
+  ]);
+});
+
+test('extractExperienceHistory ignores leading candidate-summary metadata and education rows in report-style sections', () => {
+  const employmentHistory = extractExperienceHistory([
+    'Current Residence',
+    'Dalian, Liaoning',
+    'Language',
+    'Mandarin English',
+    'Education',
+    '2004.09-2008.07 Harbin Institute of Technology Bachelor’s Degree in Information and Computing Science',
+    'Certificate',
+    'Certified Scrum Master (CSM) AFP – Associate Financial Planner',
+    '2012.05-2024.12',
+    'Fidelity(Dalian) Business Services Co., Ltd.',
+    'Senior Delivery Manager',
+    'Led the end-to-end delivery of Fidelity’s digital experience platform.'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Senior Delivery Manager',
+      companyName: 'Fidelity(Dalian) Business Services Co., Ltd.',
+      startDate: '2012',
+      endDate: '2024',
+      responsibilities: [
+        'Led the end-to-end delivery of Fidelity’s digital experience platform.'
+      ]
+    }
+  ]);
+});
+
+test('extractExperienceHistory can recover dated employment rows from a single multiline experience block', () => {
+  const employmentHistory = extractExperienceHistory([
+    [
+      '姓名：王翔 性别：男',
+      '基本信息',
+      '5. 2021 年：入选华为 GTS 代码百强',
+      '华为技术有限公司 | 2021.10 - 至今',
+      '（2）网络安全工程师 / DevOps 运维工程师 / Python 开发工程师',
+      '- 担任华为 NIS 体系网络安全应急响应接口人',
+      '2. 德科（Adecco） | 2020.03 - 2021.10',
+      'DevOps 自动化运维工程师 / Python 开发工程师'
+    ].join('\n')
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: '（2）网络安全工程师 / DevOps 运维工程师 / Python 开发工程师',
+      companyName: '华为技术有限公司',
+      startDate: '2021',
+      endDate: '至今',
+      responsibilities: [
+        '担任华为 NIS 体系网络安全应急响应接口人'
+      ]
+    },
+    {
+      jobTitle: 'DevOps 自动化运维工程师 / Python 开发工程师',
+      companyName: '德科（Adecco）',
+      startDate: '2020',
+      endDate: '2021',
+      responsibilities: []
+    }
+  ]);
+});
+
+test('extractExperienceHistory trims inline narrative tails from dated company-role lines', () => {
+  const employmentHistory = extractExperienceHistory([
+    '2019 - 2021 Lumi United Technology Co., Ltd. Android Engineer Designed and implemented a React Native plugin solution for the AqaraHome app smart lock module.',
+    'Developed key features for multiple smart lock models.'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Android Engineer',
+      companyName: 'Lumi United Technology Co., Ltd.',
+      startDate: '2019',
+      endDate: '2021',
+      responsibilities: [
+        'Designed and implemented a React Native plugin solution for the AqaraHome app smart lock module.',
+        'Developed key features for multiple smart lock models.'
+      ]
+    }
+  ]);
+});
+
+test('extractExperienceHistory parses company-role-date triplets when the date line only adds location text', () => {
+  const employmentHistory = extractExperienceHistory([
+    'Ancient8 (Web3 / Gaming Platform)',
+    'Senior DevOps Engineer | Team Lead (China)',
+    'Dec 2022 – Mar 2024 (Led DevOps Team) Mar 2024 – Present (Sole DevOps Engineer) Shenzhen, China',
+    'Built and operated AWS infrastructure for gaming and Web3 services.'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: 'Senior DevOps Engineer | Team Lead (China)',
+      companyName: 'Ancient8 (Web3 / Gaming Platform)',
+      startDate: '2022',
+      endDate: '2024',
+      responsibilities: [
+        'Built and operated AWS infrastructure for gaming and Web3 services.'
+      ]
+    }
+  ]);
+});
+
+test('extractExperienceHistory rejects companyless dated task bullets as employment entries', () => {
+  const employmentHistory = extractExperienceHistory([
+    '2021.9—现在 newsbreak 测试开发组长',
+    '主要工作：',
+    '1）流量回放框架',
+    '2021 使用 jmeter+jenkins 构建性能测试 job，用于 server 端 http 请求的压测任务'
+  ]);
+
+  assert.deepEqual(employmentHistory, [
+    {
+      jobTitle: '测试开发组长',
+      companyName: 'newsbreak',
+      startDate: '2021',
+      endDate: '现在',
+      responsibilities: [
+        '主要工作： 1）流量回放框架 2021 使用 jmeter+jenkins 构建性能测试 job，用于 server 端 http 请求的压测任务'
       ]
     }
   ]);

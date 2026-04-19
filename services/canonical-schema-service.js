@@ -694,13 +694,20 @@ function shouldDropEducationNoiseEntry(entry = {}) {
 
 function scoreEmploymentEntries(entries = []) {
   return entries.reduce((score, entry) => {
-    const jobTitle = cleanLine(entry.jobTitle);
-    const companyName = cleanLine(entry.companyName);
+    let jobTitle = normalizeEmploymentJobTitleValue(entry.jobTitle);
+    let companyName = normalizeEmploymentCompanyNameValue(entry.companyName);
+    ({ companyName, jobTitle } = repairEmploymentSectionHeadingLeak(companyName, jobTitle));
+    ({ companyName, jobTitle } = repairEmploymentCompanySuffixLeak(companyName, jobTitle));
+
     const combined = cleanLine([jobTitle, companyName].join(' '));
     const responsibilityCount = Array.isArray(entry.responsibilities) ? entry.responsibilities.filter(Boolean).length : 0;
     const hasDates = Boolean(cleanLine(entry.startDate) || cleanLine(entry.endDate));
     const hasCoreFields = Boolean(jobTitle && companyName);
-    const valid = isLikelyValidEmploymentEntry(entry);
+    const valid = isLikelyValidEmploymentEntry({
+      ...entry,
+      companyName,
+      jobTitle
+    });
 
     if (!combined && !hasDates) {
       return score;
@@ -728,7 +735,63 @@ function scoreEmploymentEntries(entries = []) {
 }
 
 function chooseEmploymentEntries(sectionEntries = [], fallbackEntries = [], useSectionBoundary = false) {
+  const sectionStructuredCount = sectionEntries.filter((entry) => {
+    const jobTitle = cleanLine(entry.jobTitle);
+    const companyName = cleanLine(entry.companyName);
+    const hasDates = Boolean(cleanLine(entry.startDate) || cleanLine(entry.endDate));
+
+    return Boolean(jobTitle && companyName && hasDates);
+  }).length;
+  const fallbackBrokenCount = fallbackEntries.filter((entry) => {
+    const jobTitle = cleanLine(entry.jobTitle);
+    const companyName = cleanLine(entry.companyName);
+
+    return !jobTitle || !companyName;
+  }).length;
+
   if (!useSectionBoundary) {
+    if (sectionEntries.length === 0) {
+      return fallbackEntries.length > 0 ? fallbackEntries : [];
+    }
+
+    if (fallbackEntries.length === 0) {
+      return sectionEntries;
+    }
+
+    const sectionScore = scoreEmploymentEntries(sectionEntries);
+    const fallbackScore = scoreEmploymentEntries(fallbackEntries);
+    if (
+      sectionScore.validCount > 0 &&
+      fallbackScore.malformedCount >= sectionScore.malformedCount + 2 &&
+      sectionScore.validCount >= Math.max(2, fallbackScore.validCount - 1)
+    ) {
+      return sectionEntries;
+    }
+
+    if (
+      sectionScore.validCount >= 3 &&
+      sectionScore.malformedCount === 0 &&
+      fallbackScore.malformedCount > 0
+    ) {
+      return sectionEntries;
+    }
+
+    if (
+      sectionScore.validCount >= 3 &&
+      sectionScore.malformedCount === 0 &&
+      fallbackScore.malformedCount >= 2 &&
+      fallbackScore.validCount <= sectionScore.validCount + 2
+    ) {
+      return sectionEntries;
+    }
+
+    if (
+      sectionStructuredCount >= 3 &&
+      fallbackBrokenCount >= 2
+    ) {
+      return sectionEntries;
+    }
+
     return fallbackEntries.length > 0 ? fallbackEntries : [];
   }
 
@@ -747,6 +810,13 @@ function chooseEmploymentEntries(sectionEntries = [], fallbackEntries = [], useS
     return sectionScore.totalScore >= fallbackScore.totalScore
       ? sectionEntries
       : fallbackEntries;
+  }
+
+  if (
+    sectionStructuredCount >= 3 &&
+    fallbackBrokenCount >= 2
+  ) {
+    return sectionEntries;
   }
 
   if (sectionScore.validCount !== fallbackScore.validCount) {
@@ -971,6 +1041,41 @@ function extractCanonicalProjectEntries(projectBlocks = []) {
   return [...bestEntryByName.values()];
 }
 
+function shouldUseExperienceBlockForExtraction(block = {}) {
+  const text = buildBlockExtractionText(block);
+  const lines = text.split('\n').map((line) => cleanLine(line)).filter(Boolean);
+
+  if (lines.length === 0) {
+    return false;
+  }
+
+  const joined = lines.slice(0, 12).join(' ');
+  const firstLine = lines[0];
+  const hasDateRange = lines.some((line) => /(?:19|20)\d{2}.*(?:19|20)\d{2}|(?:19|20)\d{2}.*(?:present|current|now|至今|现在)/i.test(line));
+  const hasSummaryProfileSignal =
+    /^(?:candidate summary|summary|personal information|个人信息|基本信息)$/i.test(firstLine) ||
+    /\b(?:candidate summary|name|gender|nationality|current residence|year of birth|marital status|language|education|certificate|motivation|availability)\b[:：]?/i.test(joined);
+  const hasEducationSignal =
+    /\b(?:bachelor|master|phd|degree|diploma|university|college|school|institute)\b/i.test(joined) ||
+    /(?:本科|硕士|博士|学士|大学|学院|学校|研究院|教育背景)/u.test(joined);
+  const hasEmploymentSignal =
+    /\b(?:engineer|developer|manager|lead|director|architect|consultant|analyst|specialist|officer|president|vice president|vp)\b/i.test(joined) ||
+    /(?:工程师|开发|经理|总监|负责人|架构师|顾问|分析师|研究员)/u.test(joined);
+  const startsWithNarrativeVerb =
+    /^(?:fully|led|built|designed|developed|implemented|optimized|supported|worked|collaborated|responsible)\b/i.test(firstLine) ||
+    /^(?:负责|参与|实现|优化|支持|搭建|构建)/u.test(firstLine);
+
+  if (hasSummaryProfileSignal && hasEducationSignal && !hasEmploymentSignal) {
+    return false;
+  }
+
+  if (!hasDateRange && startsWithNarrativeVerb) {
+    return false;
+  }
+
+  return true;
+}
+
 function looksLikeCandidateLocation(value, candidateName = '') {
   const normalized = cleanLine(value);
 
@@ -1052,7 +1157,10 @@ function buildRawSectionExtractions({ cvDocument, jdDocument, cvSourceDocument, 
     jdFileName
   );
   const educationLines = collectSectionLines(cvBlocks, ['education']);
-  const experienceLines = collectSectionLines(cvBlocks, ['experience']);
+  const experienceBlocks = cvBlocks
+    .filter((block) => block.sectionKey === 'experience')
+    .filter((block) => shouldUseExperienceBlockForExtraction(block));
+  const experienceLines = collectLinesFromBlocks(experienceBlocks);
   const projectBlocks = cvBlocks.filter((block) => block.sectionKey === 'projects');
   const requirementLines = collectPreferredSectionLines(jdBlocks, ['requirements'], ['responsibilities']);
   const requirementEntries = dedupeLooseStrings(extractRequirements(joinLines(requirementLines)));
@@ -1183,10 +1291,19 @@ function looksLikeEmploymentNarrativeText(value) {
 
 function looksLikePlausibleEmploymentCompanyName(value) {
   const normalized = cleanLine(value);
+  const normalizedWithoutProjectQualifier = normalized
+    .replace(/\([^)]*\bproject\b[^)]*\)/gi, ' ')
+    .replace(/\([^)]*\bno contract\b[^)]*\)/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   if (
     !normalized ||
     /^[•]/u.test(normalized) ||
+    (
+      /[.。]$/.test(normalized) &&
+      !/\b(?:co|corp|corporation|inc|ltd|llc)\.?$/i.test(normalized)
+    ) ||
     looksLikeBareDateToken(normalized) ||
     DATE_RANGE_PATTERN.test(normalized) ||
     looksLikeGenericSectionLabel(normalized) ||
@@ -1200,7 +1317,10 @@ function looksLikePlausibleEmploymentCompanyName(value) {
     return false;
   }
 
-  if (!COMPANY_HINT_PATTERN.test(normalized) && ROLE_HINT_PATTERN.test(normalized)) {
+  if (
+    !COMPANY_HINT_PATTERN.test(normalized) &&
+    ROLE_HINT_PATTERN.test(normalizedWithoutProjectQualifier)
+  ) {
     return false;
   }
 
@@ -1215,8 +1335,109 @@ function looksLikePlausibleEmploymentCompanyName(value) {
   return true;
 }
 
+function normalizeEmploymentCompanyNameValue(value) {
+  return cleanLine(value).replace(/^(?:company(?:\s+name)?)\s*[:：]\s*/i, '');
+}
+
 function normalizeEmploymentJobTitleValue(value) {
-  return cleanLine(value).replace(/^(?:job title|title)\s*[:：]\s*/i, '');
+  return cleanLine(value).replace(/^(?:job title|title|position|role)\s*[:：]\s*/i, '');
+}
+
+function repairEmploymentCompanySuffixLeak(companyName, jobTitle) {
+  const normalizedCompanyName = normalizeEmploymentCompanyNameValue(companyName);
+  const normalizedJobTitle = normalizeEmploymentJobTitleValue(jobTitle);
+  const suffixLeakMatch = normalizedJobTitle.match(/^(co\.?\s*ltd|ltd\.?|inc\.?|llc|corp\.?|corporation|limited)\b\s+(.+)$/i);
+
+  if (!suffixLeakMatch || !normalizedCompanyName) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  return {
+    companyName: `${normalizedCompanyName} ${suffixLeakMatch[1]}`.trim(),
+    jobTitle: cleanLine(suffixLeakMatch[2])
+  };
+}
+
+function repairEmploymentSectionHeadingLeak(companyName, jobTitle) {
+  const normalizedCompanyName = normalizeEmploymentCompanyNameValue(companyName);
+  const normalizedJobTitle = normalizeEmploymentJobTitleValue(jobTitle);
+
+  if (!looksLikeGenericSectionLabel(normalizedCompanyName) || !normalizedJobTitle) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  const match = normalizedJobTitle.match(
+    /^(.*?(?:股份有限公司|有限责任公司|有限公司|集团|银行|科技|信息|大学|学院|公司|Co\.?\s*LTD|Ltd\.?|Inc\.?|Corporation|Corp\.?|Limited))\s+(.+)$/iu
+  );
+
+  if (!match?.[1] || !match?.[2]) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  const repairedCompanyName = cleanLine(match[1]);
+  const repairedJobTitle = cleanLine(match[2]);
+
+  if (!looksLikePlausibleEmploymentCompanyName(repairedCompanyName) || !ROLE_HINT_PATTERN.test(repairedJobTitle)) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  return {
+    companyName: repairedCompanyName,
+    jobTitle: repairedJobTitle
+  };
+}
+
+function repairEmploymentInlineCompanyRoleLeak(companyName, jobTitle) {
+  const normalizedCompanyName = normalizeEmploymentCompanyNameValue(companyName);
+  const normalizedJobTitle = normalizeEmploymentJobTitleValue(jobTitle);
+
+  if (
+    looksLikePlausibleEmploymentCompanyName(normalizedCompanyName) ||
+    !normalizedJobTitle
+  ) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  const match = normalizedJobTitle.match(
+    /^(.*?(?:股份有限公司|有限责任公司|有限公司|集团|银行|科技|信息|大学|学院|公司|Co\.?\s*LTD|Ltd\.?|Inc\.?|Corporation|Corp\.?|Limited))\s+(.+)$/iu
+  );
+
+  if (!match?.[1] || !match?.[2]) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  const repairedCompanyName = cleanLine(match[1]);
+  const repairedJobTitle = cleanLine(match[2]);
+
+  if (!looksLikePlausibleEmploymentCompanyName(repairedCompanyName) || !ROLE_HINT_PATTERN.test(repairedJobTitle)) {
+    return {
+      companyName: normalizedCompanyName,
+      jobTitle: normalizedJobTitle
+    };
+  }
+
+  return {
+    companyName: repairedCompanyName,
+    jobTitle: repairedJobTitle
+  };
 }
 
 function looksLikePlausibleEmploymentJobTitle(value) {
@@ -1224,6 +1445,7 @@ function looksLikePlausibleEmploymentJobTitle(value) {
 
   if (
     !normalized ||
+    /^(?:co\.?\s*ltd|company|corp(?:oration)?|inc\.?|limited)\b/i.test(normalized) ||
     looksLikeBareDateToken(normalized) ||
     DATE_RANGE_PATTERN.test(normalized) ||
     looksLikeGenericSectionLabel(normalized) ||
@@ -1257,7 +1479,7 @@ function isLikelyValidEmploymentEntry(entry = {}) {
 }
 
 function shouldDropEmploymentNoiseEntry(entry = {}) {
-  const companyName = cleanLine(entry.companyName);
+  const companyName = normalizeEmploymentCompanyNameValue(entry.companyName);
   const jobTitle = normalizeEmploymentJobTitleValue(entry.jobTitle);
   const jobTitleTokenCount = jobTitle.split(/\s+/).filter(Boolean).length;
   const companyTokenCount = companyName.split(/\s+/).filter(Boolean).length;
@@ -1275,14 +1497,60 @@ function shouldDropEmploymentNoiseEntry(entry = {}) {
       ...entry,
       companyName,
       jobTitle
-    }) ||
-    !companyName ||
-    !jobTitle
+    })
   ) {
-    return !companyName && looksLikeGenericSectionLabel(jobTitle);
+    return false;
+  }
+
+  if (!jobTitle) {
+    return true;
+  }
+
+  if (!companyName) {
+    const joinedResponsibilities = Array.isArray(entry.responsibilities)
+      ? entry.responsibilities.map((value) => cleanLine(value)).join(' ')
+      : '';
+
+    if (
+      looksLikeGenericSectionLabel(jobTitle) ||
+      /^(?:position|job title|title|role|project name|main responsibilities?|job responsibilities?|responsibilities?|report(?:ing)? to|company profile|candidate summary|career summary|personal information|个人信息|工作经历)\b[:：]?/i.test(jobTitle) ||
+      /^(?:ccei|ccie|cissp|pmp|csm|psm|afp)(?:[-\s:/].*)?$/i.test(jobTitle) ||
+      (
+        looksLikePlausibleEmploymentCompanyName(jobTitle) &&
+        !looksLikePlausibleEmploymentJobTitle(jobTitle)
+      ) ||
+      (
+        EDUCATION_HINT_PATTERN.test(jobTitle) &&
+        !ROLE_HINT_PATTERN.test(jobTitle)
+      ) ||
+      looksLikeEmploymentNarrativeText(jobTitle) ||
+      /[.。]$/.test(jobTitle) ||
+      /(?:project|项目)\s*:/i.test(joinedResponsibilities) ||
+      (
+        COMPANY_HINT_PATTERN.test(joinedResponsibilities) &&
+        joinedResponsibilities.split(/\s+/).filter(Boolean).length <= 8
+      ) ||
+      /(?:company\s*:|reporting to\s*:|report to\s*:|project name\s*:|job responsibilities?\s*:|main responsibilities?\s*:)/i.test(
+        joinedResponsibilities
+      )
+    ) {
+      return true;
+    }
+  }
+
+  if (
+    /^(?:position|candidate summary|career summary|personal information|个人信息|工作经历)$/i.test(jobTitle) ||
+    /^(?:ccei|ccie|cissp|pmp|csm|psm|csm|afp)(?:[-\s:/].*)?$/i.test(jobTitle) ||
+    /^(?:any contact with the above candidate|for:|position:)/i.test(companyName)
+  ) {
+    return true;
   }
 
   return (
+    (
+      /[.。]$/.test(companyName) &&
+      !/\b(?:co|corp|corporation|inc|ltd|llc)\.?$/i.test(companyName)
+    ) ||
     companyTokenCount > 18 ||
     /^project\b/i.test(companyName) ||
     (
@@ -1382,12 +1650,34 @@ function normalizeEmploymentEntries(entries = [], cvBlocks = []) {
     entry.endDate
   ].join('|')));
   const filtered = deduped.filter((entry) => !shouldDropEmploymentNoiseEntry(entry));
+  const validSignatureSet = new Set(
+    filtered
+      .filter((entry) => isLikelyValidEmploymentEntry(entry))
+      .map((entry) => normalizeKey([
+        normalizeEmploymentJobTitleValue(entry.jobTitle),
+        cleanLine(entry.startDate),
+        cleanLine(entry.endDate)
+      ].join('|')))
+      .filter(Boolean)
+  );
 
   return filtered
     .map((entry) => {
+      const repairedHeading = repairEmploymentCompanySuffixLeak(
+        entry.companyName,
+        entry.jobTitle
+      );
+      const repairedSectionLeak = repairEmploymentSectionHeadingLeak(
+        repairedHeading.companyName,
+        repairedHeading.jobTitle
+      );
+      const repairedInlineLeak = repairEmploymentInlineCompanyRoleLeak(
+        repairedSectionLeak.companyName,
+        repairedSectionLeak.jobTitle
+      );
       const normalizedEntry = normalizeSelfEmployedEmploymentEntry(
-        cleanLine(entry.companyName),
-        normalizeEmploymentJobTitleValue(entry.jobTitle)
+        repairedInlineLeak.companyName,
+        repairedInlineLeak.jobTitle
       );
       const companyName = normalizedEntry.companyName;
       const jobTitle = normalizedEntry.jobTitle;
@@ -1423,6 +1713,19 @@ function normalizeEmploymentEntries(entries = [], cvBlocks = []) {
           terms: [entry.companyName, entry.jobTitle, entry.startDate, entry.endDate]
         })
       };
+    })
+    .filter((entry) => {
+      if (entry.companyName || !entry.validationFlags.includes('employment_entry_missing_core_fields')) {
+        return true;
+      }
+
+      const signature = normalizeKey([
+        normalizeEmploymentJobTitleValue(entry.jobTitle),
+        cleanLine(entry.startDate),
+        cleanLine(entry.endDate)
+      ].join('|'));
+
+      return !signature || !validSignatureSet.has(signature);
     })
     .sort((left, right) => compareYearDescending(left.endDate, right.endDate));
 }

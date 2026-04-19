@@ -445,6 +445,17 @@ function isSimpleChineseCandidateName(value) {
   return /^[\u4e00-\u9fff·]{2,8}$/.test(cleanLine(String(value || '')));
 }
 
+function isStrongSimpleChineseCandidateName(value) {
+  const normalized = cleanLine(String(value || ''));
+
+  return (
+    /^[\u4e00-\u9fff·]{2,4}$/.test(normalized) &&
+    !looksLikeRoleTitleInsteadOfName(normalized) &&
+    !looksLikeEducationLabelInsteadOfName(normalized) &&
+    !looksLikeChineseNarrativeInsteadOfName(normalized)
+  );
+}
+
 function isLikelyLatinCandidateName(value) {
   return /^[A-Z][A-Za-z'-]+(?: [A-Z][A-Za-z'-]+){0,4}$/.test(cleanLine(String(value || '')));
 }
@@ -459,7 +470,7 @@ function resolveCandidateNameWithFileName(candidateName, fileName) {
   const fileNameCandidateName = formatCandidateNameFromFileName(fileName);
 
   if (
-    isSimpleChineseCandidateName(fileNameCandidateName) &&
+    isStrongSimpleChineseCandidateName(fileNameCandidateName) &&
     isSimpleChineseCandidateName(normalizedCandidateName) &&
     fileNameCandidateName !== normalizedCandidateName
   ) {
@@ -467,7 +478,7 @@ function resolveCandidateNameWithFileName(candidateName, fileName) {
   }
 
   if (
-    isSimpleChineseCandidateName(fileNameCandidateName) &&
+    isStrongSimpleChineseCandidateName(fileNameCandidateName) &&
     isLikelyLatinCandidateName(normalizedCandidateName) &&
     !/[\u4e00-\u9fff]/.test(normalizedCandidateName)
   ) {
@@ -566,21 +577,70 @@ function looksLikeChineseNarrativeInsteadOfName(value) {
   return /(?:现就职于|毕业于|负责|求职|意向|工作|经验|电话|邮箱|微信|个人简介|个人信息|基本信息|教育背景|工作经历|项目经历)/u.test(normalized);
 }
 
+function scoreChineseNameFragment(fragment) {
+  const normalized = cleanLine(String(fragment || ''));
+
+  if (!normalized) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = 0;
+
+  if (/^[\u4e00-\u9fff·]{2,4}$/.test(normalized)) {
+    score += 12;
+  } else if (/^[\u4e00-\u9fff·]{5,6}$/.test(normalized)) {
+    score += 6;
+  } else {
+    score -= 8;
+  }
+
+  if (looksLikeRoleTitleInsteadOfName(normalized)) {
+    score -= 20;
+  }
+
+  if (looksLikeEducationLabelInsteadOfName(normalized)) {
+    score -= 12;
+  }
+
+  if (looksLikeChineseNarrativeInsteadOfName(normalized)) {
+    score -= 12;
+  }
+
+  if (/(?:年以上|工作经验|求职意向|期望城市|工作地区|专业技能|现居住地|现居住|简历)$/u.test(normalized)) {
+    score -= 12;
+  }
+
+  if (/^(?:高级|资深|软件|平台|研发|开发|测试|工程|技术|项目|产品|求职)/u.test(normalized)) {
+    score -= 8;
+  }
+
+  return score;
+}
+
 function extractPreferredChineseNameFragment(value) {
   const normalized = cleanLine(String(value || ''));
-  const fragments = normalized.match(/[\u4e00-\u9fff·]{2,8}/gu) || [];
-  const candidates = fragments.filter((fragment) => (
-    !isGenericCandidateHeading(fragment) &&
-    !looksLikeRoleTitleInsteadOfName(fragment) &&
-    !looksLikeEducationLabelInsteadOfName(fragment) &&
-    !/(?:年以上|工作经验|求职意向|期望城市|工作地区|专业技能|现居住地|现居住|简历)$/u.test(fragment)
-  ));
+  const fragments = normalized.match(/[\u4e00-\u9fff·]{2,20}/gu) || [];
+  const candidates = fragments
+    .map((fragment, index) => ({
+      fragment,
+      index,
+      score: scoreChineseNameFragment(fragment)
+    }))
+    .filter((candidate) => (
+      candidate.score > 0 &&
+      !isGenericCandidateHeading(candidate.fragment)
+    ))
+    .sort((left, right) => (
+      right.score - left.score ||
+      left.fragment.length - right.fragment.length ||
+      left.index - right.index
+    ));
 
-  if (!candidates.length) {
+  if (candidates.length === 0) {
     return '';
   }
 
-  return candidates[candidates.length - 1];
+  return candidates[0].fragment;
 }
 
 function cleanCandidateNameCandidate(value) {

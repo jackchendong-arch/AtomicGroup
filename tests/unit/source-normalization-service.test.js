@@ -175,6 +175,107 @@ test('buildNormalizedSourceDocument merges same-section wrapped blocks only afte
   assert.ok(normalizedDocument.cleaningManifest.some((entry) => entry.ruleId === 'normalize_wrapped_block_continuation'));
 });
 
+test('buildNormalizedSourceDocument keeps company and role single-line paragraphs inside an active experience section', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'cv',
+    label: 'Candidate CV',
+    text: [
+      'Employment Experience',
+      '',
+      'April 2022 –',
+      '',
+      'Intel',
+      '',
+      'Senior Infrastructure Service Engineer',
+      '',
+      'Software release system enabling and roadmap definition.'
+    ].join('\n'),
+    sourcePath: '/tmp/candidate-cv.docx'
+  });
+
+  const experienceBlocks = normalizedDocument.normalizedBlocks.filter((block) => block.sectionKey === 'experience');
+
+  assert.deepEqual(
+    experienceBlocks.map((block) => block.textNormalized),
+    [
+      'April 2022 –',
+      'Intel',
+      'Senior Infrastructure Service Engineer',
+      'Software release system enabling and roadmap definition.'
+    ]
+  );
+  assert.equal(
+    experienceBlocks.some((block) => block.sectionLabel === 'Senior Infrastructure Service Engineer'),
+    false
+  );
+});
+
+test('buildNormalizedSourceDocument re-enters experience after projects for month-led dates and multi-word companies', () => {
+  const normalizedDocument = buildNormalizedSourceDocument({
+    documentType: 'cv',
+    label: 'Candidate CV',
+    text: [
+      'Employment Experience',
+      '',
+      'April 2022 –',
+      '',
+      'Intel',
+      '',
+      'Senior Infrastructure Service Engineer',
+      '',
+      'Projects:',
+      '',
+      'Project2: Intel 1Source Re-architecting',
+      '',
+      'Design the re-arch framework.',
+      '',
+      'Sep 2014 – Mar 2022',
+      '',
+      'SAP Shanghai Labs',
+      '',
+      'Senior Developer',
+      '',
+      'Projects:',
+      '',
+      'Project1: SAP HANA Cloud Infrastructure Services based IaaS',
+      '',
+      'Develop a uniform infrastructure for HANA Cloud services by Python.',
+      '',
+      'July 2008 – Aug 2014',
+      '',
+      'Alcatel-Lucent, Shanghai Bell',
+      '',
+      'Scrum Master/Sr SW Engineer'
+    ].join('\n'),
+    sourcePath: '/tmp/candidate-cv.docx'
+  });
+
+  const experienceBlocks = normalizedDocument.normalizedBlocks.filter((block) => block.sectionKey === 'experience');
+
+  assert.deepEqual(
+    experienceBlocks.map((block) => block.textNormalized),
+    [
+      'April 2022 –',
+      'Intel',
+      'Senior Infrastructure Service Engineer',
+      'Sep 2014 – Mar 2022',
+      'SAP Shanghai Labs',
+      'Senior Developer',
+      'July 2008 – Aug 2014',
+      'Alcatel-Lucent, Shanghai Bell',
+      'Scrum Master/Sr SW Engineer'
+    ]
+  );
+  assert.equal(
+    normalizedDocument.normalizedBlocks.some((block) => block.sectionLabel === 'SAP Shanghai Labs'),
+    false
+  );
+  assert.equal(
+    normalizedDocument.normalizedBlocks.some((block) => block.sectionLabel === 'Alcatel-Lucent, Shanghai Bell'),
+    false
+  );
+});
+
 test('buildNormalizedSourceDocument keeps original-language blocks authoritative while adding bounded English working text', () => {
   const normalizedDocument = buildNormalizedSourceDocument({
     documentType: 'cv',

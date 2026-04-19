@@ -304,6 +304,86 @@ function isHeadingParagraph(paragraph) {
   return /^[A-Z][A-Za-z\s/&-]{2,40}$/.test(line) || /^[\u4e00-\u9fffA-Za-z\s/&-]{2,20}$/.test(line);
 }
 
+function shouldPreserveSingleLineParagraphAsSectionContent(paragraph, currentSectionKey) {
+  const normalized = cleanLine(paragraph);
+  const normalizedHeading = normalizeHeading(normalized);
+
+  if (
+    !normalized ||
+    SECTION_KEY_BY_HEADING[normalizedHeading] ||
+    normalized.startsWith('#')
+  ) {
+    return false;
+  }
+
+  if (currentSectionKey === 'experience') {
+    return (
+      hasDateRangeHint(normalized) ||
+      looksLikeExperienceRoleParagraph(normalized) ||
+      looksLikeExperienceOrganizationParagraph(normalized) ||
+      (
+        /^[A-Z][A-Za-z0-9&._,'()\/ -]{2,60}$/.test(normalized) &&
+        !/^(?:recommendation|training|honou?r|honours?|summary|motivation|availability)$/i.test(normalized)
+      )
+    );
+  }
+
+  if (currentSectionKey === 'education') {
+    return hasDateRangeHint(normalized) || DEGREE_HINT_PATTERN.test(normalized) || EDUCATION_ORG_HINT_PATTERN.test(normalized);
+  }
+
+  if (currentSectionKey === 'projects') {
+    return looksLikeProjectTitleLine(normalized) || hasDateRangeHint(normalized);
+  }
+
+  return false;
+}
+
+function shouldTreatParagraphAsHeading(paragraph, currentSectionKey) {
+  if (!isHeadingParagraph(paragraph)) {
+    return false;
+  }
+
+  return !shouldPreserveSingleLineParagraphAsSectionContent(paragraph, currentSectionKey);
+}
+
+function looksLikeExperienceOrganizationParagraph(paragraph) {
+  const normalized = cleanLine(paragraph);
+
+  if (!normalized || SECTION_KEY_BY_HEADING[normalizeHeading(normalized)]) {
+    return false;
+  }
+
+  return (
+    COMPANY_HINT_PATTERN.test(normalized) ||
+    /\b(?:labs?|research|bell)\b/i.test(normalized) ||
+    /(?:公司|集团|研究所|科技|信息|银行|实验室|大学|学院)/u.test(normalized) ||
+    /^[A-Z][A-Za-z0-9&._,'()\/ -]{2,60}$/.test(normalized)
+  );
+}
+
+function looksLikeExperienceRoleParagraph(paragraph) {
+  const normalized = cleanLine(paragraph);
+
+  return Boolean(normalized && EMPLOYMENT_TITLE_HINT_PATTERN.test(normalized));
+}
+
+function shouldPromoteDateParagraphToExperience(paragraphs, paragraphIndex, currentSectionKey) {
+  if (currentSectionKey !== 'projects') {
+    return false;
+  }
+
+  const currentParagraph = cleanLine(paragraphs[paragraphIndex] || '');
+  const nextParagraph = cleanLine(paragraphs[paragraphIndex + 1] || '');
+  const nextNextParagraph = cleanLine(paragraphs[paragraphIndex + 2] || '');
+
+  return (
+    hasDateRangeHint(currentParagraph) &&
+    looksLikeExperienceOrganizationParagraph(nextParagraph) &&
+    looksLikeExperienceRoleParagraph(nextNextParagraph)
+  );
+}
+
 function looksLikeEducationParagraph(lines) {
   const paragraphText = lines.join(' ');
   const leadText = [getFirstLine(lines), getSecondLine(lines)].filter(Boolean).join(' ');
@@ -684,7 +764,7 @@ function buildNormalizedSourceDocument({
     const normalizedLines = normalizedLinePairs.map((entry) => entry.normalized);
     const normalizedParagraph = normalizedLines.join('\n');
 
-    if (isHeadingParagraph(normalizedParagraph)) {
+    if (shouldTreatParagraphAsHeading(normalizedParagraph, currentSectionKey)) {
       currentSectionLabel = normalizedLines[0];
       currentSectionKey = resolveSectionKey(currentSectionLabel, currentSectionKey);
       currentClassificationReason = 'explicit_heading';
@@ -708,10 +788,23 @@ function buildNormalizedSourceDocument({
     let blockSectionLabel = currentSectionLabel;
     let blockClassificationReason = currentClassificationReason;
     let blockClassificationConfidence = currentClassificationConfidence;
-    const structuralSection = inferStructuralSection(
+    let structuralSection = inferStructuralSection(
       workingLinePairs.map((entry) => entry.normalized),
       documentType
     );
+
+    if (
+      documentType === 'cv' &&
+      !structuralSection &&
+      shouldPromoteDateParagraphToExperience(paragraphs, paragraphIndex, currentSectionKey)
+    ) {
+      structuralSection = {
+        sectionKey: 'experience',
+        sectionLabel: defaultSectionLabel('experience'),
+        reason: 'structural_pattern',
+        confidence: 'medium'
+      };
+    }
 
     if (structuralSection && !(currentClassificationReason === 'explicit_heading' && structuralSection.sectionKey === currentSectionKey)) {
       blockSectionKey = structuralSection.sectionKey;

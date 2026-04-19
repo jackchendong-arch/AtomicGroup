@@ -25,9 +25,9 @@ const TEST10_CURATED_CASES = [
     fileName: 'Peng Wang王鹏-Test Automation Architect-Atomic-2026.1.30.docx',
     expectedCandidateName: 'Peng Wang王鹏',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
-    expectedState: 'red',
-    expectedIssueCodes: ['employment_entry_missing_core_fields'],
-    minEmploymentHistory: 6,
+    expectedState: 'green',
+    expectedIssueCodes: [],
+    minEmploymentHistory: 3,
     minProjects: 0
   },
   {
@@ -52,9 +52,9 @@ const TEST10_CURATED_CASES = [
     fileName: '苏朗轩-iOS-GCB5-Atomic.docx',
     expectedCandidateName: '苏朗轩',
     expectedRoleTitle: 'Senior Software Engineering Manager : 0000K19E',
-    expectedState: 'red',
-    expectedIssueCodes: ['employment_entry_missing_core_fields'],
-    minEmploymentHistory: 3,
+    expectedState: 'green',
+    expectedIssueCodes: [],
+    minEmploymentHistory: 4,
     minProjects: 1
   }
 ];

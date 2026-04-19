@@ -1159,6 +1159,22 @@ test('extractCandidateName keeps explicit Chinese resume headers authoritative e
   assert.equal(huangName, '黄章成');
 });
 
+test('extractCandidateName keeps explicit Chinese name labels authoritative when the filename also contains a long role phrase', () => {
+  const panYonggaoName = extractCandidateName(
+    [
+      '候选人推荐报告',
+      '姓名：潘永高',
+      '求职意向: 软件平台研发负责人',
+      '候选人概况',
+      '姓名',
+      '潘永高'
+    ].join('\n'),
+    '潘永高-软件平台研发负责人-Atomic-CV.doc'
+  );
+
+  assert.equal(panYonggaoName, '潘永高');
+});
+
 test('buildBriefingRequest explicitly tells English output to translate human-readable employment and snapshot fields', () => {
   const request = buildBriefingRequest({
     cvDocument: {

@@ -143,6 +143,127 @@ test('buildCanonicalExtractionReview exposes section extraction outputs before r
   assert.equal(result.validationSummary.state, 'green');
 });
 
+test('buildCanonicalSchemas keeps labeled consultant-report employment rows and drops companyless shadow rows', () => {
+  const result = buildCanonicalSchemas({
+    cvDocument: {
+      text: [
+        'Zhihao Yuan 袁智豪',
+        '',
+        'Employment Experience',
+        'Time: 2019.08 – 2025.10',
+        'Company:Tencent',
+        'Position: iOS engineer',
+        'Responsibility: Develop and maintain the core business and framework of Mobile QQ.',
+        '',
+        'Time: 2018.04 – 2018.12',
+        'Company: Zhizhe Tianxia',
+        'Position: iOS engineer',
+        'Responsibility: Develop and maintain Zhihu modules.',
+        '',
+        'PROJECT HIGHLIGHTS',
+        'Jun.2025-Jun.2025 iOS Architect',
+        'Project Description:',
+        'Built swipe-right back framework.'
+      ].join('\n'),
+      file: {
+        name: 'Zhihao Yuan CV.doc',
+        path: '/tmp/zhihao-yuan.doc'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Senior iOS Engineer',
+        '',
+        'Requirements',
+        '- Strong iOS delivery experience'
+      ].join('\n'),
+      file: {
+        name: 'JD.docx',
+        path: '/tmp/jd.docx'
+      }
+    }
+  });
+
+  assert.deepEqual(
+    result.candidateSchema.employmentHistory.map((entry) => ({
+      companyName: entry.companyName,
+      jobTitle: entry.jobTitle,
+      startDate: entry.startDate,
+      endDate: entry.endDate
+    })),
+    [
+      {
+        companyName: 'Tencent',
+        jobTitle: 'iOS engineer',
+        startDate: '2019',
+        endDate: '2025'
+      },
+      {
+        companyName: 'Zhizhe Tianxia',
+        jobTitle: 'iOS engineer',
+        startDate: '2018',
+        endDate: '2018'
+      }
+    ]
+  );
+  assert.equal(result.validationSummary.state, 'green');
+});
+
+test('buildCanonicalSchemas repairs employment rows where a section heading or company suffix leaked into the wrong field', () => {
+  const result = buildCanonicalSchemas({
+    cvDocument: {
+      text: [
+        '工作经历',
+        '2010.5-2014.5',
+        '中兴通讯股份有限公司 算法工程师',
+        '负责LTE-4G基站资源调度与优化',
+        '',
+        '2017-2020',
+        'Guangdong Ward Investment Holding Group Co. LTD iOS Development Engineer',
+        'Managed mobile app delivery'
+      ].join('\n'),
+      file: {
+        name: 'employment-repair.pdf',
+        path: '/tmp/employment-repair.pdf'
+      }
+    },
+    jdDocument: {
+      text: [
+        'Role: Senior Software Engineering Manager',
+        '',
+        'Requirements',
+        '- Delivery leadership'
+      ].join('\n'),
+      file: {
+        name: 'jd.docx',
+        path: '/tmp/jd.docx'
+      }
+    }
+  });
+
+  assert.deepEqual(
+    result.candidateSchema.employmentHistory
+      .map((entry) => ({
+        companyName: entry.companyName,
+        jobTitle: entry.jobTitle,
+        validationFlags: entry.validationFlags
+      }))
+      .sort((left, right) => left.companyName.localeCompare(right.companyName)),
+    [
+      {
+        companyName: 'Guangdong Ward Investment Holding Group Co. LTD',
+        jobTitle: 'iOS Development Engineer',
+        validationFlags: []
+      },
+      {
+        companyName: '中兴通讯股份有限公司',
+        jobTitle: '算法工程师',
+        validationFlags: []
+      }
+    ]
+  );
+});
+
 test('buildCanonicalSchemas uses normalized source blocks as the extraction boundary when sourceModel is supplied', () => {
   const sourceModel = buildWorkspaceSourceModel({
     cvDocument: {
@@ -302,17 +423,19 @@ test('buildCanonicalSchemas surfaces ambiguous project-role linkage as amber val
   );
 });
 
-test('buildCanonicalSchemas emits an identity metadata issue when profile details leak into the candidate name', () => {
+test('buildCanonicalSchemas strips inline metadata tails from candidate names before validation', () => {
   const result = buildCanonicalSchemas({
     cvDocument: {
       text: [
+        '姓名：赵先生 英语六级',
+        '',
         'Work Experience',
         'Acme Capital — Engineering Manager',
         '2020 – 2024'
       ].join('\n'),
       file: {
-        name: '赵先生 英语六级.pdf',
-        path: '/tmp/赵先生 英语六级.pdf'
+        name: 'candidate.pdf',
+        path: '/tmp/candidate.pdf'
       }
     },
     jdDocument: {
@@ -329,9 +452,9 @@ test('buildCanonicalSchemas emits an identity metadata issue when profile detail
     }
   });
 
-  assert.equal(result.validationSummary.state, 'red');
-  assert(result.validationSummary.issues.some((issue) => issue.code === 'candidate_name_embedded_metadata'));
-  assert(result.candidateSchema.identity.validationFlags.includes('candidate_name_embedded_metadata'));
+  assert.equal(result.candidateSchema.identity.name, '赵先生');
+  assert.equal(result.candidateSchema.identity.validationFlags.includes('candidate_name_embedded_metadata'), false);
+  assert.equal(result.validationSummary.issues.some((issue) => issue.code === 'candidate_name_embedded_metadata'), false);
 });
 
 test('buildCanonicalSchemas emits a heading-or-table identity issue when the extracted name is not person-like', () => {
@@ -509,6 +632,5 @@ test(
 
     assert.equal(result.validationSummary.state, 'red');
     assert(issueCodes.includes('candidate_name_missing_or_generic'));
-    assert(issueCodes.includes('employment_entry_missing_core_fields'));
   }
 );

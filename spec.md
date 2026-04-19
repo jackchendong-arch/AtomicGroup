@@ -1537,7 +1537,7 @@ Release 7B is complete. Exception-based review and quality-gate behavior remain 
 ### Release 7C: Exception-Based Review And Quality Gates
 Value:
 - STP remains the default while consultant step-in becomes explicit, targeted, and auditable.
-- Release 7C remains downstream of the factual spine; it is not considered complete while stage 2 and stage 3 still leave avoidable parser-caused red states across the representative supported corpus.
+- Release 7C remains downstream of the factual spine; that completion gate is now met for the representative supported corpus, so exception-based review is running on top of a stable deterministic stage-2/3 foundation rather than compensating for unresolved parser-caused red states.
 
 Scope:
 - Green/amber/red operating states
@@ -1618,10 +1618,16 @@ Approved later factual-completion boundary before `Release 7C` is considered clo
 - keep fixture review artifacts and triage outputs as the review mechanism for stage-2/3 closure
 - defer further UI workflow expansion until the factual spine is stable enough to support Word-output quality as the primary metric
 
+Release 7C factual-closure outcome:
+- the representative supported `Test10` corpus is now `49/49 green`
+- there are no remaining avoidable parser-caused `red` states in the supported factual regression pack
+- legacy `.doc` CV intake now runs through the same deterministic stage-2/3 regression path as `.pdf`, `.docx`, and `.txt`
+- the deterministic factual spine is stable enough for the next release to focus primarily on Word-report adapter fidelity rather than parser rescue work
+
 ### Release 7D: Word Report Adapter MVP
 Value:
 - The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract instead of being a brittle side effect of generic placeholder export.
-- This release begins only after the factual stage-2/3 pipeline is stable enough that Word-fidelity work is improving the final report rather than compensating for unresolved parser-caused red states.
+- This release is now unblocked because the factual stage-2/3 pipeline is stable across the representative supported corpus, so Word-fidelity work can focus on the final report rather than compensating for unresolved parser-caused red states.
 
 Scope:
 - Versioned template adapter for the active hiring-manager report template

@@ -367,8 +367,8 @@ Mark a release complete only when the work is:
   - no Word adapter redesign yet
 
 ## Release 7C: Exception-Based Review and Quality Gates
-- [-] Release 7C in progress.
-- Release 7C must not be treated as fully complete until stage 2 and stage 3 factual extraction/reconciliation are reliable enough for the representative corpus and no longer leave avoidable parser-caused red cases in the supported CV pack.
+- [x] Release 7C shipped, completed, and tested.
+- Release 7C factual-closure gate is now satisfied: the representative supported `Test10` corpus is `49/49 green`, with no remaining avoidable parser-caused `red` cases in the supported CV pack.
 - Keep factual consultant review exception-based rather than mandatory for every CV; only amber/red cases should require targeted step-in.
 - Define explicit green/amber/red operating states for Word reporting so STP remains the default and consultant step-in has clear triggers.
 - Define consultant review trigger rules and reason codes covering identity conflicts, malformed education, chronology conflicts, project-role ambiguity, required-field gaps, low confidence, and post-render report failures.
@@ -432,10 +432,15 @@ Mark a release complete only when the work is:
   - add a final identity sanity pass for likely false-green mismatches surfaced by fixture evidence, so clean filename/header name conflicts do not slip through as `green`
   - keep generating per-fixture review artifacts under `debug/CV_blocks/` so parser changes remain reviewable
   - defer additional UI expansion until this factual stage is stable enough to support Word-output quality confidently
+- Release 7C outcome:
+  - deterministic stage-2/3 factual extraction and canonical reconciliation are now stable across the representative supported corpus
+  - `Test10` regression is now `49 supported / 49 green / 0 amber / 0 red`
+  - legacy `.doc` CV intake is part of the same factual regression path rather than unsupported smoke-only coverage
+  - `Release 7D` is now unblocked and becomes the next top incomplete release
 
 ## Release 7D: Word Report Adapter MVP
-- [ ] Release 7D shipped, completed, and tested.
-- Release 7D should not begin until the factual stage-2/3 pipeline is stable enough that Word-output quality work is improving the final document rather than masking upstream parser gaps.
+- [-] Release 7D in progress.
+- Release 7D is now unblocked because the factual stage-2/3 pipeline is stable across the representative supported corpus, so Word-output work can now improve the final document rather than mask upstream parser gaps.
 - Implement a dedicated Word-report export path that treats the hiring-manager document as its own product slice rather than a side effect of the generic briefing/export pipeline.
 - Build an explicit versioned template adapter for the active hiring-manager report template so export is driven by a known code-owned contract instead of generic placeholder inference.
 - Keep deterministic report-payload build LLM-free, mapping validated canonical facts plus approved fit assessment into template-specific adapter fields only in code.

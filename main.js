@@ -53,6 +53,10 @@ const {
   formatWordReportQualityError,
   validateWordReportQuality
 } = require('./services/word-report-quality-service');
+const {
+  resolveWordReportAdapter,
+  buildWordReportAdapterPayload
+} = require('./services/word-report-adapter-service');
 const { buildReviewState } = require('./services/review-state-service');
 const {
   buildDraftTranslationRepairRequest,
@@ -641,6 +645,16 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
     throw new Error('Only .docx and .dotx hiring-manager templates are supported for automated output.');
   }
 
+  const adapterResolution = resolveWordReportAdapter({
+    templatePath: settings.outputTemplatePath,
+    templateName: settings.outputTemplateName
+  });
+
+  if (!adapterResolution.isCompatible) {
+    debugTrace.push(`Word report adapter compatibility failed: ${adapterResolution.errors.join(' | ')}`);
+    throw new Error(adapterResolution.errors.join(' '));
+  }
+
   if (!payload.summary || !payload.summary.trim()) {
     debugTrace.push('Summary payload was empty at export time.');
     throw new Error('Generate and review the recruiter summary before exporting the hiring-manager draft.');
@@ -656,20 +670,21 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
   const requestedBriefing = payload.briefing
     ? composeDeterministicReportBriefing(payload.briefing, fallbackBriefing)
     : fallbackBriefing;
-  let composedOutput;
+  let reportPayload;
 
   try {
-    composedOutput = prepareHiringManagerBriefingOutput({
+    reportPayload = buildWordReportAdapterPayload({
+      adapter: adapterResolution,
       briefing: requestedBriefing,
       recruiterSummary: payload.summary,
       outputLanguage
     });
   } catch (error) {
-    debugTrace.push(`Structured briefing validation failed: ${error instanceof Error ? error.message : 'Unknown validation failure.'}`);
+    debugTrace.push(`Word report payload build failed: ${error instanceof Error ? error.message : 'Unknown validation failure.'}`);
     throw error;
   }
 
-  const templateData = composedOutput.templateData;
+  const templateData = reportPayload.templateData;
   const reportQualityValidation = validateWordReportQuality(templateData);
 
   if (!reportQualityValidation.isValid) {
@@ -678,6 +693,8 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
   }
 
   const employmentDebug = describeEmploymentExtraction(payload.cvDocument);
+  debugTrace.push(`Word report adapter: ${adapterResolution.adapterId}@${adapterResolution.adapterVersion}`);
+  debugTrace.push(`Resolved template identity: ${adapterResolution.templateIdentity}`);
   debugTrace.push(`Configured template file: ${getDebugFileLabel(settings.outputTemplatePath)}`);
   debugTrace.push(`Template extension: ${settings.outputTemplateExtension}`);
   debugTrace.push(`CV source file: ${getDebugFileLabel(employmentDebug.cvFileName)}`);
@@ -696,16 +713,18 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
   debugTrace.push(`Summary length: ${payload.summary.trim().length} characters`);
 
   return {
+    reportPayload,
     templateData,
-    suggestedName: buildSuggestedOutputFilename(templateData)
+    suggestedName: buildSuggestedOutputFilename(templateData),
+    adapterResolution
   };
 }
 
-async function writeWordDraftToPath({ settings, outputPath, templateData, debugTrace }) {
+async function writeWordDraftToPath({ settings, outputPath, reportPayload, debugTrace }) {
   const renderResult = await renderHiringManagerWordDocument({
     templatePath: settings.outputTemplatePath,
     outputPath,
-    templateData
+    templateData: reportPayload.templateData
   });
 
   debugTrace.push('Word template rendered successfully.');
@@ -1340,12 +1359,12 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     existingWarnings: exportPreparedOutput.warnings,
     reviewDecisions: normalizedPayload.reviewDecisions
   });
-  let templateData;
+  let reportPayload;
   let suggestedName;
 
   try {
     assertReviewStateAllowsHandoff(exportReviewPresentation, 'Word export');
-    ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
+    ({ reportPayload, suggestedName } = await prepareWordDraftTemplateData({
       payload: {
         ...preparedPayload,
         briefing: exportRequestedBriefing
@@ -1374,7 +1393,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
       const result = await writeWordDraftToPath({
         settings,
         outputPath,
-        templateData,
+        reportPayload,
         debugTrace
       });
       debugTrace.push('E2E mock Word export completed without save dialog or shell reveal.');
@@ -1433,7 +1452,7 @@ ipcMain.handle('hiring-manager:export-word-draft', async (_event, payload) => {
     const result = await writeWordDraftToPath({
       settings,
       outputPath,
-      templateData,
+      reportPayload,
       debugTrace
     });
     shell.showItemInFolder(outputPath);
@@ -1524,11 +1543,11 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
   let attachmentPath = '';
 
   if (settings.outputTemplatePath && ['.docx', '.dotx'].includes(settings.outputTemplateExtension)) {
-    let templateData;
+    let reportPayload;
     let suggestedName;
 
     assertReviewStateAllowsHandoff(emailReviewPresentation, 'Email sharing');
-    ({ templateData, suggestedName } = await prepareWordDraftTemplateData({
+    ({ reportPayload, suggestedName } = await prepareWordDraftTemplateData({
       payload: {
         ...preparedPayload,
         briefing: requestedBriefing
@@ -1548,7 +1567,7 @@ ipcMain.handle('email:share-draft', async (_event, payload) => {
     await writeWordDraftToPath({
       settings,
       outputPath: attachmentPath,
-      templateData,
+      reportPayload,
       debugTrace
     });
   } else {

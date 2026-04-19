@@ -10,6 +10,16 @@
 - When design, architecture, data contracts, validation policy, or slice boundaries change, update both `spec.md` and `TODO.md` before implementation begins.
 - Keep `TODO.md` current so future work remains TODO-driven instead of drifting into undocumented scope.
 
+## Command Alias Rule
+- When the user says `push and build` or `Push and Build`, interpret that as:
+  - push the current branch to GitHub
+  - then trigger the remote GitHub release build path, not a local packaging build
+- Before triggering the remote release build, verify that:
+  - the pushed commit is on the intended release ref
+  - `package.json` version matches the release tag to be built
+  - the release tag does not already point at an older commit unless the user explicitly wants a rebuild of that older release
+- If those release-version conditions are not met, stop and explain the exact mismatch before triggering the remote release workflow.
+
 ## Design Review Rule
 - During design review, do not update `spec.md` or `TODO.md` until the user explicitly approves the proposed design change.
 - Treat design discussion as proposal-only until that approval is given.

@@ -1633,6 +1633,7 @@ Scope:
 - Versioned template adapter for the active hiring-manager report template
 - Template-specific report payload projection from the validated canonical candidate and JD schemas plus approved narrative assessment
 - Code-owned display-safe composed lines for optional factual sections
+- Adapter-owned rewrite of known legacy joined-line placeholder pairs for the active live template, so layout stays in the template while optional separators move into code-owned composed fields
 - Clear separation between template-compatibility validation and factual report-quality validation
 - Post-render `.docx` validation for placeholders, repeated sections, required headings, and anonymous-mode correctness
 

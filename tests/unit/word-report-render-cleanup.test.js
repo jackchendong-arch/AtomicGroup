@@ -66,6 +66,8 @@ test(
       outputLanguage: 'en'
     });
 
+    assert.doesNotMatch(payload.templateData.education_field_institution_line || '', /^\s*\|/);
+
     await renderHiringManagerWordDocument({
       templatePath: ACTIVE_TEMPLATE_PATH,
       outputPath: OUTPUT_PATH,

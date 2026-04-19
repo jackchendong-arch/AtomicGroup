@@ -68,6 +68,7 @@ const SUPPORTED_WORD_TEMPLATE_TAGS = [
   'education_summary',
   'degree_name',
   'field_of_study',
+  'education_field_institution_line',
   'university',
   'institution_name',
   'start_year',
@@ -75,6 +76,7 @@ const SUPPORTED_WORD_TEMPLATE_TAGS = [
   'education_start_year',
   'education_end_year',
   'education_location',
+  'education_date_location_line',
   'job_title',
   'company_name',
   'start_date',
@@ -92,6 +94,7 @@ const SUPPORTED_WORD_TEMPLATE_TAGS = [
   'project_name',
   'linked_job_title',
   'linked_company_name',
+  'project_role_company_line',
   'project_start_date',
   'project_end_date',
   'project_timeline_basis',
@@ -166,6 +169,7 @@ const TEMPLATE_TAG_ALIASES = {
   Education_Summary: 'education_summary',
   Degree_Name: 'degree_name',
   field_of_study: 'field_of_study',
+  education_field_institution_line: 'education_field_institution_line',
   University: 'university',
   institution_name: 'institution_name',
   'Start Year': 'start_year',
@@ -173,6 +177,7 @@ const TEMPLATE_TAG_ALIASES = {
   education_start_year: 'education_start_year',
   education_end_year: 'education_end_year',
   education_location: 'education_location',
+  education_date_location_line: 'education_date_location_line',
   'Job Title': 'job_title',
   'Company Name': 'company_name',
   Start_date: 'start_date',
@@ -189,6 +194,7 @@ const TEMPLATE_TAG_ALIASES = {
   project_name: 'project_name',
   linked_job_title: 'linked_job_title',
   linked_company_name: 'linked_company_name',
+  project_role_company_line: 'project_role_company_line',
   project_start_date: 'project_start_date',
   project_end_date: 'project_end_date',
   project_timeline_basis: 'project_timeline_basis',
@@ -3157,13 +3163,15 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
     return {
       degree_name: displayParts.degreeName,
       field_of_study: displayParts.fieldOfStudy,
+      education_field_institution_line: composeOptionalDisplayLine(displayParts.fieldOfStudy, entry.university),
       university: entry.university,
       institution_name: entry.university,
       start_year: entry.startYear,
       end_year: entry.endYear,
       education_start_year: entry.startYear,
       education_end_year: entry.endYear,
-      education_location: ''
+      education_location: '',
+      education_date_location_line: composeOptionalDisplayLine(entry.endYear, '')
     };
   });
   const employmentExperienceEntries = profile.employmentHistory.map((entry) => ({
@@ -3192,6 +3200,7 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
     project_name: entry.project_name,
     linked_job_title: entry.linked_job_title,
     linked_company_name: entry.linked_company_name,
+    project_role_company_line: composeOptionalDisplayLine(entry.linked_job_title, entry.linked_company_name),
     project_start_date: entry.project_start_date,
     project_end_date: entry.project_end_date,
     project_timeline_basis: entry.project_timeline_basis,
@@ -3253,6 +3262,10 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
       .join('\n\n'),
     degree_name: deriveEducationDisplayParts({ degreeName: profile.degreeName }).degreeName,
     field_of_study: deriveEducationDisplayParts({ degreeName: profile.degreeName }).fieldOfStudy,
+    education_field_institution_line: composeOptionalDisplayLine(
+      deriveEducationDisplayParts({ degreeName: profile.degreeName }).fieldOfStudy,
+      profile.university
+    ),
     university: profile.university,
     institution_name: profile.university,
     start_year: profile.startYear,
@@ -3260,6 +3273,7 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
     education_start_year: profile.startYear,
     education_end_year: profile.endYear,
     education_location: '',
+    education_date_location_line: composeOptionalDisplayLine(profile.endYear, ''),
     job_title: profile.jobTitle,
     company_name: profile.companyName,
     start_date: profile.startDate,
@@ -3275,6 +3289,7 @@ function buildTemplateData({ summary, cvDocument, jdDocument }) {
     project_name: projectExperienceEntries[0]?.project_name || '',
     linked_job_title: projectExperienceEntries[0]?.linked_job_title || '',
     linked_company_name: projectExperienceEntries[0]?.linked_company_name || '',
+    project_role_company_line: projectExperienceEntries[0]?.project_role_company_line || '',
     project_start_date: projectExperienceEntries[0]?.project_start_date || '',
     project_end_date: projectExperienceEntries[0]?.project_end_date || '',
     project_timeline_basis: projectExperienceEntries[0]?.project_timeline_basis || '',
@@ -3764,6 +3779,62 @@ function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function composeOptionalDisplayLine(leftValue, rightValue, separator = ' | ') {
+  const left = normalizeTextBlock(leftValue);
+  const right = normalizeTextBlock(rightValue);
+
+  if (left && right) {
+    return `${left}${separator}${right}`;
+  }
+
+  return left || right || '';
+}
+
+const LEGACY_TEMPLATE_JOIN_REWRITES = Object.freeze([
+  Object.freeze({
+    leftTag: 'field_of_study',
+    rightTag: 'institution_name',
+    replacementTag: 'education_field_institution_line'
+  }),
+  Object.freeze({
+    leftTag: 'education_end_year',
+    rightTag: 'education_location',
+    replacementTag: 'education_date_location_line'
+  }),
+  Object.freeze({
+    leftTag: 'linked_job_title',
+    rightTag: 'linked_company_name',
+    replacementTag: 'project_role_company_line'
+  })
+]);
+
+function rewriteLegacyJoinedTemplatePairs(zip) {
+  const wordXmlFileNames = Object.keys(zip.files).filter((fileName) => {
+    return fileName.startsWith('word/') && fileName.endsWith('.xml');
+  });
+
+  for (const fileName of wordXmlFileNames) {
+    const xmlFile = zip.file(fileName);
+
+    if (!xmlFile) {
+      continue;
+    }
+
+    let normalizedXml = xmlFile.asText();
+
+    for (const rewrite of LEGACY_TEMPLATE_JOIN_REWRITES) {
+      const pairPattern = new RegExp(
+        `\\{\\{\\s*${escapeRegExp(rewrite.leftTag)}\\s*\\}\\}\\s*\\|\\s*\\{\\{\\s*${escapeRegExp(rewrite.rightTag)}\\s*\\}\\}`,
+        'g'
+      );
+
+      normalizedXml = normalizedXml.replace(pairPattern, `{{${rewrite.replacementTag}}}`);
+    }
+
+    zip.file(fileName, normalizedXml);
+  }
+}
+
 function buildOptionalSeparatorCleanupSpecs(templateData = {}) {
   const specs = [];
 
@@ -4035,6 +4106,8 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
       `The configured Word template could not be opened. Use a valid .docx or .dotx template. ${error.message}`
     );
   }
+
+  rewriteLegacyJoinedTemplatePairs(zip);
 
   const templateInspection = inspectWordTemplate(zip);
   assertTemplateSupportsOutput(templateInspection);

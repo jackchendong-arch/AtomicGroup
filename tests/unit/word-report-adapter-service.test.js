@@ -149,5 +149,9 @@ test('buildWordReportAdapterPayload returns adapter metadata and template payloa
   assert.equal(payload.templateData.role_title, 'Group CTO');
   assert.equal(payload.templateData.employment_experience_entries.length, 1);
   assert.equal(payload.templateData.project_experience_entries.length, 1);
+  assert.equal(payload.templateData.education_field_institution_line, 'Computing | University of Hong Kong');
+  assert.equal(payload.templateData.education_entries[0].education_field_institution_line, 'Computing | University of Hong Kong');
+  assert.equal(payload.templateData.project_role_company_line, 'Engineering Director | HSBC');
+  assert.equal(payload.templateData.project_experience_entries[0].project_role_company_line, 'Engineering Director | HSBC');
   assert.deepEqual(payload.validationOptions.forbiddenRenderedTextSnippets, []);
 });

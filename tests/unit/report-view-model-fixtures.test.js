@@ -169,13 +169,15 @@ test(
       {
         degree_name: 'Bachelo1’s Degree in Industrial Design',
         field_of_study: '',
+        education_field_institution_line: 'South China University of Technology',
         university: 'South China University of Technology',
         institution_name: 'South China University of Technology',
         start_year: '2011',
         end_year: '2015',
         education_start_year: '2011',
         education_end_year: '2015',
-        education_location: ''
+        education_location: '',
+        education_date_location_line: '2015'
       }
     );
     assert.deepEqual(projectNames, [

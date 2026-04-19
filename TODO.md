@@ -445,6 +445,7 @@ Mark a release complete only when the work is:
 - Build an explicit versioned template adapter for the active hiring-manager report template so export is driven by a known code-owned contract instead of generic placeholder inference.
 - Keep deterministic report-payload build LLM-free, mapping validated canonical facts plus approved fit assessment into template-specific adapter fields only in code.
 - Move optional-field display composition such as education, role/company, date/location, and project role/company lines into the template adapter so Word templates stay layout-only.
+- For the active live hiring-manager template, rewrite known legacy joined-line placeholder pairs through the adapter path so education and project optional separators are adapter-owned rather than template-owned.
 - Keep the validated canonical candidate and JD schemas plus approved narrative assessment as the content source of truth, but project a template-specific report payload before `.docx` rendering.
 - Separate template-compatibility validation from factual report-quality validation so template issues and extraction issues do not masquerade as each other.
 - Support one clear MVP adapter target first for the active revised hiring-manager report template before generalizing to additional template versions.

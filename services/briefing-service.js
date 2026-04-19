@@ -39,6 +39,17 @@ function cleanLine(value) {
     .trim();
 }
 
+function composeOptionalDisplayLine(leftValue, rightValue, separator = ' | ') {
+  const left = cleanLine(leftValue);
+  const right = cleanLine(rightValue);
+
+  if (left && right) {
+    return `${left}${separator}${right}`;
+  }
+
+  return left || right || '';
+}
+
 function softenSummaryConfidenceLanguage(summary) {
   return String(summary || '')
     .replace(/\bideal candidate\b/gi, 'strong candidate')
@@ -1436,13 +1447,15 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
     return {
       degree_name: displayParts.degreeName,
       field_of_study: displayParts.fieldOfStudy,
+      education_field_institution_line: composeOptionalDisplayLine(displayParts.fieldOfStudy, entry.university),
       university: entry.university,
       institution_name: entry.university,
       start_year: entry.start_year,
       end_year: entry.end_year,
       education_start_year: entry.start_year,
       education_end_year: entry.end_year,
-      education_location: ''
+      education_location: '',
+      education_date_location_line: composeOptionalDisplayLine(entry.end_year, '')
     };
   });
   const candidateLanguages = normalized.candidate.languages.filter(Boolean);
@@ -1494,6 +1507,7 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
     project_timeline_basis: entry.project_timeline_basis,
     linked_job_title: entry.linked_job_title,
     linked_company_name: entry.linked_company_name,
+    project_role_company_line: composeOptionalDisplayLine(entry.linked_job_title, entry.linked_company_name),
     project_bullets: normalizeStringArray(entry.project_bullets).map((bullet, index) => ({
       project_bullet_text: bullet,
       project_bullet_original_text: entry.project_bullet_originals?.[index] || bullet
@@ -1571,6 +1585,10 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
       .join('\n\n'),
     degree_name: deriveEducationDisplayParts(firstEducation).degreeName || '',
     field_of_study: deriveEducationDisplayParts(firstEducation).fieldOfStudy || '',
+    education_field_institution_line: composeOptionalDisplayLine(
+      deriveEducationDisplayParts(firstEducation).fieldOfStudy || '',
+      firstEducation.university || ''
+    ),
     university: firstEducation.university || '',
     institution_name: firstEducation.university || '',
     start_year: firstEducation.start_year || '',
@@ -1578,6 +1596,7 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
     education_start_year: firstEducation.start_year || '',
     education_end_year: firstEducation.end_year || '',
     education_location: '',
+    education_date_location_line: composeOptionalDisplayLine(firstEducation.end_year || '', ''),
     job_title: firstEmployment.job_title || '',
     company_name: firstEmployment.company_name || '',
     start_date: firstEmployment.start_date || '',
@@ -1595,6 +1614,7 @@ function buildTemplateDataFromBriefing(briefing, outputLanguage = 'en') {
     project_name: projectExperiences[0]?.project_name || '',
     linked_job_title: projectExperiences[0]?.linked_job_title || '',
     linked_company_name: projectExperiences[0]?.linked_company_name || '',
+    project_role_company_line: projectExperiences[0]?.project_role_company_line || '',
     project_start_date: projectExperiences[0]?.project_start_date || '',
     project_end_date: projectExperiences[0]?.project_end_date || '',
     project_timeline_basis: projectExperiences[0]?.project_timeline_basis || '',

@@ -63,11 +63,21 @@ for (const fixtureCase of EXTERNAL_FIXTURE_CASES) {
         payload.templateData.employment_history.length >= fixtureCase.minEmploymentHistory,
         `${fixtureCase.name} should keep the expected employment-history depth in the adapter payload`
       );
+      assert.doesNotMatch(
+        payload.templateData.education_field_institution_line || '',
+        /^\s*\|/,
+        `${fixtureCase.name} should not expose leading education separators in the adapter payload`
+      );
 
       if (fixtureCase.name === 'Test4') {
         assert.ok(
           payload.templateData.project_experience_entries.length >= 1,
           'Chinese fixture should preserve project experience in the adapter payload'
+        );
+        assert.doesNotMatch(
+          payload.templateData.project_experience_entries[0].project_role_company_line || '',
+          /^\s*\|/,
+          'Chinese fixture should not expose leading project role/company separators in the adapter payload'
         );
       }
 

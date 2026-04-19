@@ -15,7 +15,9 @@ const {
   buildSuggestedOutputFilename,
   describeEmploymentExtraction,
   extractDocumentDerivedProfile,
-  renderHiringManagerWordDocument
+  inspectWordTemplateFile,
+  renderHiringManagerWordDocument,
+  validateWordTemplateContract
 } = require('./services/hiring-manager-template-service');
 const {
   applySummaryOverridesToBriefing,
@@ -55,7 +57,8 @@ const {
 } = require('./services/word-report-quality-service');
 const {
   resolveWordReportAdapter,
-  buildWordReportAdapterPayload
+  buildWordReportAdapterPayload,
+  validateWordReportAdapterCompatibility
 } = require('./services/word-report-adapter-service');
 const { buildReviewState } = require('./services/review-state-service');
 const {
@@ -655,6 +658,19 @@ async function prepareWordDraftTemplateData({ payload, settings, debugTrace }) {
     throw new Error(adapterResolution.errors.join(' '));
   }
 
+  const templateInspection = await inspectWordTemplateFile(settings.outputTemplatePath);
+  const templateContract = validateWordTemplateContract(templateInspection);
+  const adapterCompatibility = validateWordReportAdapterCompatibility({
+    adapter: adapterResolution,
+    templateInspection,
+    templateContract
+  });
+
+  if (!adapterCompatibility.isCompatible) {
+    debugTrace.push(`Word report adapter contract failed: ${adapterCompatibility.errors.join(' | ')}`);
+    throw new Error(adapterCompatibility.errors.join(' '));
+  }
+
   if (!payload.summary || !payload.summary.trim()) {
     debugTrace.push('Summary payload was empty at export time.');
     throw new Error('Generate and review the recruiter summary before exporting the hiring-manager draft.');
@@ -724,7 +740,8 @@ async function writeWordDraftToPath({ settings, outputPath, reportPayload, debug
   const renderResult = await renderHiringManagerWordDocument({
     templatePath: settings.outputTemplatePath,
     outputPath,
-    templateData: reportPayload.templateData
+    templateData: reportPayload.templateData,
+    validationOptions: reportPayload.validationOptions
   });
 
   debugTrace.push('Word template rendered successfully.');

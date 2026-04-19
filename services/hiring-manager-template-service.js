@@ -3760,6 +3760,87 @@ function decodeWordXmlText(value) {
     .replace(/&#xA;/gi, ' ');
 }
 
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildOptionalSeparatorCleanupSpecs(templateData = {}) {
+  const specs = [];
+
+  function addPairSpecs(leftValue, rightValue, separator) {
+    const left = normalizeTextBlock(leftValue);
+    const right = normalizeTextBlock(rightValue);
+
+    if (!right && !left) {
+      return;
+    }
+
+    if (!left && right) {
+      specs.push({
+        pattern: new RegExp(`\\s*${escapeRegExp(separator)}\\s*${escapeRegExp(right)}`, 'g'),
+        replacement: right
+      });
+    }
+
+    if (left && !right) {
+      specs.push({
+        pattern: new RegExp(`${escapeRegExp(left)}\\s*${escapeRegExp(separator)}\\s*`, 'g'),
+        replacement: left
+      });
+    }
+  }
+
+  addPairSpecs(templateData.field_of_study, templateData.institution_name, '|');
+  addPairSpecs(templateData.education_end_year, templateData.education_location, '|');
+  addPairSpecs(templateData.linked_job_title, templateData.linked_company_name, '|');
+
+  const educationEntries = Array.isArray(templateData.education_entries) ? templateData.education_entries : [];
+  educationEntries.forEach((entry) => {
+    addPairSpecs(entry.field_of_study, entry.institution_name || entry.university, '|');
+    addPairSpecs(entry.education_end_year || entry.end_year, entry.education_location, '|');
+  });
+
+  const projectEntries = Array.isArray(templateData.project_experience_entries) ? templateData.project_experience_entries : [];
+  projectEntries.forEach((entry) => {
+    addPairSpecs(entry.linked_job_title, entry.linked_company_name, '|');
+  });
+
+  return specs;
+}
+
+function cleanupRenderedOptionalSeparators(zip, templateData = {}) {
+  const cleanupSpecs = buildOptionalSeparatorCleanupSpecs(templateData);
+
+  if (cleanupSpecs.length === 0) {
+    return;
+  }
+
+  const wordXmlFileNames = Object.keys(zip.files).filter((fileName) => {
+    return fileName.startsWith('word/') && fileName.endsWith('.xml');
+  });
+
+  for (const fileName of wordXmlFileNames) {
+    const xmlFile = zip.file(fileName);
+
+    if (!xmlFile) {
+      continue;
+    }
+
+    let normalizedXml = xmlFile.asText();
+
+    for (const spec of cleanupSpecs) {
+      normalizedXml = normalizedXml.replace(spec.pattern, spec.replacement);
+    }
+
+    normalizedXml = normalizedXml
+      .replace(/>\s*\|\s*</g, '><')
+      .replace(/>\s*\|\s+/g, '>')
+      .replace(/\s+\|\s*</g, '<');
+
+    zip.file(fileName, normalizedXml);
+  }
+}
+
 function extractPlainTextFromWordXml(xml) {
   return [...String(xml || '').matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
     .map((match) => decodeWordXmlText(match[1]))
@@ -3845,7 +3926,10 @@ function buildRequiredRenderedTextGroups(templateData = {}) {
   return requiredGroups;
 }
 
-function validateGeneratedWordDocument(buffer, { requiredRenderedTextGroups = [] } = {}) {
+function validateGeneratedWordDocument(buffer, {
+  requiredRenderedTextGroups = [],
+  forbiddenRenderedTextSnippets = []
+} = {}) {
   const zip = new PizZip(buffer);
   const contentTypesFile = zip.file('[Content_Types].xml');
 
@@ -3885,6 +3969,12 @@ function validateGeneratedWordDocument(buffer, { requiredRenderedTextGroups = []
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+  const suspiciousSeparatorArtifacts = [];
+
+  if (/\|\s*\|/.test(normalizedRenderedText)) {
+    suspiciousSeparatorArtifacts.push('||');
+  }
+
   const missingRenderedTextGroups = (Array.isArray(requiredRenderedTextGroups)
     ? requiredRenderedTextGroups
     : [])
@@ -3893,6 +3983,12 @@ function validateGeneratedWordDocument(buffer, { requiredRenderedTextGroups = []
       .filter(Boolean))
     .filter((group) => group.length > 0)
     .filter((group) => !group.some((snippet) => normalizedRenderedText.includes(snippet.toLowerCase())));
+  const renderedForbiddenSnippets = (Array.isArray(forbiddenRenderedTextSnippets)
+    ? forbiddenRenderedTextSnippets
+    : [])
+    .map((snippet) => buildRenderedTextValidationSnippet(snippet, 120))
+    .filter(Boolean)
+    .filter((snippet) => normalizedRenderedText.includes(snippet.toLowerCase()));
 
   if (missingRenderedTextGroups.length > 0) {
     throw new Error(
@@ -3900,13 +3996,27 @@ function validateGeneratedWordDocument(buffer, { requiredRenderedTextGroups = []
     );
   }
 
+  if (renderedForbiddenSnippets.length > 0) {
+    throw new Error(
+      `Generated Word document contains forbidden rendered content: ${renderedForbiddenSnippets.join(', ')}.`
+    );
+  }
+
+  if (suspiciousSeparatorArtifacts.length > 0) {
+    throw new Error(
+      `Generated Word document contains suspicious separator artifacts: ${suspiciousSeparatorArtifacts.join(', ')}.`
+    );
+  }
+
   return {
     unexpandedTags: [],
-    missingRenderedTextGroups: []
+    missingRenderedTextGroups: [],
+    renderedForbiddenSnippets: [],
+    suspiciousSeparatorArtifacts: []
   };
 }
 
-async function renderHiringManagerWordDocument({ templatePath, outputPath, templateData }) {
+async function renderHiringManagerWordDocument({ templatePath, outputPath, templateData, validationOptions = {} }) {
   const extension = path.extname(templatePath).toLowerCase();
 
   if (!['.docx', '.dotx'].includes(extension)) {
@@ -3968,6 +4078,7 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
     );
   }
 
+  cleanupRenderedOptionalSeparators(document.getZip(), sanitizedTemplateData);
   normalizeWordPackageForOutput(document.getZip(), extension);
 
   const renderedBuffer = document.getZip().generate({
@@ -3976,7 +4087,10 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
   });
 
   const postRenderValidation = validateGeneratedWordDocument(renderedBuffer, {
-    requiredRenderedTextGroups: buildRequiredRenderedTextGroups(sanitizedTemplateData)
+    requiredRenderedTextGroups: buildRequiredRenderedTextGroups(sanitizedTemplateData),
+    forbiddenRenderedTextSnippets: Array.isArray(validationOptions.forbiddenRenderedTextSnippets)
+      ? validationOptions.forbiddenRenderedTextSnippets
+      : []
   });
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -3993,6 +4107,25 @@ async function renderHiringManagerWordDocument({ templatePath, outputPath, templ
   };
 }
 
+async function inspectWordTemplateFile(templatePath) {
+  const extension = path.extname(templatePath).toLowerCase();
+
+  if (!['.docx', '.dotx'].includes(extension)) {
+    throw new Error('Only .docx and .dotx hiring-manager templates are supported for automated output.');
+  }
+
+  const templateContent = await fs.readFile(templatePath);
+
+  try {
+    const zip = new PizZip(templateContent);
+    return inspectWordTemplate(zip);
+  } catch (error) {
+    throw new Error(
+      `The configured Word template could not be opened. Use a valid .docx or .dotx template. ${error.message}`
+    );
+  }
+}
+
 module.exports = {
   WORD_TEMPLATE_CONTRACT,
   SUPPORTED_WORD_TEMPLATE_TAGS,
@@ -4004,6 +4137,7 @@ module.exports = {
   extractExperienceHistory,
   extractProjectExperiences,
   inspectWordTemplate,
+  inspectWordTemplateFile,
   parseStructuredSummary,
   renderHiringManagerWordDocument,
   validateWordTemplateContract

@@ -439,7 +439,7 @@ Mark a release complete only when the work is:
   - `Release 7D` is now unblocked and becomes the next top incomplete release
 
 ## Release 7D: Word Report Adapter MVP
-- [-] Release 7D in progress.
+- [x] Release 7D completed after user validation.
 - Release 7D is now unblocked because the factual stage-2/3 pipeline is stable across the representative supported corpus, so Word-output work can now improve the final document rather than mask upstream parser gaps.
 - Implement a dedicated Word-report export path that treats the hiring-manager document as its own product slice rather than a side effect of the generic briefing/export pipeline.
 - Build an explicit versioned template adapter for the active hiring-manager report template so export is driven by a known code-owned contract instead of generic placeholder inference.
@@ -460,6 +460,7 @@ Mark a release complete only when the work is:
 
 ## Release 7E: Word Fidelity Expansion
 - [ ] Release 7E shipped, completed, and tested.
+- Release 7E is now the top incomplete release after the Word-report adapter MVP closed with live-template export, email handoff, unsupported-template guard, and anonymous-mode export checks passing.
 - Add adapter-payload fixture tests for representative CV/JD cases before `.docx` smoke tests.
 - Add regression packs for representative CV families so Word-report fidelity can be assessed at:
   - canonical schema

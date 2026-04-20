@@ -1628,6 +1628,7 @@ Release 7C factual-closure outcome:
 Value:
 - The hiring-manager Word document becomes a stable product surface with its own explicit adapter contract instead of being a brittle side effect of generic placeholder export.
 - This release is now unblocked because the factual stage-2/3 pipeline is stable across the representative supported corpus, so Word-fidelity work can focus on the final report rather than compensating for unresolved parser-caused red states.
+- Release 7D is now complete: the active template exports through the versioned adapter path, legacy joined-line separators are adapter-owned, unsupported templates fail early on compatibility, and anonymous-mode export stays enabled when a mode switch preserves an approved green draft.
 
 Scope:
 - Versioned template adapter for the active hiring-manager report template

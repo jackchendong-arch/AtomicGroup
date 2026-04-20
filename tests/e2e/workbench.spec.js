@@ -433,6 +433,32 @@ test.describe('Candidate Match Workbench', () => {
     await expect(page.locator('#summary-message')).toContainText('Opened the default email client with a prepared draft.');
   });
 
+  test('keeps Word export enabled when switching an approved draft to anonymous mode', async () => {
+    const outputFolderPath = path.join(userDataPath, 'briefings');
+    await configureWordTemplate(page, outputFolderPath);
+
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [structuredCvPath, sampleJdPath]);
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#review-state-pill')).toHaveText('Review: Green');
+    await page.locator('#approve-draft-button').click();
+    await expect(page.locator('#export-word-draft-button')).toBeEnabled();
+
+    await page.locator('#toggle-anonymous-mode-button').click();
+
+    await expect(page.locator('#anonymous-mode-value')).toHaveText('On');
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#summary-message')).toContainText('remains approved after switching modes');
+    await expect(page.locator('#export-word-draft-button')).toBeEnabled();
+    await expect(page.locator('#share-by-email-button')).toBeEnabled();
+
+    await page.locator('#export-word-draft-button').click();
+
+    await expect(page.locator('#summary-status')).toHaveText('Saved');
+    await expect(page.locator('#draft-meta')).toContainText('Latest saved Word draft:');
+  });
+
   test('supports role workspace candidate switching without stale previews', async () => {
     await openSourceFolderViaTestApi(page, sampleWorkspacePath);
 

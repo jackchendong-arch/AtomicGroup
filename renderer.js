@@ -2747,6 +2747,7 @@ function markDraftEdited() {
 
 async function setOutputMode(mode) {
   const normalizedMode = mode === 'anonymous' ? 'anonymous' : 'named';
+  const previousDraftLifecycle = state.draftLifecycle;
 
   if (state.outputMode === normalizedMode) {
     return;
@@ -2819,15 +2820,23 @@ async function setOutputMode(mode) {
     state.canonicalValidationSummary = normalizeCanonicalValidationSummary(result.canonicalValidationSummary);
     applyIncomingReviewArtifacts(result.rawReviewState || result.reviewState, state.reviewDecisions);
     state.approvalWarnings = result.approvalWarnings || [];
-    state.draftLifecycle = 'generated';
+    const canPreserveApproval =
+      previousDraftLifecycle === 'approved' &&
+      !hasBlockedReviewState(state.reviewState) &&
+      !hasReviewRequiredState(state.reviewState);
+    state.draftLifecycle = canPreserveApproval ? 'approved' : 'generated';
     state.summaryStatus = 'Ready';
     state.summaryMessage = hasBlockedReviewState(state.reviewState)
       ? 'Hiring-manager output refreshed, but blocking review-state issues still prevent Word export or email sharing.'
       : (hasReviewRequiredState(state.reviewState)
         ? 'Hiring-manager output refreshed. Review the flagged sections before approval or sharing.'
-      : (normalizedMode === 'anonymous'
-        ? 'Anonymous hiring-manager output is ready without rerunning candidate assessment. The consultant summary stays named.'
-        : 'Named hiring-manager output restored without rerunning candidate assessment.'));
+      : (canPreserveApproval
+        ? (normalizedMode === 'anonymous'
+          ? 'Anonymous hiring-manager output remains approved after switching modes. Summary copy, email handoff, and Word export stay enabled.'
+          : 'Named hiring-manager output remains approved after switching modes. Summary copy, email handoff, and Word export stay enabled.')
+        : (normalizedMode === 'anonymous'
+          ? 'Anonymous hiring-manager output is ready without rerunning candidate assessment. The consultant summary stays named.'
+          : 'Named hiring-manager output restored without rerunning candidate assessment.')));
     cacheDraftVariant(state.outputMode, state.outputLanguage);
     await persistCurrentWorkspaceSnapshot();
   } catch (error) {

@@ -12,7 +12,8 @@ const ACTIVE_WORD_REPORT_ADAPTER = Object.freeze({
   payloadVersion: WORD_REPORT_ADAPTER_PAYLOAD_VERSION,
   supportedTemplateNames: Object.freeze([
     'atomic_revised_candidate_report',
-    'atomicgroupcv_template'
+    'atomicgroupcv_template',
+    'hiring_manager_template'
   ]),
   requiredLogicalTagGroups: Object.freeze([
     Object.freeze(['candidate_name']),

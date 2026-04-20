@@ -88,6 +88,16 @@ test('resolveWordReportAdapter recognizes the legacy fixture template alias for 
   assert.equal(resolution.templateIdentity, 'atomicgroupcv_template');
 });
 
+test('resolveWordReportAdapter recognizes the deterministic e2e sample template alias', () => {
+  const resolution = resolveWordReportAdapter({
+    templateName: 'hiring-manager-template.docx',
+    templatePath: '/tmp/hiring-manager-template.docx'
+  });
+
+  assert.equal(resolution.isCompatible, true);
+  assert.equal(resolution.templateIdentity, 'hiring_manager_template');
+});
+
 test('resolveWordReportAdapter rejects unsupported Word templates explicitly', () => {
   const resolution = resolveWordReportAdapter({
     templateName: 'Client_Custom_Template.dotx',

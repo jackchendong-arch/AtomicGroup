@@ -948,6 +948,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     jdDocument: generationInputs.jdDocument,
     outputLanguage
   });
+  let canonicalValidationSummary = fallbackArtifact.canonicalValidationSummary;
   let validatedBriefing = validateBriefing(fallbackArtifact.briefing).briefing;
   let summaryRetrievalManifest = summaryRequest.retrievalManifest;
   let briefingRetrievalManifest = briefingRequest.retrievalManifest;
@@ -960,6 +961,18 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
       ...validatedBriefing,
       employment_history: [],
       role_requirements_match: []
+    };
+    canonicalValidationSummary = {
+      state: 'red',
+      issues: [
+        {
+          code: 'employment_entry_missing_core_fields',
+          severity: 'red',
+          section: 'employment',
+          entryIndex: 0,
+          message: 'Employment entry 1 is missing role or company details.'
+        }
+      ]
     };
     summaryRetrievalManifest = [];
     briefingRetrievalManifest = [];
@@ -978,7 +991,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     recruiterSummary: preparedOutput.summary,
     outputLanguage,
     outputMode,
-    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+    canonicalValidationSummary,
     cvDocument: payload.cvDocument,
     jdDocument: payload.jdDocument,
     existingWarnings: preparedOutput.warnings,
@@ -1010,7 +1023,7 @@ async function buildE2EMockSummaryResult({ payload, settings, templateGuidance, 
     providerLabel: 'E2E Mock',
     model: 'deterministic-local',
     briefing: validatedBriefing,
-    canonicalValidationSummary: fallbackArtifact.canonicalValidationSummary,
+    canonicalValidationSummary,
     rawReviewState: reviewPresentation.rawReviewState,
     reviewState: reviewPresentation.reviewState,
     outputMode,

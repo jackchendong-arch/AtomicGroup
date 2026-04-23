@@ -459,8 +459,26 @@ Mark a release complete only when the work is:
   - obvious separator/empty-line artifacts
 
 ## Release 7E: Word Fidelity Expansion
-- [ ] Release 7E shipped, completed, and tested.
+- [-] Release 7E in progress.
 - Release 7E is now the top incomplete release after the Word-report adapter MVP closed with live-template export, email handoff, unsupported-template guard, and anonymous-mode export checks passing.
+- Approved `7E.1` slice:
+  - add a curated live-template Word-fidelity pack for:
+    - `Role4/CV4-1.pdf` + `Role4/JD4.docx`
+    - `Role4/CV4-2.pdf` + `Role4/JD4.docx`
+    - `Role4/CV4-3.pdf` + `Role4/JD4.docx`
+    - one anonymous-mode export case
+  - validate fidelity at:
+    - canonical schema
+    - report view model
+    - template adapter payload
+    - final `.docx`
+  - assert high-signal fidelity outcomes rather than full document snapshots:
+    - no orphan separators
+    - clean education lines
+    - clean project role/company lines
+    - expected repeated-section row counts
+    - no obvious anonymous-mode candidate-name leakage
+  - keep the slice scoped to the active live hiring-manager template only
 - Add adapter-payload fixture tests for representative CV/JD cases before `.docx` smoke tests.
 - Add regression packs for representative CV families so Word-report fidelity can be assessed at:
   - canonical schema

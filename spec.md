@@ -1649,12 +1649,18 @@ Value:
 - The first stable Word-report adapter grows into broader fixture coverage, stronger bilingual fidelity, and safer expansion to additional report variants.
 
 Scope:
+- Approved `7E.1` first step:
+  - curated live-template fidelity fixtures for `CV4-1`, `CV4-2`, `CV4-3`, and one anonymous-mode export case
+  - four-layer fidelity checks at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
+  - assertions on high-signal output quality markers rather than whole-document snapshot locking
+  - no broader bilingual expansion, appendix behavior, or extra template versions yet
 - Regression coverage at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
 - Larger fixture packs for representative CV/JD families
 - Bilingual rendering refinements and optional original-text appendix handling where required
 - Additional supported template versions only after the MVP adapter path is stable
 
 Acceptance criteria:
+- `7E.1` proves the live template stays fidelity-clean on the curated fixture pack before broader family expansion begins.
 - Representative CV/JD fixtures can be validated at the adapter payload level before `.docx` rendering smoke tests.
 - Green/amber/red report-quality behavior remains stable across the supported fixture families.
 - The app can expand Word fidelity without regressing the already-supported template path.

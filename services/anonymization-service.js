@@ -157,13 +157,16 @@ function normalizeAnonymousNarrativeText(text) {
         return line;
       }
 
-      if (/^\s*Candidate\s*:\s*Anonymous Candidate\s*$/i.test(trimmed)) {
+      if (/^\s*Candidate\s*:\s*Anonymous Candidate(?:\s*\(\s*[^)]*\s*\))?\s*$/i.test(trimmed)) {
         return 'Candidate: Anonymous Candidate';
       }
 
       let next = line
+        .replace(/\bAnonymous Candidate\s*\([^)]*\)/g, 'Anonymous Candidate')
         .replace(/\bAnonymous Candidate's\b/g, "the candidate's")
         .replace(/\bAnonymous Candidate\b/g, 'the candidate')
+        .replace(/\bthe candidate\s*\([^)]*\)/gi, 'the candidate')
+        .replace(/\bthe candidate\s*\(\s*the candidate\s*\)/gi, 'the candidate')
         .replace(/^the candidate\b/, 'The candidate');
 
       return next;

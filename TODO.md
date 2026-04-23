@@ -479,6 +479,20 @@ Mark a release complete only when the work is:
     - expected repeated-section row counts
     - no obvious anonymous-mode candidate-name leakage
   - keep the slice scoped to the active live hiring-manager template only
+- Approved `7E.2` slice:
+  - extend the same four-layer Word-fidelity checks to a second representative fixture family using existing external fixtures
+  - broaden risk coverage across:
+    - mixed-language CV/JD
+    - OCR/noisy formatting
+    - green and amber report states
+    - a second anonymous-mode export case beyond `CV4-1`
+  - keep assertions high-signal rather than whole-document snapshots:
+    - stable repeated-section counts
+    - clean joined lines
+    - no orphan separators
+    - no obvious anonymous leakage
+    - expected rendered core text only for fields the tracked template actually shows
+  - keep the slice scoped to the active tracked hiring-manager template path only
 - Add adapter-payload fixture tests for representative CV/JD cases before `.docx` smoke tests.
 - Add regression packs for representative CV families so Word-report fidelity can be assessed at:
   - canonical schema

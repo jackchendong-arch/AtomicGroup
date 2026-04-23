@@ -1654,6 +1654,11 @@ Scope:
   - four-layer fidelity checks at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
   - assertions on high-signal output quality markers rather than whole-document snapshot locking
   - no broader bilingual expansion, appendix behavior, or extra template versions yet
+- Approved `7E.2` next step:
+  - extend the same four-layer fidelity checks to a second representative fixture family from the existing external fixture pack
+  - broaden coverage to mixed-language, OCR/noisy-format, and amber-state report behavior plus a second anonymous export case
+  - keep final `.docx` assertions limited to fields the tracked template actually renders instead of assuming every structured field appears in the document
+  - remain on the active tracked template path only; no multi-template expansion yet
 - Regression coverage at canonical-schema, report-view-model, template-adapter-payload, and final `.docx` levels
 - Larger fixture packs for representative CV/JD families
 - Bilingual rendering refinements and optional original-text appendix handling where required
@@ -1661,6 +1666,7 @@ Scope:
 
 Acceptance criteria:
 - `7E.1` proves the live template stays fidelity-clean on the curated fixture pack before broader family expansion begins.
+- `7E.2` proves the same fidelity contract holds on a second representative fixture family without relying on whole-document snapshots.
 - Representative CV/JD fixtures can be validated at the adapter payload level before `.docx` rendering smoke tests.
 - Green/amber/red report-quality behavior remains stable across the supported fixture families.
 - The app can expand Word fidelity without regressing the already-supported template path.

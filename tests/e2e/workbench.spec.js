@@ -4,9 +4,11 @@ const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const { test, expect } = require('@playwright/test');
 const { _electron: electron } = require('playwright');
+const PizZip = require('pizzip');
 
 const appRoot = path.resolve(__dirname, '..', '..');
 const sampleCvPath = path.join(appRoot, 'samples', 'sample-cv.txt');
+const sampleCvParentheticalPath = path.join(appRoot, 'samples', 'sample-cv-parenthetical.txt');
 const sampleJdPath = path.join(appRoot, 'samples', 'sample-jd.txt');
 const structuredCvPath = path.join(appRoot, 'samples', 'structured-cv.txt');
 const sampleHiringManagerTemplatePath = path.join(appRoot, 'samples', 'hiring-manager-template.docx');
@@ -67,6 +69,26 @@ async function openSourceFolderViaTestApi(page, folderPath) {
 
 async function getSummaryEditorText(page) {
   return page.locator('#summary-editor').innerText();
+}
+
+function extractPlainTextFromDocx(buffer) {
+  const zip = new PizZip(buffer);
+  const documentXml = zip.file('word/document.xml');
+
+  if (!documentXml) {
+    return '';
+  }
+
+  return [...documentXml.asText().matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
+    .map((match) => match[1]
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'"))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function configureWordTemplate(page, outputFolderPath) {
@@ -457,6 +479,38 @@ test.describe('Candidate Match Workbench', () => {
 
     await expect(page.locator('#summary-status')).toHaveText('Saved');
     await expect(page.locator('#draft-meta')).toContainText('Latest saved Word draft:');
+  });
+
+  test('anonymous export keeps parenthetical candidate names clean in the final Word document', async () => {
+    const outputFolderPath = path.join(userDataPath, 'briefings');
+    await configureWordTemplate(page, outputFolderPath);
+
+    await page.locator('#open-manual-context-tab').click();
+    await dispatchUriDrop(page, '#dropzone', [sampleCvParentheticalPath, sampleJdPath]);
+    await page.locator('#generate-summary-button').click();
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#review-state-pill')).toHaveText('Review: Green');
+    await page.locator('#approve-draft-button').click();
+
+    await page.locator('#toggle-anonymous-mode-button').click();
+
+    await expect(page.locator('#anonymous-mode-value')).toHaveText('On');
+    await expect(page.locator('#summary-status')).toHaveText('Ready');
+    await expect(page.locator('#summary-editor')).not.toContainText('the candidate (the candidate)');
+    await expect(page.locator('#export-word-draft-button')).toBeEnabled();
+
+    await page.locator('#export-word-draft-button').click();
+
+    await expect(page.locator('#summary-status')).toHaveText('Saved');
+    const draftMeta = await page.locator('#draft-meta').innerText();
+    const exportPath = draftMeta.replace(/^Latest saved Word draft:\s*/, '').trim();
+    const renderedBuffer = await fs.readFile(exportPath);
+    const renderedText = extractPlainTextFromDocx(renderedBuffer);
+
+    expect(renderedText).toContain('Anonymous Candidate');
+    expect(renderedText).not.toContain('Xiaoshen CONG (Shawn)');
+    expect(renderedText).not.toContain('the candidate (the candidate)');
+    expect(renderedText).toContain('Senior Product Manager, Recruitment Intelligence');
   });
 
   test('supports role workspace candidate switching without stale previews', async () => {

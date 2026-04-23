@@ -21,6 +21,13 @@ const {
 const {
   renderHiringManagerWordDocument
 } = require('../../services/hiring-manager-template-service');
+const {
+  EXTERNAL_FIXTURE_CASES,
+  fixtureCaseHasValidContract,
+  fixtureCaseIsPresent,
+  getFixtureCvPath,
+  getFixtureJdPath
+} = require('./external-fixture-registry');
 
 const ROLE4_ROOT = '/Users/jack/Dev/Test/AtomicGroup/Role4';
 const JD4_PATH = path.join(ROLE4_ROOT, 'JD4.docx');
@@ -64,6 +71,43 @@ const CURATED_FIDELITY_CASES = [
   }
 ];
 
+const EXTERNAL_FIDELITY_CASES = [
+  {
+    name: 'Test1',
+    expectedCanonicalState: 'green',
+    expectedCandidateName: 'JACK XIN DONG CHEN',
+    expectedRoleTitle: 'Head of IT Transformation',
+    expectedEducationCount: 1,
+    expectedEmploymentCount: 6,
+    expectedProjectCount: 0,
+    requiredRenderedSnippets: ['JACK XIN DONG CHEN', 'Head of IT Transformation', 'University of Western Australia'],
+    forbiddenRenderedPatterns: []
+  },
+  {
+    name: 'Test2',
+    expectedCanonicalState: 'green',
+    expectedCandidateName: 'Xiaoshen CONG (Shawn)',
+    expectedRoleTitle: 'Leadership Talent Acquisition Partner (VP), Technology Center',
+    expectedEducationCount: 2,
+    expectedEmploymentCount: 5,
+    expectedProjectCount: 0,
+    requiredRenderedSnippets: ['Xiaoshen CONG (Shawn)', 'Leadership Talent Acquisition Partner (VP), Technology Center', 'Coventry University'],
+    forbiddenRenderedPatterns: [/\|\s*Coventry University/i]
+  },
+  {
+    name: 'Test7',
+    expectedCanonicalState: 'amber',
+    expectedCandidateName: 'Chenhao Li',
+    expectedRoleTitle: '区块链开发工程师 (Blockchain Developer)',
+    expectedIssueCodes: ['project_role_ambiguous'],
+    expectedEducationCount: 2,
+    expectedEmploymentCount: 5,
+    minProjectCount: 13,
+    requiredRenderedSnippets: ['Chenhao Li', '区块链开发工程师 (Blockchain Developer)', 'Cardiff University'],
+    forbiddenRenderedPatterns: [/\|\s*Cardiff University/i]
+  }
+];
+
 function extractPlainTextFromDocx(buffer) {
   const zip = new PizZip(buffer);
   const documentXml = zip.file('word/document.xml');
@@ -90,13 +134,46 @@ function fixtureAvailable(cvFileName) {
     fs.existsSync(TEMPLATE_PATH);
 }
 
+function externalFixtureAvailable(fixtureName) {
+  const fixtureCase = EXTERNAL_FIXTURE_CASES.find((candidate) => candidate.name === fixtureName);
+
+  return Boolean(
+    fixtureCase &&
+    fixtureCaseIsPresent(fixtureCase) &&
+    fixtureCaseHasValidContract(fixtureCase) &&
+    fs.existsSync(TEMPLATE_PATH)
+  );
+}
+
 function getUniqueIssueCodes(validationSummary) {
   return [...new Set((validationSummary?.issues || []).map((issue) => issue.code))].sort();
 }
 
 async function buildFidelityFixture(cvFileName, { anonymous = false } = {}) {
-  const cvDocument = await importDocument(path.join(ROLE4_ROOT, cvFileName));
-  const jdDocument = await importDocument(JD4_PATH);
+  return buildFidelityFixtureFromPaths({
+    cvPath: path.join(ROLE4_ROOT, cvFileName),
+    jdPath: JD4_PATH,
+    anonymous
+  });
+}
+
+async function buildExternalFidelityFixture(fixtureName, { anonymous = false } = {}) {
+  const fixtureCase = EXTERNAL_FIXTURE_CASES.find((candidate) => candidate.name === fixtureName);
+
+  if (!fixtureCase || !fixtureCaseHasValidContract(fixtureCase)) {
+    throw new Error(`External fixture ${fixtureName} is not available as a valid contract pair.`);
+  }
+
+  return buildFidelityFixtureFromPaths({
+    cvPath: getFixtureCvPath(fixtureCase),
+    jdPath: getFixtureJdPath(fixtureCase),
+    anonymous
+  });
+}
+
+async function buildFidelityFixtureFromPaths({ cvPath, jdPath, anonymous = false }) {
+  const cvDocument = await importDocument(cvPath);
+  const jdDocument = await importDocument(jdPath);
   const canonicalReview = buildCanonicalExtractionReview({ cvDocument, jdDocument });
   const baseBriefing = buildFallbackBriefing({
     cvDocument,
@@ -133,7 +210,7 @@ async function buildFidelityFixture(cvFileName, { anonymous = false } = {}) {
   });
   const outputPath = path.join(
     OUTPUT_DIR,
-    `${path.basename(cvFileName, path.extname(cvFileName))}${anonymous ? '-anonymous' : ''}.docx`
+    `${path.basename(cvPath, path.extname(cvPath))}${anonymous ? '-anonymous' : ''}.docx`
   );
   const renderResult = await renderHiringManagerWordDocument({
     templatePath: TEMPLATE_PATH,
@@ -242,6 +319,104 @@ test(
     assert.doesNotMatch(result.renderedText, /Noah Zhang/i);
     assert.doesNotMatch(result.renderedText, /\|\s*Johns Hopkins University/i);
     assert.match(result.renderedText, /Johns Hopkins University/i);
+    assert.deepEqual(result.renderResult.postRenderValidation.renderedForbiddenSnippets, []);
+    assert.deepEqual(result.renderResult.postRenderValidation.suspiciousSeparatorArtifacts, []);
+  }
+);
+
+for (const fixtureCase of EXTERNAL_FIDELITY_CASES) {
+  test(
+    `7E.2 expanded Word fidelity stays stable for ${fixtureCase.name}`,
+    {
+      skip: externalFixtureAvailable(fixtureCase.name)
+        ? false
+        : 'External fidelity fixture documents or tracked template are not available on this machine.'
+    },
+    async () => {
+      const result = await buildExternalFidelityFixture(fixtureCase.name);
+      const issueCodes = getUniqueIssueCodes(result.canonicalReview.validationSummary);
+      const reportTemplateData = result.reportViewModel.templateData;
+      const payloadTemplateData = result.adapterPayload.templateData;
+
+      assert.equal(result.canonicalReview.validationSummary.state, fixtureCase.expectedCanonicalState);
+      assert.equal(result.canonicalReview.candidateSchema.identity.name, fixtureCase.expectedCandidateName);
+      assert.equal(result.canonicalReview.jdSchema.role.title, fixtureCase.expectedRoleTitle);
+
+      if (fixtureCase.expectedIssueCodes) {
+        assert.deepEqual(issueCodes, fixtureCase.expectedIssueCodes);
+      } else {
+        assert.deepEqual(issueCodes, []);
+      }
+
+      assert.equal(reportTemplateData.education_entries.length, fixtureCase.expectedEducationCount);
+      assert.equal(reportTemplateData.employment_experience_entries.length, fixtureCase.expectedEmploymentCount);
+      if (typeof fixtureCase.expectedProjectCount === 'number') {
+        assert.equal(reportTemplateData.project_experience_entries.length, fixtureCase.expectedProjectCount);
+      }
+      if (typeof fixtureCase.minProjectCount === 'number') {
+        assert.ok(reportTemplateData.project_experience_entries.length >= fixtureCase.minProjectCount);
+      }
+      assert.doesNotMatch(reportTemplateData.education_field_institution_line || '', /^\s*\|/);
+      assert.equal(
+        reportTemplateData.project_experience_entries.some((entry) => /^\s*\|/.test(entry.project_role_company_line || '')),
+        false
+      );
+
+      assert.equal(result.adapterPayload.templateIdentity, 'atomicgroupcv_template');
+      assert.equal(payloadTemplateData.candidate_name, reportTemplateData.candidate_name);
+      assert.equal(payloadTemplateData.role_title, reportTemplateData.role_title);
+      assert.equal(payloadTemplateData.education_entries.length, reportTemplateData.education_entries.length);
+      assert.equal(payloadTemplateData.employment_experience_entries.length, reportTemplateData.employment_experience_entries.length);
+      assert.equal(payloadTemplateData.project_experience_entries.length, reportTemplateData.project_experience_entries.length);
+      assert.doesNotMatch(payloadTemplateData.education_field_institution_line || '', /^\s*\|/);
+      assert.equal(
+        payloadTemplateData.project_experience_entries.some((entry) => /^\s*\|/.test(entry.project_role_company_line || '')),
+        false
+      );
+
+      for (const snippet of fixtureCase.requiredRenderedSnippets) {
+        assert.match(
+          result.renderedText,
+          new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+          `${fixtureCase.name} should render "${snippet}" in the final docx`
+        );
+      }
+
+      for (const pattern of fixtureCase.forbiddenRenderedPatterns) {
+        assert.doesNotMatch(result.renderedText, pattern);
+      }
+
+      assert.deepEqual(result.renderResult.postRenderValidation.unexpandedTags, []);
+      assert.deepEqual(result.renderResult.postRenderValidation.renderedForbiddenSnippets, []);
+      assert.deepEqual(result.renderResult.postRenderValidation.suspiciousSeparatorArtifacts, []);
+    }
+  );
+}
+
+test(
+  '7E.2 expanded anonymous export keeps the final Word document anonymous for Test2',
+  {
+    skip: externalFixtureAvailable('Test2')
+      ? false
+      : 'External fidelity fixture documents or tracked template are not available on this machine.'
+  },
+  async () => {
+    const result = await buildExternalFidelityFixture('Test2', { anonymous: true });
+    const payloadTemplateData = result.adapterPayload.templateData;
+
+    assert.equal(result.canonicalReview.validationSummary.state, 'green');
+    assert.equal(result.canonicalReview.candidateSchema.identity.name, 'Xiaoshen CONG (Shawn)');
+    assert.equal(payloadTemplateData.candidate_name, 'Anonymous Candidate');
+    assert.equal(payloadTemplateData.education_entries.length, 2);
+    assert.equal(payloadTemplateData.employment_experience_entries.length, 5);
+    assert.equal(payloadTemplateData.project_experience_entries.length, 0);
+    assert.doesNotMatch(payloadTemplateData.education_field_institution_line || '', /^\s*\|/);
+    assert.equal(JSON.stringify(payloadTemplateData).includes('Xiaoshen CONG (Shawn)'), false);
+    assert.equal(result.anonymizationWarnings.length, 0);
+    assert.match(result.renderedText, /Anonymous Candidate/i);
+    assert.doesNotMatch(result.renderedText, /Xiaoshen CONG \(Shawn\)/i);
+    assert.doesNotMatch(result.renderedText, /\|\s*Coventry University/i);
+    assert.match(result.renderedText, /Coventry University/i);
     assert.deepEqual(result.renderResult.postRenderValidation.renderedForbiddenSnippets, []);
     assert.deepEqual(result.renderResult.postRenderValidation.suspiciousSeparatorArtifacts, []);
   }

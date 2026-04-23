@@ -131,3 +131,78 @@ test('anonymizeDraftOutput also masks common first-name-only variants that appea
   assert.match(result.summary, /The candidate is a strong fit/i);
   assert.match(result.briefing.fit_summary, /the candidate can lead the platform agenda/i);
 });
+
+test('anonymizeDraftOutput preserves the anonymous candidate label in Candidate headings with parenthetical duplicates', () => {
+  const { cvDocument, jdDocument } = createDocuments();
+  cvDocument.file.name = 'shawn-cong-cv.pdf';
+  cvDocument.text = [
+    'Xiaoshen CONG (Shawn)',
+    'Email: shawn.cong@example.com',
+    'Current location: Shanghai'
+  ].join('\n');
+
+  const result = anonymizeDraftOutput({
+    recruiterSummary: [
+      'Candidate: Xiaoshen CONG (Shawn)',
+      'Target Role: Leadership Talent Acquisition Partner (VP), Technology Center',
+      '',
+      '## Fit Summary',
+      'Xiaoshen CONG (Shawn) appears to be a strong fit.'
+    ].join('\n'),
+    briefing: {
+      candidate: {
+        name: 'Xiaoshen CONG (Shawn)',
+        location: 'Shanghai'
+      },
+      role: {
+        title: 'Leadership Talent Acquisition Partner (VP), Technology Center'
+      },
+      fit_summary: 'Xiaoshen CONG (Shawn) appears to be a strong fit.',
+      relevant_experience: [],
+      employment_history: []
+    },
+    cvDocument,
+    jdDocument
+  });
+
+  assert.match(result.summary, /^Candidate: Anonymous Candidate/m);
+  assert.doesNotMatch(result.summary, /the candidate \(the candidate\)/i);
+  assert.equal(result.briefing.candidate.name, ANONYMOUS_CANDIDATE_LABEL);
+});
+
+test('anonymizeDraftOutput strips parenthetical nicknames that survive partial name replacement', () => {
+  const { cvDocument, jdDocument } = createDocuments();
+  cvDocument.file.name = 'sample-cv-parenthetical.txt';
+  cvDocument.text = [
+    'Xiaoshen CONG (Shawn)',
+    'Email: shawn.cong@example.com'
+  ].join('\n');
+
+  const result = anonymizeDraftOutput({
+    recruiterSummary: [
+      'Candidate: Xiaoshen CONG (Shawn)',
+      'Target Role: Senior Product Manager, Recruitment Intelligence',
+      '',
+      '## Fit Summary',
+      'Xiaoshen CONG (Shawn) appears to be a strong fit.'
+    ].join('\n'),
+    briefing: {
+      candidate: {
+        name: 'Xiaoshen CONG (Shawn)'
+      },
+      role: {
+        title: 'Senior Product Manager, Recruitment Intelligence'
+      },
+      fit_summary: 'Xiaoshen CONG (Shawn) appears to be a strong fit.',
+      relevant_experience: [],
+      employment_history: []
+    },
+    cvDocument,
+    jdDocument
+  });
+
+  assert.match(result.summary, /^Candidate: Anonymous Candidate/m);
+  assert.doesNotMatch(result.summary, /\(Shawn\)/);
+  assert.doesNotMatch(result.summary, /the candidate \(Shawn\)/i);
+  assert.equal(result.briefing.candidate.name, ANONYMOUS_CANDIDATE_LABEL);
+});
